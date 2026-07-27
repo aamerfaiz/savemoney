@@ -255,8 +255,10 @@ module behind "user has a valid active key" (it is an optional module).
 
 - **Phase 1** (in progress): Auth ✅, Dashboard ✅, **Transactions (income +
   expenses) ✅** — the reference module — Categories (seeded) ✅, **Budget ✅**
-  (safe-to-spend via `computeBudget` + per-category limits with live spend);
-  still to build: Goals page, Loans page, Analytics, CSV import.
+  (safe-to-spend via `computeBudget` + per-category limits with live spend),
+  **Goals ✅** (targets, contributions, projection via `computeGoalProjection`;
+  goal contributions now feed the safe-to-spend calc); still to build: Loans
+  page (wire loan payments into safe-to-spend when done), Analytics, CSV import.
 - **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
   Recurring transactions, Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the

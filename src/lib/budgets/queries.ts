@@ -51,24 +51,34 @@ export async function getBudgetsData(): Promise<BudgetsData> {
   const supabase = await createClient();
   const now = new Date();
 
-  const [{ data: budgetRows }, { data: expenseRows }, { data: incomeRows }] =
-    await Promise.all([
-      supabase
-        .from("budgets")
-        .select("id, category_id, period, amount, currency, categories(name, icon)")
-        .is("deleted_at", null),
-      // A year of expenses is enough to cover weekly/monthly/yearly windows.
-      supabase
-        .from("expenses")
-        .select("category_id, amount, spent_at, is_recurring")
-        .is("deleted_at", null)
-        .gte("spent_at", iso(new Date(now.getFullYear(), 0, 1))),
-      supabase
-        .from("income")
-        .select("amount")
-        .is("deleted_at", null)
-        .gte("received_at", iso(new Date(now.getFullYear(), now.getMonth(), 1))),
-    ]);
+  const [
+    { data: budgetRows },
+    { data: expenseRows },
+    { data: incomeRows },
+    { data: goalRows },
+  ] = await Promise.all([
+    supabase
+      .from("budgets")
+      .select("id, category_id, period, amount, currency, categories(name, icon)")
+      .is("deleted_at", null),
+    // A year of expenses is enough to cover weekly/monthly/yearly windows.
+    supabase
+      .from("expenses")
+      .select("category_id, amount, spent_at, is_recurring")
+      .is("deleted_at", null)
+      .gte("spent_at", iso(new Date(now.getFullYear(), 0, 1))),
+    supabase
+      .from("income")
+      .select("amount")
+      .is("deleted_at", null)
+      .gte("received_at", iso(new Date(now.getFullYear(), now.getMonth(), 1))),
+    // Active goals' monthly contributions feed the safe-to-spend calc.
+    supabase
+      .from("goals")
+      .select("monthly_contribution")
+      .is("deleted_at", null)
+      .eq("status", "active"),
+  ]);
 
   const expenses = (expenseRows ?? []) as ExpenseRow[];
 
@@ -111,14 +121,17 @@ export async function getBudgetsData(): Promise<BudgetsData> {
     (s, r) => s + Number(r.amount),
     0,
   );
+  const goalContributions = (
+    (goalRows ?? []) as { monthly_contribution: string | number | null }[]
+  ).reduce((s, g) => s + Number(g.monthly_contribution ?? 0), 0);
 
   const safeToSpend = computeBudget({
     monthlyIncome,
     fixedExpenses,
-    // These modules aren't built yet, so they contribute 0 for now.
+    goalContributions,
+    // Investments & loan payments contribute 0 until those modules exist.
     investments: 0,
     loanPayments: 0,
-    goalContributions: 0,
     spentThisMonth,
   });
 
