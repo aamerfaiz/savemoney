@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Check, CircleAlert } from "lucide-react";
 
@@ -22,11 +22,36 @@ export function GoalsView({
   data: GoalsData;
   readOnly: boolean;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<GoalWithProgress | null>(null);
   const [contributing, setContributing] = useState<GoalWithProgress | null>(null);
-  const { goals, totalSaved, totalTarget, currency } = data;
+  const { currency } = data;
+
+  const [goals, removeGoal] = useOptimistic(
+    data.goals,
+    (state: GoalWithProgress[], id: string) => state.filter((g) => g.id !== id),
+  );
+  const { totalSaved, totalTarget } = useMemo(() => {
+    const active = goals.filter(
+      (g) => g.status === "active" || g.status === "completed",
+    );
+    return {
+      totalSaved: active.reduce((s, g) => s + g.currentAmount, 0),
+      totalTarget: active.reduce((s, g) => s + g.targetAmount, 0),
+    };
+  }, [goals]);
   const overallPct = totalTarget > 0 ? totalSaved / totalTarget : 0;
+
+  const onDelete = (g: GoalWithProgress) => {
+    if (!confirm(`Delete "${g.name}"?`)) return;
+    startTransition(async () => {
+      removeGoal(g.id);
+      await deleteGoal(g.id);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -92,6 +117,7 @@ export function GoalsView({
               readOnly={readOnly}
               onEdit={() => setEditing(g)}
               onContribute={() => setContributing(g)}
+              onDelete={() => onDelete(g)}
             />
           ))}
         </div>
@@ -148,32 +174,19 @@ function GoalCard({
   readOnly,
   onEdit,
   onContribute,
+  onDelete,
 }: {
   g: GoalWithProgress;
   readOnly: boolean;
   onEdit: () => void;
   onContribute: () => void;
+  onDelete: () => void;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const pct = Math.round(g.projection.progress * 100);
   const done = g.projection.isComplete;
 
-  const onDelete = () => {
-    if (!confirm(`Delete "${g.name}"?`)) return;
-    startTransition(async () => {
-      await deleteGoal(g.id);
-      router.refresh();
-    });
-  };
-
   return (
-    <div
-      className={cn(
-        "group flex flex-col rounded-lg border border-border bg-card p-4",
-        pending && "opacity-50",
-      )}
-    >
+    <div className="group flex flex-col rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-3">
         <span
           className={cn(
@@ -205,7 +218,6 @@ function GoalCard({
             </button>
             <button
               onClick={onDelete}
-              disabled={pending}
               aria-label="Delete"
               className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
             >

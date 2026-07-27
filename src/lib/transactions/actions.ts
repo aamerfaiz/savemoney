@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { baseCurrencyFor } from "@/lib/profile/queries";
 import {
   transactionInputSchema,
   type TransactionKind,
@@ -56,11 +57,12 @@ export async function createTransaction(
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
   const v = parsed.data;
+  const currency = await baseCurrencyFor(supabase, userId);
 
   const common = {
     user_id: userId,
     amount: v.amount,
-    currency: v.currency,
+    currency,
     description: v.description ?? null,
     category_id: v.categoryId ?? null,
     account_id: v.accountId ?? null,

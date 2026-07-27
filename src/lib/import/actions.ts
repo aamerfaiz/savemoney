@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { baseCurrencyFor } from "@/lib/profile/queries";
 import type { TransactionKind } from "@/lib/transactions/types";
 import { buildPreview, dedupeKey, parseDate } from "./pipeline";
 import type { ColumnMapping, CommitResult, ImportPreview } from "./types";
@@ -92,6 +93,7 @@ export async function commitImport(
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
+  const currency = await baseCurrencyFor(supabase, userId);
 
   const rows = payload.rows.slice(0, MAX_ROWS);
   const keys = await existingKeysInRange(supabase, rows, payload.mapping);
@@ -141,7 +143,7 @@ export async function commitImport(
     const base = {
       user_id: userId,
       amount: c.amount,
-      currency: "USD",
+      currency,
       description: c.description,
       category_id: categoryId,
       import_batch_id: batch.id,

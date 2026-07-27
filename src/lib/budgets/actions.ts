@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { baseCurrencyFor } from "@/lib/profile/queries";
 import { budgetInputSchema } from "./types";
 
 export interface ActionResult {
@@ -45,13 +46,14 @@ export async function createBudget(
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
   const v = parsed.data;
+  const currency = await baseCurrencyFor(supabase, userId);
 
   const { error } = await supabase.from("budgets").insert({
     user_id: userId,
     category_id: v.categoryId ?? null,
     period: v.period,
     amount: v.amount,
-    currency: v.currency,
+    currency,
     starts_on: v.startsOn,
   });
   if (error) return { ok: false, error: error.message };

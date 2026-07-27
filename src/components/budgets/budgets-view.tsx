@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 
@@ -26,10 +26,26 @@ export function BudgetsView({
   categories: CategoryOption[];
   readOnly: boolean;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<BudgetWithProgress | null>(null);
-  const { budgets, safeToSpend, currency } = data;
+  const { safeToSpend, currency } = data;
+
+  const [budgets, removeBudget] = useOptimistic(
+    data.budgets,
+    (state: BudgetWithProgress[], id: string) => state.filter((b) => b.id !== id),
+  );
   const overspent = budgets.filter((b) => b.status === "over");
+
+  const onDelete = (b: BudgetWithProgress) => {
+    if (!confirm("Delete this budget?")) return;
+    startTransition(async () => {
+      removeBudget(b.id);
+      await deleteBudget(b.id);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -92,6 +108,7 @@ export function BudgetsView({
                 b={b}
                 readOnly={readOnly}
                 onEdit={() => setEditing(b)}
+                onDelete={() => onDelete(b)}
               />
             ))}
           </div>
@@ -133,13 +150,13 @@ function BudgetRow({
   b,
   readOnly,
   onEdit,
+  onDelete,
 }: {
   b: BudgetWithProgress;
   readOnly: boolean;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const pct = Math.min(100, Math.round(b.utilization * 100));
 
   const meterColor =
@@ -149,21 +166,8 @@ function BudgetRow({
         ? "var(--color-warning)"
         : "var(--color-brand)";
 
-  const onDelete = () => {
-    if (!confirm("Delete this budget?")) return;
-    startTransition(async () => {
-      await deleteBudget(b.id);
-      router.refresh();
-    });
-  };
-
   return (
-    <div
-      className={cn(
-        "group rounded-lg border border-border bg-card p-4",
-        pending && "opacity-50",
-      )}
-    >
+    <div className="group rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-brand">
           <Icon name={b.categoryIcon ?? "target"} className="size-4.5" />
@@ -193,7 +197,6 @@ function BudgetRow({
             </button>
             <button
               onClick={onDelete}
-              disabled={pending}
               aria-label="Delete"
               className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
             >

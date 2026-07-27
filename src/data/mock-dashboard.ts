@@ -84,7 +84,7 @@ const health = computeHealthScore({
 
 export const mockDashboard: DashboardData = {
   currency: "USD",
-  userName: "Aamer",
+  userName: "there",
   monthlyIncome,
   monthlyExpenses,
   savings: monthlyIncome - monthlyExpenses,
@@ -137,8 +137,5 @@ function addDays(n: number): string {
   d.setDate(d.getDate() + n);
   return d.toISOString();
 }
-
-/** Placeholder async accessor — replace with a Supabase query later. */
-export async function getDashboardData(): Promise<DashboardData> {
-  return mockDashboard;
-}
+// Real composition lives in src/lib/dashboard/queries.ts; this file only
+// provides the shape (DashboardData) and the demo-mode fallback (mockDashboard).

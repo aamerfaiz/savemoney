@@ -14,7 +14,7 @@ import { SpendingDonut } from "@/components/dashboard/spending-donut";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { UpcomingCard } from "@/components/dashboard/upcoming-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
-import { getDashboardData } from "@/data/mock-dashboard";
+import { getDashboardData } from "@/lib/dashboard/queries";
 import { formatCurrency } from "@/lib/format";
 
 export const metadata = { title: "Dashboard · Finance OS" };

@@ -73,8 +73,9 @@ export function parseDate(raw: string): string | null {
 
   const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
   if (m) {
-    let [, a, b, y] = m;
-    if (y.length === 2) y = `20${y}`;
+    const a = m[1];
+    const b = m[2];
+    const y = m[3].length === 2 ? `20${m[3]}` : m[3];
     // Prefer MM/DD when the first field can't be a month>12; otherwise DD/MM.
     let month = Number(a);
     let day = Number(b);

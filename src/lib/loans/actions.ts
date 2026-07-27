@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { baseCurrencyFor } from "@/lib/profile/queries";
 import { loanInputSchema, paymentInputSchema } from "./types";
 
 export interface ActionResult {
@@ -50,6 +51,7 @@ export async function createLoan(
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
   const v = parsed.data;
+  const currency = await baseCurrencyFor(supabase, userId);
 
   const { error } = await supabase.from("loans").insert({
     user_id: userId,
@@ -61,7 +63,7 @@ export async function createLoan(
     remaining_amount: v.remainingAmount,
     remaining_months: v.remainingMonths ?? null,
     extra_emi: v.extraEmi ?? null,
-    currency: v.currency,
+    currency,
     start_date: v.startDate,
   });
   if (error) return { ok: false, error: error.message };

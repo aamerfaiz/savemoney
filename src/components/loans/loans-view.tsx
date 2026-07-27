@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, TrendingDown, AlertTriangle } from "lucide-react";
 
@@ -22,11 +22,34 @@ export function LoansView({
   data: LoansData;
   readOnly: boolean;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<LoanWithProjection | null>(null);
   const [paying, setPaying] = useState<LoanWithProjection | null>(null);
-  const { loans, totalRemaining, totalMonthlyEmi, totalInterestSaved, currency } =
-    data;
+  const { currency } = data;
+
+  const [loans, removeLoan] = useOptimistic(
+    data.loans,
+    (state: LoanWithProjection[], id: string) => state.filter((l) => l.id !== id),
+  );
+  const { totalRemaining, totalMonthlyEmi, totalInterestSaved } = useMemo(
+    () => ({
+      totalRemaining: loans.reduce((s, l) => s + l.remainingAmount, 0),
+      totalMonthlyEmi: loans.reduce((s, l) => s + l.emi + (l.extraEmi ?? 0), 0),
+      totalInterestSaved: loans.reduce((s, l) => s + l.projection.interestSaved, 0),
+    }),
+    [loans],
+  );
+
+  const onDelete = (l: LoanWithProjection) => {
+    if (!confirm(`Delete "${l.name}"?`)) return;
+    startTransition(async () => {
+      removeLoan(l.id);
+      await deleteLoan(l.id);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -77,6 +100,7 @@ export function LoansView({
               readOnly={readOnly}
               onEdit={() => setEditing(l)}
               onPay={() => setPaying(l)}
+              onDelete={() => onDelete(l)}
             />
           ))}
         </div>
@@ -143,32 +167,19 @@ function LoanCard({
   readOnly,
   onEdit,
   onPay,
+  onDelete,
 }: {
   l: LoanWithProjection;
   readOnly: boolean;
   onEdit: () => void;
   onPay: () => void;
+  onDelete: () => void;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const p = l.projection;
   const pct = p.progress != null ? Math.round(p.progress * 100) : 0;
 
-  const onDelete = () => {
-    if (!confirm(`Delete "${l.name}"?`)) return;
-    startTransition(async () => {
-      await deleteLoan(l.id);
-      router.refresh();
-    });
-  };
-
   return (
-    <div
-      className={cn(
-        "group rounded-lg border border-border bg-card p-4",
-        pending && "opacity-50",
-      )}
-    >
+    <div className="group rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-brand">
           <Icon name={LOAN_TYPE_ICON[l.type]} className="size-5" />
@@ -191,7 +202,6 @@ function LoanCard({
             </button>
             <button
               onClick={onDelete}
-              disabled={pending}
               aria-label="Delete"
               className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
             >

@@ -8,6 +8,28 @@ export type CurrencyCode = "USD" | "EUR" | "GBP" | "INR" | "AED" | "JPY";
 
 export const DEFAULT_CURRENCY: CurrencyCode = "USD";
 
+/** Supported base currencies (drives the Settings picker + validation). */
+export const CURRENCIES: { code: CurrencyCode; label: string; symbol: string }[] = [
+  { code: "USD", label: "US Dollar", symbol: "$" },
+  { code: "EUR", label: "Euro", symbol: "€" },
+  { code: "GBP", label: "British Pound", symbol: "£" },
+  { code: "INR", label: "Indian Rupee", symbol: "₹" },
+  { code: "AED", label: "UAE Dirham", symbol: "د.إ" },
+  { code: "JPY", label: "Japanese Yen", symbol: "¥" },
+];
+
+export const CURRENCY_CODES = CURRENCIES.map((c) => c.code) as [
+  CurrencyCode,
+  ...CurrencyCode[],
+];
+
+/** Narrow an arbitrary string to a supported CurrencyCode (falls back to USD). */
+export function toCurrencyCode(v: string | null | undefined): CurrencyCode {
+  return CURRENCY_CODES.includes(v as CurrencyCode)
+    ? (v as CurrencyCode)
+    : DEFAULT_CURRENCY;
+}
+
 /** Format a numeric amount as currency (no fractional digits by default). */
 export function formatCurrency(
   amount: number,

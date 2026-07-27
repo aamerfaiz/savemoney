@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Repeat } from "lucide-react";
@@ -47,11 +47,38 @@ export function TransactionsView({
   filter: TransactionFilter;
   readOnly: boolean;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const currency = summary.currency;
 
-  const groups = useMemo(() => groupByDate(transactions), [transactions]);
+  // Optimistic list: deletes drop from the UI immediately, then the server
+  // action + refresh confirm (or, on failure, the row reappears on refresh).
+  const [items, removeItem] = useOptimistic(
+    transactions,
+    (state: Transaction[], id: string) => state.filter((t) => t.id !== id),
+  );
+  const groups = useMemo(() => groupByDate(items), [items]);
+
+  const live = useMemo(() => {
+    let income = 0;
+    let expenses = 0;
+    for (const t of items) {
+      if (t.kind === "income") income += t.amount;
+      else expenses += t.amount;
+    }
+    return { income, expenses, net: income - expenses, count: items.length };
+  }, [items]);
+
+  const onDelete = (t: Transaction) => {
+    if (!confirm("Delete this transaction?")) return;
+    startTransition(async () => {
+      removeItem(t.id);
+      await deleteTransaction(t.id, t.kind);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -61,7 +88,7 @@ export function TransactionsView({
             Transactions
           </h1>
           <p className="text-sm text-muted-foreground">
-            {summary.count} {summary.count === 1 ? "entry" : "entries"}
+            {live.count} {live.count === 1 ? "entry" : "entries"}
           </p>
         </div>
         <Button className="hidden gap-1.5 sm:inline-flex" onClick={() => setAdding(true)}>
@@ -78,12 +105,12 @@ export function TransactionsView({
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryTile label="Income" value={formatCurrency(summary.income, currency)} tone="positive" />
-        <SummaryTile label="Expenses" value={formatCurrency(summary.expenses, currency)} tone="negative" />
+        <SummaryTile label="Income" value={formatCurrency(live.income, currency)} tone="positive" />
+        <SummaryTile label="Expenses" value={formatCurrency(live.expenses, currency)} tone="negative" />
         <SummaryTile
           label="Net"
-          value={formatCurrency(summary.net, currency, { showSign: true })}
-          tone={summary.net >= 0 ? "positive" : "negative"}
+          value={formatCurrency(live.net, currency, { showSign: true })}
+          tone={live.net >= 0 ? "positive" : "negative"}
         />
       </div>
 
@@ -107,7 +134,7 @@ export function TransactionsView({
       </div>
 
       {/* List */}
-      {transactions.length === 0 ? (
+      {items.length === 0 ? (
         <EmptyState onAdd={() => setAdding(true)} />
       ) : (
         <div className="space-y-6">
@@ -124,6 +151,7 @@ export function TransactionsView({
                     currency={currency}
                     readOnly={readOnly}
                     onEdit={() => setEditing(t)}
+                    onDelete={() => onDelete(t)}
                     divider={i > 0}
                   />
                 ))}
@@ -202,32 +230,23 @@ function TransactionRow({
   currency,
   readOnly,
   onEdit,
+  onDelete,
   divider,
 }: {
   t: Transaction;
   currency: CurrencyCode;
   readOnly: boolean;
   onEdit: () => void;
+  onDelete: () => void;
   divider: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const income = t.kind === "income";
-
-  const onDelete = () => {
-    if (!confirm("Delete this transaction?")) return;
-    startTransition(async () => {
-      await deleteTransaction(t.id, t.kind);
-      router.refresh();
-    });
-  };
 
   return (
     <div
       className={cn(
         "group flex items-center gap-3 px-3 py-3 transition-colors hover:bg-muted/40",
         divider && "border-t border-border",
-        pending && "opacity-50",
       )}
     >
       <span
@@ -280,7 +299,6 @@ function TransactionRow({
           </button>
           <button
             onClick={onDelete}
-            disabled={pending}
             aria-label="Delete"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
           >

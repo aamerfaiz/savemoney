@@ -83,7 +83,9 @@ src/
     supabase/            # client.ts, server.ts, middleware.ts (session)
     format.ts            # formatCurrency / formatPercent / dates
     utils.ts             # cn() classname merge
-  data/mock-dashboard.ts # mock snapshot; getDashboardData() is the seam
+  data/mock-dashboard.ts # DashboardData shape + demo-mode fallback only
+  lib/dashboard/queries.ts # REAL dashboard, composed from the module queries
+  lib/profile/           # getProfile (name + base currency) + updateProfile
   proxy.ts               # session refresh + auth guard (Next 16 "middleware")
 drizzle/
   0000_init_phase1.sql        # generated: tables, enums, FKs
@@ -164,6 +166,24 @@ tokens — don't pass hard-coded RGB.
   `@/lib/supabase/middleware`. **Auth is only enforced when the Supabase env
   vars are set** — absent them the app runs in demo mode on mock data. Keep
   that graceful fallback so the UI is always runnable.
+
+## Personalization, currency & optimistic UI
+
+- **User identity**: never hard-code a name. `getProfile()` (`src/lib/profile/
+  queries.ts`) returns the signed-in user's display name + base currency (a
+  neutral "there"/USD guest in demo mode); the app shell and dashboard read
+  from it. Settings (`/settings`) edits both via `updateProfile`.
+- **Base currency**: the profile's `base_currency` is the app's display default
+  and is stamped onto every newly-created row — create actions call
+  `baseCurrencyFor(supabase, userId)` instead of hard-coding "USD". Existing
+  rows keep their stored currency (no conversion yet — that's the future
+  multi-currency module).
+- **Optimistic UI**: list views (transactions/budgets/goals/loans) own their
+  deletes with React 19 `useOptimistic` — the row disappears immediately inside
+  a `startTransition`, then the Server Action + `router.refresh()` confirm. Any
+  derived totals recompute from the optimistic list. Follow this pattern (view
+  owns the mutation, row calls an `onDelete` prop) rather than per-row
+  transitions.
 
 ## Styling & design tokens
 
