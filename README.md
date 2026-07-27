@@ -95,7 +95,10 @@ and the dashboard renders from mock data.
 - **Phase 1** — Auth, Dashboard, Income, Expenses, Categories, Budgets, Goals,
   Loans, Analytics, CSV import, PWA. _(foundation + dashboard shell in place)_
 - **Phase 2** — Investments, Net Worth, Reports, Health Score, Notifications.
-- **Phase 3** — AI Assistant, What-if Simulator, OCR, auto-categorization.
+- **Phase 3** — AI Assistant with **user-provided API keys (BYOK)** — users add
+  their own AI provider keys (DeepSeek R1 Flash first, then OpenAI/Gemini/Claude)
+  via an "AI & Integrations" settings screen; keys are encrypted at rest and
+  never exposed to the browser. Plus What-if Simulator, OCR, auto-categorization.
 - **Phase 4** — SMS/bank/email sync, shared family accounts.
 - **Phase 5** — Native mobile (Expo), offline sync, biometrics, widgets.
 
