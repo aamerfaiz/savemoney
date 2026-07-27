@@ -198,6 +198,24 @@ differentiator.
 Future engines to add here the same way: what-if simulator, loan amortization /
 payoff projection, net-worth history.
 
+## The import pipeline (shared — reuse it for SMS/bank/email later)
+
+`src/lib/import/pipeline.ts` is the single, pure entry point every importer
+funnels through (spec: "all imports should use the same processing pipeline").
+CSV is the first consumer; SMS/email/bank feeds (Phase 4) should produce the
+same `Record<string,string>[]` raw rows and call the same functions:
+`detectMapping` (header → field guessing), `normalizeRow` (→ a `CanonicalRow`
+with kind/amount/date), `dedupeKey`, and `buildPreview` (flags duplicates both
+within the batch and against the DB). Keep it pure — no I/O — so it runs on the
+server (with DB dedupe) or the client (instant preview).
+
+Persistence: every import creates an `import_batches` row and stamps each
+inserted income/expense with `import_batch_id`, so **rollback** is a soft-delete
+of all rows for a batch plus `status = 'rolled_back'` (`src/lib/import/actions.ts`:
+`previewImport` / `commitImport` / `rollbackImport`). Duplicate identity is
+`kind|amount|date|description`. UI is a 4-step wizard in
+`src/components/import/`. Route: `/import`.
+
 ## AI providers & user API keys (BYOK) — required, Phase 3
 
 Finance OS is **bring-your-own-key**: each user stores their own AI provider
@@ -262,7 +280,8 @@ module behind "user has a valid active key" (it is an optional module).
   expenses, goal contributions and loan EMIs — only `investments` is still 0
   (Phase 2). **Analytics ✅** (`src/lib/analytics`: trailing-6-month income vs
   expenses, savings-rate trend, category breakdown, top categories, derived
-  health score; charts in `src/components/analytics`). Still to build: CSV import.
+  health score; charts in `src/components/analytics`). **CSV import ✅** — see
+  the import pipeline below. **Phase 1 is complete.**
 - **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
   Recurring transactions, Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the

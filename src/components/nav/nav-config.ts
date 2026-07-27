@@ -7,6 +7,7 @@ import {
   PieChart,
   Wallet,
   Settings,
+  Upload,
 } from "lucide-react";
 
 export interface NavItem {
@@ -28,6 +29,7 @@ export const navItems: NavItem[] = [
   { label: "Goals", href: "/goals", icon: Target, primary: true },
   { label: "Loans", href: "/loans", icon: Landmark },
   { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
+  { label: "Import", href: "/import", icon: Upload },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 

@@ -85,6 +85,21 @@ export const loanType = pgEnum("loan_type", [
   "other",
 ]);
 
+/** Where an import batch came from — the shared import pipeline supports more
+ *  than CSV over time (SMS/email/bank feeds all create batches). */
+export const importSource = pgEnum("import_source", [
+  "csv",
+  "sms",
+  "email",
+  "bank",
+  "manual",
+]);
+
+export const importStatus = pgEnum("import_status", [
+  "completed",
+  "rolled_back",
+]);
+
 /* Shared audit columns */
 const audit = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -157,6 +172,31 @@ export const categories = pgTable(
 );
 
 /* ----------------------------------------------------------------------- */
+/* Import batches                                                            */
+/* ----------------------------------------------------------------------- */
+/* Every bulk import (CSV today; SMS/email/bank later) records a batch so the
+ * imported rows can be traced and rolled back as a unit. Income/expense rows
+ * carry `import_batch_id` pointing here. */
+
+export const importBatches = pgTable(
+  "import_batches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    source: importSource("source").notNull().default("csv"),
+    filename: text("filename"),
+    totalRows: integer("total_rows").notNull().default(0),
+    importedRows: integer("imported_rows").notNull().default(0),
+    duplicateRows: integer("duplicate_rows").notNull().default(0),
+    status: importStatus("status").notNull().default("completed"),
+    ...audit,
+  },
+  (t) => [index("import_batches_user_idx").on(t.userId)],
+);
+
+/* ----------------------------------------------------------------------- */
 /* Income                                                                   */
 /* ----------------------------------------------------------------------- */
 
@@ -181,6 +221,9 @@ export const income = pgTable(
     isRecurring: boolean("is_recurring").notNull().default(false),
     frequency: frequency("frequency").notNull().default("one_time"),
     nextDate: date("next_date"),
+    importBatchId: uuid("import_batch_id").references(() => importBatches.id, {
+      onDelete: "set null",
+    }),
     ...audit,
   },
   (t) => [
@@ -188,6 +231,7 @@ export const income = pgTable(
     index("income_received_idx").on(t.receivedAt),
     index("income_account_idx").on(t.accountId),
     index("income_category_idx").on(t.categoryId),
+    index("income_import_batch_idx").on(t.importBatchId),
   ],
 );
 
@@ -217,6 +261,9 @@ export const expenses = pgTable(
     isRecurring: boolean("is_recurring").notNull().default(false),
     frequency: frequency("frequency").notNull().default("one_time"),
     nextDate: date("next_date"),
+    importBatchId: uuid("import_batch_id").references(() => importBatches.id, {
+      onDelete: "set null",
+    }),
     ...audit,
   },
   (t) => [
@@ -224,6 +271,7 @@ export const expenses = pgTable(
     index("expenses_spent_idx").on(t.spentAt),
     index("expenses_category_idx").on(t.categoryId),
     index("expenses_account_idx").on(t.accountId),
+    index("expenses_import_batch_idx").on(t.importBatchId),
   ],
 );
 
@@ -374,3 +422,4 @@ export type Goal = typeof goals.$inferSelect;
 export type GoalContribution = typeof goalContributions.$inferSelect;
 export type Loan = typeof loans.$inferSelect;
 export type LoanPayment = typeof loanPayments.$inferSelect;
+export type ImportBatch = typeof importBatches.$inferSelect;
