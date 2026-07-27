@@ -56,6 +56,7 @@ export async function getBudgetsData(): Promise<BudgetsData> {
     { data: expenseRows },
     { data: incomeRows },
     { data: goalRows },
+    { data: loanRows },
   ] = await Promise.all([
     supabase
       .from("budgets")
@@ -78,6 +79,11 @@ export async function getBudgetsData(): Promise<BudgetsData> {
       .select("monthly_contribution")
       .is("deleted_at", null)
       .eq("status", "active"),
+    // Loan EMIs (+ any extra) also come out before discretionary spend.
+    supabase
+      .from("loans")
+      .select("emi, extra_emi, remaining_amount")
+      .is("deleted_at", null),
   ]);
 
   const expenses = (expenseRows ?? []) as ExpenseRow[];
@@ -124,14 +130,23 @@ export async function getBudgetsData(): Promise<BudgetsData> {
   const goalContributions = (
     (goalRows ?? []) as { monthly_contribution: string | number | null }[]
   ).reduce((s, g) => s + Number(g.monthly_contribution ?? 0), 0);
+  const loanPayments = (
+    (loanRows ?? []) as {
+      emi: string | number;
+      extra_emi: string | number | null;
+      remaining_amount: string | number;
+    }[]
+  )
+    .filter((l) => Number(l.remaining_amount) > 0)
+    .reduce((s, l) => s + Number(l.emi) + Number(l.extra_emi ?? 0), 0);
 
   const safeToSpend = computeBudget({
     monthlyIncome,
     fixedExpenses,
     goalContributions,
-    // Investments & loan payments contribute 0 until those modules exist.
+    loanPayments,
+    // Investments contribute 0 until that module exists (Phase 2).
     investments: 0,
-    loanPayments: 0,
     spentThisMonth,
   });
 
