@@ -1,10 +1,21 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { BudgetsView } from "@/components/budgets/budgets-view";
+import { getBudgetsData } from "@/lib/budgets/queries";
+import { getCategories } from "@/lib/transactions/reference";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+
 export const metadata = { title: "Budget · Finance OS" };
-export default function Page() {
+
+export default async function BudgetPage() {
+  const [data, categories] = await Promise.all([
+    getBudgetsData(),
+    getCategories(),
+  ]);
+
   return (
-    <ComingSoon
-      title="Budget"
-      description="The dynamic budgeting engine — safe-to-spend, category budgets and overspend alerts."
+    <BudgetsView
+      data={data}
+      categories={categories}
+      readOnly={!isSupabaseConfigured()}
     />
   );
 }

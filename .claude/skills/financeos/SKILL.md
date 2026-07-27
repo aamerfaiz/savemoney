@@ -254,8 +254,9 @@ module behind "user has a valid active key" (it is an optional module).
 ## Roadmap (build order from the spec)
 
 - **Phase 1** (in progress): Auth ✅, Dashboard ✅, **Transactions (income +
-  expenses) ✅** — the reference module — Categories (seeded) ✅; still to
-  build: Budgets page, Goals page, Loans page, Analytics, CSV import.
+  expenses) ✅** — the reference module — Categories (seeded) ✅, **Budget ✅**
+  (safe-to-spend via `computeBudget` + per-category limits with live spend);
+  still to build: Goals page, Loans page, Analytics, CSV import.
 - **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
   Recurring transactions, Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
