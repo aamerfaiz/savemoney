@@ -186,6 +186,8 @@ export const income = pgTable(
   (t) => [
     index("income_user_idx").on(t.userId),
     index("income_received_idx").on(t.receivedAt),
+    index("income_account_idx").on(t.accountId),
+    index("income_category_idx").on(t.categoryId),
   ],
 );
 
@@ -221,6 +223,7 @@ export const expenses = pgTable(
     index("expenses_user_idx").on(t.userId),
     index("expenses_spent_idx").on(t.spentAt),
     index("expenses_category_idx").on(t.categoryId),
+    index("expenses_account_idx").on(t.accountId),
   ],
 );
 
@@ -244,7 +247,10 @@ export const budgets = pgTable(
     startsOn: date("starts_on").notNull(),
     ...audit,
   },
-  (t) => [index("budgets_user_idx").on(t.userId)],
+  (t) => [
+    index("budgets_user_idx").on(t.userId),
+    index("budgets_category_idx").on(t.categoryId),
+  ],
 );
 
 /* ----------------------------------------------------------------------- */
@@ -293,7 +299,10 @@ export const goalContributions = pgTable(
     note: text("note"),
     ...audit,
   },
-  (t) => [index("goal_contrib_goal_idx").on(t.goalId)],
+  (t) => [
+    index("goal_contrib_goal_idx").on(t.goalId),
+    index("goal_contrib_user_idx").on(t.userId),
+  ],
 );
 
 /* ----------------------------------------------------------------------- */
@@ -348,7 +357,10 @@ export const loanPayments = pgTable(
     isExtra: boolean("is_extra").notNull().default(false),
     ...audit,
   },
-  (t) => [index("loan_payments_loan_idx").on(t.loanId)],
+  (t) => [
+    index("loan_payments_loan_idx").on(t.loanId),
+    index("loan_payments_user_idx").on(t.userId),
+  ],
 );
 
 /* Convenience type exports */

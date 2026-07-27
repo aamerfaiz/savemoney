@@ -83,7 +83,7 @@ and the dashboard renders from mock data.
 
    ```bash
    npm run db:migrate            # applies drizzle/0000_init_phase1.sql
-   # then run drizzle/0001_rls_and_seed.sql in the Supabase SQL editor
+   # then run drizzle/manual/0001_rls_and_seed.sql in the Supabase SQL editor
    # (RLS policies, triggers, and seeded system categories)
    ```
 

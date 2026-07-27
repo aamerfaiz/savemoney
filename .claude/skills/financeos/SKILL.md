@@ -86,9 +86,18 @@ src/
   data/mock-dashboard.ts # mock snapshot; getDashboardData() is the seam
   proxy.ts               # session refresh + auth guard (Next 16 "middleware")
 drizzle/
-  0000_init_phase1.sql   # generated schema migration
-  0001_rls_and_seed.sql  # RLS policies, triggers, seeded system categories
+  0000_init_phase1.sql        # generated: tables, enums, FKs
+  0001_advisor_hardening.sql  # generated: FK-covering indexes (idempotent)
+  manual/
+    0001_rls_and_seed.sql     # hand-written: RLS, triggers, seed (applied out-of-band)
+  meta/                       # drizzle snapshots — keep in sync via db:generate
 ```
+
+Drizzle owns the numbered schema migrations (`0000`, `0001`, …) and their
+`meta/` snapshots; run `npm run db:generate` after editing `schema.ts` so the
+snapshot stays in sync. Hand-written SQL that Drizzle can't diff (RLS policies,
+triggers, seed data) lives in `drizzle/manual/` and is applied separately via
+the Supabase MCP `apply_migration` or the SQL editor.
 
 ## Common tasks
 
@@ -118,10 +127,12 @@ drizzle/
    uuid PK, `userId` FK to `authUsers.id`, the shared `audit` columns —
    `createdAt`/`updatedAt`/`deletedAt` — and an index on `userId`).
 2. Run `npm run db:generate` to produce a new `drizzle/NNNN_*.sql`.
-3. **Write RLS for any new table** — add policies to a new SQL file mirroring
-   `drizzle/0001_rls_and_seed.sql` (enable RLS, then select/insert/update/
-   delete `using ((select auth.uid()) = user_id)`). Tables without RLS leak
-   data across users; this is non-negotiable.
+3. **Write RLS for any new table** — add policies to a new SQL file in
+   `drizzle/manual/` mirroring `drizzle/manual/0001_rls_and_seed.sql` (enable
+   RLS, then select/insert/update/delete `using ((select auth.uid()) =
+   user_id)`). Tables without RLS leak data across users; this is
+   non-negotiable. Also index every new foreign-key column (Supabase's advisor
+   flags unindexed FKs) — put those in `schema.ts` so they're tracked.
 4. Apply: `npm run db:migrate` for the generated file, and run the RLS/seed
    SQL in the Supabase SQL editor (or via the Supabase MCP `apply_migration`).
    The project ref is in `.mcp.json`.
