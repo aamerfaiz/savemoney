@@ -1,10 +1,11 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { AnalyticsView } from "@/components/analytics/analytics-view";
+import { getAnalyticsData } from "@/lib/analytics/queries";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+
 export const metadata = { title: "Analytics · Finance OS" };
-export default function Page() {
-  return (
-    <ComingSoon
-      title="Analytics"
-      description="Trends, income vs expenses, category analysis, savings rate and net-worth growth."
-    />
-  );
+
+export default async function AnalyticsPage() {
+  const data = await getAnalyticsData();
+
+  return <AnalyticsView data={data} readOnly={!isSupabaseConfigured()} />;
 }

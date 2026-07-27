@@ -260,7 +260,9 @@ module behind "user has a valid active key" (it is an optional module).
   amortization, payoff date, interest/time saved from extra EMI; record-payment
   splits principal/interest). Safe-to-spend now pulls real income, recurring
   expenses, goal contributions and loan EMIs — only `investments` is still 0
-  (Phase 2). Still to build: Analytics, CSV import.
+  (Phase 2). **Analytics ✅** (`src/lib/analytics`: trailing-6-month income vs
+  expenses, savings-rate trend, category breakdown, top categories, derived
+  health score; charts in `src/components/analytics`). Still to build: CSV import.
 - **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
   Recurring transactions, Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
