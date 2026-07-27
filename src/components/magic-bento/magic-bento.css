@@ -1,0 +1,131 @@
+/*
+  MagicBento styles — adapted from React Bits (https://reactbits.dev).
+  Refactored into a reusable grid/card system driven by design tokens so it
+  can host real dashboard content. Mobile-first: 1 col -> 2 cols -> 4 cols.
+*/
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .bento-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+}
+
+/* Column-span helpers (mobile always full width) */
+.bento-span-2 {
+  grid-column: span 1;
+}
+.bento-span-full {
+  grid-column: span 1;
+}
+@media (min-width: 640px) {
+  .bento-span-2 {
+    grid-column: span 2;
+  }
+  .bento-span-full {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 1024px) {
+  .bento-span-2 {
+    grid-column: span 2;
+  }
+}
+
+.magic-bento-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 150px;
+  padding: 1.25rem;
+  border-radius: var(--radius-lg, 20px);
+  border: 1px solid var(--border);
+  background: var(--card);
+  overflow: hidden;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  transform-style: preserve-3d;
+
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-intensity: 0;
+  --glow-radius: 220px;
+}
+
+.magic-bento-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Border glow that tracks the cursor via CSS custom props */
+.magic-bento-card--border-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  background: radial-gradient(
+    var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+    rgba(var(--glow-color), calc(var(--glow-intensity) * 0.9)) 0%,
+    rgba(var(--glow-color), calc(var(--glow-intensity) * 0.4)) 30%,
+    transparent 60%
+  );
+  border-radius: inherit;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.magic-bento-card--border-glow:hover {
+  box-shadow:
+    0 4px 20px rgba(46, 24, 78, 0.4),
+    0 0 30px rgba(var(--glow-color), 0.2);
+}
+
+/* Card inner content must sit above the glow layer */
+.magic-bento-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+.particle::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background: rgba(var(--glow-color), 0.2);
+  border-radius: 50%;
+  z-index: -1;
+}
+
+.global-spotlight {
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  z-index: 40 !important;
+  pointer-events: none;
+}
+
+.bento-section {
+  position: relative;
+  user-select: none;
+}

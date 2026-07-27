@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/*
+  Finance OS design tokens.
+  Dark-first, mobile-first. Purple accent (132, 0, 255) mirrors the
+  MagicBento / React Bits aesthetic used across the dashboard.
+*/
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Radii */
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+
+  /* Brand */
+  --color-brand: #8400ff;
+  --color-brand-foreground: #ffffff;
+
+  /* Semantic finance colors */
+  --color-positive: #22c55e;
+  --color-negative: #f43f5e;
+  --color-warning: #f59e0b;
+  --color-info: #38bdf8;
+
+  /* Surfaces (mapped from CSS vars below) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+}
+
+:root {
+  color-scheme: dark;
+
+  --background: #0a080f;
+  --foreground: #f4f2f7;
+
+  --card: #120f17;
+  --card-foreground: #f4f2f7;
+
+  --muted: #1b1622;
+  --muted-foreground: #a39fb0;
+
+  --border: #2f293a;
+  --input: #221d2b;
+  --ring: #8400ff;
+
+  --accent: #1e1826;
+  --accent-foreground: #f4f2f7;
+
+  /* MagicBento glow driver */
+  --glow-color: 132, 0, 255;
+}
+
+/* Light theme opt-in (kept minimal for now — app is dark-first). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f7f6fb;
+  --foreground: #171320;
+  --card: #ffffff;
+  --card-foreground: #171320;
+  --muted: #efedf5;
+  --muted-foreground: #6b6577;
+  --border: #e4e0ec;
+  --input: #eceaf3;
+  --accent: #efedf5;
+  --accent-foreground: #171320;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  overscroll-behavior-y: none;
+}
+
+/* Thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* Respect reduced-motion for the animated UI bits */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
