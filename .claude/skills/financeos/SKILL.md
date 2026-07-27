@@ -110,7 +110,16 @@ the Supabase MCP `apply_migration` or the SQL editor.
    Use `span={2}` for wide cards, `span={1}` default, `span="full"` for a full
    row. Charts must be `"use client"` (Recharts).
 
-### Add a new feature module (e.g. real Transactions page)
+### Add a new feature module
+**Copy the Transactions module — it is the reference implementation.** It shows
+the full pattern end to end: `src/lib/transactions/` holds `types.ts` (Zod
+input schema + unified type), `reference.ts` (category/account options),
+`queries.ts` (server reads, RLS-scoped, with a demo fallback), `actions.ts`
+(`"use server"` create/update/soft-delete), and `mock.ts` (demo data). The UI
+is `src/components/transactions/` (`transactions-view.tsx` client shell +
+`transaction-form.tsx`), wired from `src/app/(app)/transactions/page.tsx`
+(server component). Mirror this shape for goals, loans, budgets, etc.
+
 1. The route already exists as a `ComingSoon` stub under `src/app/(app)/`.
    Replace the stub's body.
 2. Add the module to `src/components/nav/nav-config.ts` if it's not there
@@ -244,8 +253,9 @@ module behind "user has a valid active key" (it is an optional module).
 
 ## Roadmap (build order from the spec)
 
-- **Phase 1** (foundation shipped): Auth, Dashboard, Income, Expenses,
-  Categories, Budgets, Goals, Loans, Analytics, CSV import, PWA.
+- **Phase 1** (in progress): Auth ✅, Dashboard ✅, **Transactions (income +
+  expenses) ✅** — the reference module — Categories (seeded) ✅; still to
+  build: Budgets page, Goals page, Loans page, Analytics, CSV import.
 - **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
   Recurring transactions, Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
