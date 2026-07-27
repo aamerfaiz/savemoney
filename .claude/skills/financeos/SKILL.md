@@ -23,6 +23,15 @@ The full product spec lives in the repo history / issue that seeded it; the
 roadmap phases below summarize it. Ground truth for *how things are built* is
 this file plus the code it points to.
 
+> **⚡ Active build plan — read this first.** The step-by-step plan for wiring
+> the scaffold to a live backend lives in **`docs/CONNECTION_PLAN.md`**. It
+> tracks the "connection phases" (0–7) that take the app from mock-data-only to
+> a connected Supabase backend, and it carries a **per-phase Status Log** plus
+> an **Overall progress** table. Before starting or resuming connection work,
+> open that doc to see what's done vs. pending, do the work, then **update the
+> phase's Status Log and the progress table in the same change**. Keep it the
+> single source of truth for connection status — don't track it only in chat.
+
 ## Golden rules
 
 1. **Match existing patterns.** Before adding a component, card, table, or
@@ -203,6 +212,12 @@ payoff projection, net-worth history.
 
 Design for these seams now (pluggable AI providers, a single import pipeline,
 shareable packages) but don't build ahead of the current phase.
+
+**Note the two axes.** The roadmap phases above are about *product scope*
+(what features exist). The **connection phases** in `docs/CONNECTION_PLAN.md`
+are a separate axis — *wiring the existing scaffold to a live backend*. Most
+Phase-1 features are already coded but still run on mock data; the connection
+plan is how we turn them on. Consult that doc for current connection status.
 
 ## Gotchas
 
