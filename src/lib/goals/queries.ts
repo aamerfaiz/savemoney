@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeGoalProjection } from "@/lib/finance/goals";
 import type { CurrencyCode } from "@/lib/format";
 import { demoGoals } from "./mock";
@@ -35,18 +36,16 @@ const PRIORITY_RANK: Record<GoalPriority, number> = { high: 0, medium: 1, low: 2
 
 /** Goals with progress + projection, sorted by priority then soonest deadline. */
 export async function getGoalsData(): Promise<GoalsData> {
-  const goals = isSupabaseConfigured() ? await fetchGoals() : demoGoals;
+  const currency = await getDisplayCurrency();
+  const raw = isSupabaseConfigured() ? await fetchGoals() : demoGoals;
+  // Display every goal in the user's base currency (no conversion yet).
+  const goals = raw.map((g) => ({ ...g, currency }));
 
   const active = goals.filter((g) => g.status === "active" || g.status === "completed");
   const totalSaved = active.reduce((s, g) => s + g.currentAmount, 0);
   const totalTarget = active.reduce((s, g) => s + g.targetAmount, 0);
 
-  return {
-    goals,
-    totalSaved,
-    totalTarget,
-    currency: goals[0]?.currency ?? "USD",
-  };
+  return { goals, totalSaved, totalTarget, currency };
 }
 
 async function fetchGoals(): Promise<GoalWithProgress[]> {

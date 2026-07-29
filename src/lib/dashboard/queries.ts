@@ -1,7 +1,7 @@
 import "server-only";
 
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { getProfile } from "@/lib/profile/queries";
+import { getProfile, getDisplayCurrency } from "@/lib/profile/queries";
 import { getAnalyticsData } from "@/lib/analytics/queries";
 import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
@@ -21,7 +21,9 @@ import {
  * renders without credentials.
  */
 export async function getDashboardData(): Promise<DashboardData> {
-  if (!isSupabaseConfigured()) return mockDashboard;
+  if (!isSupabaseConfigured()) {
+    return { ...mockDashboard, currency: await getDisplayCurrency() };
+  }
 
   const [profile, analytics, budgets, goalsData, loansData, txns] =
     await Promise.all([

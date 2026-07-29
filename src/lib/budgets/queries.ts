@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeBudget, type BudgetResult } from "@/lib/finance/budget";
 import type { CurrencyCode } from "@/lib/format";
 import { demoBudgets, demoSafeToSpend } from "./mock";
@@ -44,8 +45,14 @@ type ExpenseRow = {
  * figure from the budgeting engine. Demo data when Supabase isn't configured.
  */
 export async function getBudgetsData(): Promise<BudgetsData> {
+  const currency = await getDisplayCurrency();
+
   if (!isSupabaseConfigured()) {
-    return { budgets: demoBudgets, safeToSpend: demoSafeToSpend, currency: "USD" };
+    return {
+      budgets: demoBudgets.map((b) => ({ ...b, currency })),
+      safeToSpend: demoSafeToSpend,
+      currency,
+    };
   }
 
   const supabase = await createClient();
@@ -106,7 +113,7 @@ export async function getBudgetsData(): Promise<BudgetsData> {
       categoryIcon: b.categories?.icon ?? null,
       period,
       amount,
-      currency: (b.currency as CurrencyCode) ?? "USD",
+      currency,
       spent,
       remaining: amount - spent,
       utilization,
@@ -150,7 +157,7 @@ export async function getBudgetsData(): Promise<BudgetsData> {
     spentThisMonth,
   });
 
-  return { budgets, safeToSpend, currency: "USD" };
+  return { budgets, safeToSpend, currency };
 }
 
 interface BudgetRow {

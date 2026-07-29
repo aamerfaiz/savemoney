@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeLoanProjection } from "@/lib/finance/loan";
 import type { CurrencyCode } from "@/lib/format";
 import { demoLoans } from "./mock";
@@ -31,7 +32,10 @@ interface LoanRow {
 
 /** Loans with amortization projections + portfolio totals. Demo fallback. */
 export async function getLoansData(): Promise<LoansData> {
-  const loans = isSupabaseConfigured() ? await fetchLoans() : demoLoans;
+  const currency = await getDisplayCurrency();
+  const raw = isSupabaseConfigured() ? await fetchLoans() : demoLoans;
+  // Display every loan in the user's base currency (no conversion yet).
+  const loans = raw.map((l) => ({ ...l, currency }));
 
   const totalRemaining = loans.reduce((s, l) => s + l.remainingAmount, 0);
   const totalMonthlyEmi = loans.reduce(
@@ -43,13 +47,7 @@ export async function getLoansData(): Promise<LoansData> {
     0,
   );
 
-  return {
-    loans,
-    totalRemaining,
-    totalMonthlyEmi,
-    totalInterestSaved,
-    currency: loans[0]?.currency ?? "USD",
-  };
+  return { loans, totalRemaining, totalMonthlyEmi, totalInterestSaved, currency };
 }
 
 async function fetchLoans(): Promise<LoanWithProjection[]> {

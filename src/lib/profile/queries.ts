@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { toCurrencyCode, type CurrencyCode } from "@/lib/format";
@@ -23,7 +25,7 @@ const GUEST: UserProfile = {
  * The signed-in user's profile (name + base currency). Falls back to a neutral
  * guest in demo mode so the app renders without credentials.
  */
-export async function getProfile(): Promise<UserProfile> {
+export const getProfile = cache(async (): Promise<UserProfile> => {
   if (!isSupabaseConfigured()) return GUEST;
 
   const supabase = await createClient();
@@ -49,6 +51,14 @@ export async function getProfile(): Promise<UserProfile> {
     baseCurrency: toCurrencyCode(data?.base_currency),
     isReal: true,
   };
+});
+
+/**
+ * The user's base currency for display across the app. Memoized per request
+ * (via getProfile's cache) so calling it from every page adds no extra query.
+ */
+export async function getDisplayCurrency(): Promise<CurrencyCode> {
+  return (await getProfile()).baseCurrency;
 }
 
 /**
