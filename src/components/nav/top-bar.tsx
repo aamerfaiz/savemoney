@@ -1,8 +1,9 @@
 import { Bell, Plus, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { MobileNav } from "./mobile-nav";
 
-/** App header. On mobile it shows the brand; on desktop the sidebar does. */
+/** App header. On mobile the logo opens the full nav; on desktop the sidebar does. */
 export function TopBar({ userName }: { userName: string }) {
   const hour = new Date().getHours();
   const greeting =
@@ -10,11 +11,7 @@ export function TopBar({ userName }: { userName: string }) {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-lg lg:px-8">
-      <div className="flex items-center gap-2 lg:hidden">
-        <span className="flex size-8 items-center justify-center rounded-md bg-brand text-brand-foreground font-semibold">
-          F
-        </span>
-      </div>
+      <MobileNav />
 
       <div className="hidden flex-col lg:flex">
         <span className="text-xs text-muted-foreground">{greeting},</span>

@@ -185,6 +185,20 @@ tokens — don't pass hard-coded RGB.
   owns the mutation, row calls an `onDelete` prop) rather than per-row
   transitions.
 
+## Navigation & loading
+
+- **Instant tab switches**: every route under `(app)/` has a `loading.tsx` that
+  renders a skeleton mirroring its layout (built from `src/components/
+  skeletons.tsx` + the `Skeleton` primitive). The App Router swaps it in the
+  moment a tab is tapped, then streams the server-rendered page — so navigation
+  never blocks on data. Add a `loading.tsx` for any new route.
+- **Mobile nav**: the bottom bar holds only 5 primary items. The **top-left
+  logo opens a full-nav drawer** (`src/components/nav/mobile-nav.tsx`) covering
+  everything, incl. Loans/Import/Settings. It's **portaled to `document.body`**
+  because the header's `backdrop-blur` (a `backdrop-filter` ancestor) would
+  otherwise trap `position: fixed`. Any fixed overlay mounted inside the header
+  needs the same portal treatment.
+
 ## Styling & design tokens
 
 Defined in `src/app/globals.css` under `@theme` and `:root`. Use utility
