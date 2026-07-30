@@ -85,6 +85,18 @@ export const loanType = pgEnum("loan_type", [
   "other",
 ]);
 
+export const investmentType = pgEnum("investment_type", [
+  "stocks",
+  "mutual_fund",
+  "etf",
+  "bonds",
+  "crypto",
+  "real_estate",
+  "gold",
+  "retirement",
+  "other",
+]);
+
 /** Where an import batch came from — the shared import pipeline supports more
  *  than CSV over time (SMS/email/bank feeds all create batches). */
 export const importSource = pgEnum("import_source", [
@@ -411,6 +423,98 @@ export const loanPayments = pgTable(
   ],
 );
 
+/* ----------------------------------------------------------------------- */
+/* Investments                                                             */
+/* ----------------------------------------------------------------------- */
+/* A holding tracked at cost basis (`invested_amount`) and latest market value
+ * (`current_value`). `monthly_contribution` is the recurring SIP that feeds
+ * safe-to-spend; `expected_return` (annual %) drives the future-value
+ * projection engine. Contributions are logged in `investment_contributions`. */
+
+export const investments = pgTable(
+  "investments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").references(() => accounts.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    type: investmentType("type").notNull().default("stocks"),
+    investedAmount: numeric("invested_amount", { precision: 14, scale: 2 })
+      .notNull(),
+    currentValue: numeric("current_value", { precision: 14, scale: 2 })
+      .notNull(),
+    monthlyContribution: numeric("monthly_contribution", {
+      precision: 14,
+      scale: 2,
+    }),
+    /** Expected annual return as a percentage, e.g. 8.0 — drives projection. */
+    expectedReturn: numeric("expected_return", { precision: 6, scale: 3 })
+      .notNull()
+      .default("8"),
+    currency: text("currency").notNull().default("USD"),
+    startDate: date("start_date").notNull(),
+    ...audit,
+  },
+  (t) => [
+    index("investments_user_idx").on(t.userId),
+    index("investments_account_idx").on(t.accountId),
+  ],
+);
+
+export const investmentContributions = pgTable(
+  "investment_contributions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    investmentId: uuid("investment_id")
+      .notNull()
+      .references(() => investments.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    contributedAt: date("contributed_at").notNull(),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("investment_contrib_investment_idx").on(t.investmentId),
+    index("investment_contrib_user_idx").on(t.userId),
+  ],
+);
+
+/* ----------------------------------------------------------------------- */
+/* Net worth snapshots                                                     */
+/* ----------------------------------------------------------------------- */
+/* A point-in-time capture of assets vs liabilities so real net-worth history
+ * accrues over time (the breakdown is composed live from investments, goals
+ * and loans; these rows persist the totals as they stood on `captured_at`). */
+
+export const netWorthSnapshots = pgTable(
+  "net_worth_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    capturedAt: date("captured_at").notNull(),
+    totalAssets: numeric("total_assets", { precision: 14, scale: 2 }).notNull(),
+    totalLiabilities: numeric("total_liabilities", { precision: 14, scale: 2 })
+      .notNull(),
+    netWorth: numeric("net_worth", { precision: 14, scale: 2 }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("net_worth_snapshots_user_idx").on(t.userId),
+    index("net_worth_snapshots_captured_idx").on(t.capturedAt),
+  ],
+);
+
 /* Convenience type exports */
 export type Profile = typeof profiles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -422,4 +526,8 @@ export type Goal = typeof goals.$inferSelect;
 export type GoalContribution = typeof goalContributions.$inferSelect;
 export type Loan = typeof loans.$inferSelect;
 export type LoanPayment = typeof loanPayments.$inferSelect;
+export type Investment = typeof investments.$inferSelect;
+export type InvestmentContribution =
+  typeof investmentContributions.$inferSelect;
+export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;

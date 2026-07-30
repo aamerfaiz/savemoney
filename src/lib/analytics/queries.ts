@@ -47,6 +47,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     { data: loanRows },
     { data: contributionRows },
     { data: goalRows },
+    { data: investmentContribRows },
   ] = await Promise.all([
     supabase
       .from("income")
@@ -74,6 +75,12 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
       .select("target_amount, current_amount, monthly_contribution, deadline")
       .is("deleted_at", null)
       .eq("status", "active"),
+    // Money actually invested this window drives the investment-rate signal.
+    supabase
+      .from("investment_contributions")
+      .select("amount, contributed_at")
+      .is("deleted_at", null)
+      .gte("contributed_at", fromISO),
   ]);
 
   const income = (incomeRows ?? []) as IncomeRow[];
@@ -114,7 +121,18 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
     .reduce((s, l) => s + Number(l.emi) + Number(l.extra_emi ?? 0), 0);
 
   const goalCompletion = goalCompletionShare((goalRows ?? []) as GoalRow[]);
-  const health = deriveHealth(months, totals, totalEmi, goalCompletion);
+  const investedThisWindow = (
+    (investmentContribRows ?? []) as ContributionRow[]
+  ).reduce((s, r) => s + Number(r.amount), 0);
+  const investmentRate =
+    totals.income > 0 ? investedThisWindow / totals.income : 0;
+  const health = deriveHealth(
+    months,
+    totals,
+    totalEmi,
+    goalCompletion,
+    investmentRate,
+  );
 
   return {
     monthsCount: RANGE_MONTHS,
@@ -212,6 +230,7 @@ function deriveHealth(
   totals: ReturnType<typeof totalsFrom>,
   totalEmi: number,
   goalCompletion: number,
+  investmentRate: number,
 ) {
   const incomes = months.map((m) => m.income).filter((v) => v > 0);
   const meanIncome =
@@ -228,9 +247,9 @@ function deriveHealth(
     savingsRate: totals.savingsRate,
     debtRatio,
     incomeStability,
+    investmentRate,
     // Not yet derivable — neutral placeholders until those modules land.
     emergencyFundMonths: 3,
-    investmentRate: 0,
     budgetDiscipline: 0.7,
     goalCompletion,
   });

@@ -8,6 +8,8 @@ import {
   Wallet,
   Settings,
   Upload,
+  TrendingUp,
+  Scale,
 } from "lucide-react";
 
 export interface NavItem {
@@ -28,6 +30,8 @@ export const navItems: NavItem[] = [
   { label: "Budget", href: "/budget", icon: Wallet, primary: true },
   { label: "Goals", href: "/goals", icon: Target, primary: true },
   { label: "Loans", href: "/loans", icon: Landmark },
+  { label: "Investments", href: "/investments", icon: TrendingUp },
+  { label: "Net Worth", href: "/net-worth", icon: Scale },
   { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
   { label: "Import", href: "/import", icon: Upload },
   { label: "Settings", href: "/settings", icon: Settings },
