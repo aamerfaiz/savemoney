@@ -487,6 +487,98 @@ export const investmentContributions = pgTable(
 );
 
 /* ----------------------------------------------------------------------- */
+/* Recurring rules                                                         */
+/* ----------------------------------------------------------------------- */
+/* A template that fires an income or expense on a cadence (`frequency` every
+ * `interval` periods) from `start_date` until an optional `end_date`. The pure
+ * engine in src/lib/finance/recurring.ts projects the next occurrence(s); the
+ * bill calendar and dashboard "upcoming" both read from these. `is_active`
+ * pauses a rule without deleting its history. */
+
+export const recurringRules = pgTable(
+  "recurring_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: categoryKind("kind").notNull().default("expense"),
+    categoryId: uuid("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    accountId: uuid("account_id").references(() => accounts.id, {
+      onDelete: "set null",
+    }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    frequency: frequency("frequency").notNull().default("monthly"),
+    /** Repeat every N periods of `frequency` (>= 1). */
+    interval: integer("interval").notNull().default(1),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
+    isActive: boolean("is_active").notNull().default(true),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("recurring_rules_user_idx").on(t.userId),
+    index("recurring_rules_category_idx").on(t.categoryId),
+    index("recurring_rules_account_idx").on(t.accountId),
+  ],
+);
+
+/* ----------------------------------------------------------------------- */
+/* Notifications                                                           */
+/* ----------------------------------------------------------------------- */
+/* User-facing alerts. Most are derived live from state (bill due, budget
+ * overspend, goal milestone) by the generator in src/lib/notifications; this
+ * table persists read/dismissed state so an alert the user has cleared stays
+ * cleared, keyed by the generator's stable `dedupe_key`. Ad-hoc rows (with a
+ * null dedupe_key) can also be inserted directly. */
+
+export const notificationType = pgEnum("notification_type", [
+  "bill_due",
+  "budget_overspend",
+  "goal_milestone",
+  "low_safe_to_spend",
+  "loan_paid_off",
+  "general",
+]);
+
+export const notificationSeverity = pgEnum("notification_severity", [
+  "info",
+  "warning",
+  "positive",
+]);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    type: notificationType("type").notNull().default("general"),
+    severity: notificationSeverity("severity").notNull().default("info"),
+    title: text("title").notNull(),
+    body: text("body"),
+    /** Deep link into the app (e.g. "/budget"). */
+    href: text("href"),
+    /** Stable identity for a derived alert, so read/dismiss state sticks. */
+    dedupeKey: text("dedupe_key"),
+    isRead: boolean("is_read").notNull().default(false),
+    isDismissed: boolean("is_dismissed").notNull().default(false),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    ...audit,
+  },
+  (t) => [
+    index("notifications_user_idx").on(t.userId),
+    index("notifications_dedupe_idx").on(t.userId, t.dedupeKey),
+  ],
+);
+
+/* ----------------------------------------------------------------------- */
 /* Net worth snapshots                                                     */
 /* ----------------------------------------------------------------------- */
 /* A point-in-time capture of assets vs liabilities so real net-worth history
@@ -531,3 +623,5 @@ export type InvestmentContribution =
   typeof investmentContributions.$inferSelect;
 export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
+export type RecurringRule = typeof recurringRules.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

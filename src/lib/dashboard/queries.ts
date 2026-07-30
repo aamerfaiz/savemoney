@@ -7,6 +7,8 @@ import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
 import { getLoansData } from "@/lib/loans/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
+import { getRecurringData } from "@/lib/recurring/queries";
+import { expandOccurrences, toUpcomingItems } from "@/lib/calendar/build";
 import {
   buildNetWorth,
   fetchNetWorthSnapshots,
@@ -39,6 +41,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     goalsData,
     loansData,
     investmentsData,
+    recurringData,
     snapshots,
     txns,
   ] = await Promise.all([
@@ -48,6 +51,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     getGoalsData(),
     getLoansData(),
     getInvestmentsData(),
+    getRecurringData(),
     fetchNetWorthSnapshots(supabase),
     getTransactions("all"),
   ]);
@@ -87,16 +91,19 @@ export async function getDashboardData(): Promise<DashboardData> {
       target: g.targetAmount,
     }));
 
-  const upcoming: UpcomingItem[] = loansData.loans
-    .filter((l) => l.remainingAmount > 0)
-    .slice(0, 4)
-    .map((l) => ({
-      id: l.id,
-      title: `${l.name} EMI`,
-      amount: l.emi,
-      dueDate: nextDueDate(l.startDate),
-      kind: "emi" as const,
-    }));
+  // Upcoming bills + EMIs, composed from the same expansion the calendar uses
+  // so the dashboard card and the calendar page never diverge.
+  const now = new Date();
+  const upcoming: UpcomingItem[] = toUpcomingItems(
+    expandOccurrences({
+      rules: recurringData.rules,
+      loans: loansData.loans,
+      from: now,
+      to: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
+    }),
+    4,
+    now,
+  );
 
   const recent: DashTxn[] = txns.slice(0, 6).map((t) => ({
     id: t.id,
@@ -128,13 +135,4 @@ export async function getDashboardData(): Promise<DashboardData> {
     netWorthTrend,
     spendingByCategory: analytics.byCategory.slice(0, 6),
   };
-}
-
-/** Next occurrence of the loan's start day-of-month, from today. */
-function nextDueDate(startDate: string): string {
-  const day = new Date(startDate + "T00:00:00").getDate();
-  const now = new Date();
-  let due = new Date(now.getFullYear(), now.getMonth(), day);
-  if (due < now) due = new Date(now.getFullYear(), now.getMonth() + 1, day);
-  return due.toISOString().slice(0, 10);
 }

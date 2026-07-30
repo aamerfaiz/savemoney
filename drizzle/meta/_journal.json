@@ -36,6 +36,13 @@
       "when": 1785400495098,
       "tag": "0004_net_worth_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785402463370,
+      "tag": "0005_recurring_and_notifications",
+      "breakpoints": true
     }
   ]
 }

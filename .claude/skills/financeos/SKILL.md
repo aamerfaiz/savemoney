@@ -97,16 +97,21 @@ drizzle/
   0002_import_batches.sql     # generated: import batches
   0003_investments.sql        # generated: investments + contributions (Phase 2)
   0004_net_worth_snapshots.sql# generated: net_worth_snapshots (Phase 2)
+  0005_recurring_and_notifications.sql # generated: recurring_rules + notifications (Phase 2)
   manual/
     0001_rls_and_seed.sql     # hand-written: RLS, triggers, seed (applied out-of-band)
     0002_investments_rls.sql  # hand-written: RLS for the investments tables
     0003_net_worth_rls.sql    # hand-written: RLS for net_worth_snapshots
+    0004_recurring_rls.sql    # hand-written: RLS for recurring_rules
+    0005_notifications_rls.sql# hand-written: RLS for notifications
   meta/                       # drizzle snapshots — keep in sync via db:generate
 ```
 
-> Migrations `0003`/`0004` and manual RLS `0002`/`0003` are committed but may
+> Migrations `0003`–`0005` and manual RLS `0002`–`0005` are committed but may
 > not yet be applied to the database — apply them out-of-band (Supabase MCP
-> `apply_migration` / SQL editor) if the investments / net-worth tables 404.
+> `apply_migration` / SQL editor) if the investments / net-worth / recurring /
+> notifications tables 404. `0005_recurring_and_notifications.sql` adds both the
+> `recurring_rules` and `notifications` tables.
 
 Drizzle owns the numbered schema migrations (`0000`, `0001`, …) and their
 `meta/` snapshots; run `npm run db:generate` after editing `schema.ts` so the
@@ -338,7 +343,7 @@ module behind "user has a valid active key" (it is an optional module).
   expenses, savings-rate trend, category breakdown, top categories, derived
   health score; charts in `src/components/analytics`). **CSV import ✅** — see
   the import pipeline below. **Phase 1 is complete.**
-- **Phase 2** (in progress): **Investments ✅** (`src/lib/investments/` +
+- **Phase 2** (complete): **Investments ✅** (`src/lib/investments/` +
   `computeInvestmentProjection`; `investments` + `investment_contributions`
   tables; holdings with gain/loss + future-value projection, record-contribution
   action; route `/investments`). Investment SIPs now feed safe-to-spend, and
@@ -348,8 +353,24 @@ module behind "user has a valid active key" (it is an optional module).
   loan debt, debt-to-asset ratio, `captureSnapshot` action, trend from real
   snapshots or cash-flow reconstruction; route `/net-worth`). The dashboard net
   worth + trend are composed from `buildNetWorth` so they never diverge.
-  Remaining: Reports, Financial Score, Notifications, Recurring transactions,
-  Bill calendar.
+  **Recurring transactions ✅** (`src/lib/recurring/` + `src/lib/finance/
+  recurring.ts`: `nextOccurrence`/`occurrencesBetween`/`monthlyAmount`;
+  `recurring_rules` table; rules that fire income/expense on a cadence with
+  pause/resume; route `/recurring`).
+  **Bill calendar ✅** (`src/lib/calendar/`: `expandOccurrences` composes
+  recurring rules + loan EMIs into dated occurrences through one pure builder;
+  month grid + upcoming list at `/calendar`; the dashboard "Upcoming bills &
+  EMI" card now reads real data via the same builder).
+  **Financial Score ✅** (`src/lib/score/` surfaces `computeHealthScore` at
+  `/financial-score`: the 0–100 score + per-signal breakdown with weighted
+  bars and deep-linked tips; `WEIGHTS`/`HealthSignal` exported from the engine).
+  **Reports ✅** (`src/lib/reports/` composes analytics + `buildNetWorth` +
+  score into a period report at `/reports`: this-month/3/6-month scopes,
+  monthly table, category breakdown, print).
+  **Notifications ✅** (`src/lib/notifications/`: pure `buildNotifications`
+  derives bill-due / budget-overspend / low-safe-to-spend / goal-milestone /
+  loan-paid-off alerts with stable `dedupeKey`s; `notifications` table persists
+  read/dismiss state; route `/notifications`). **Phase 2 is complete.**
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
   "AI providers & user API keys" section above — pluggable providers
   (DeepSeek first), What-if Simulator, Receipt OCR, CSV intelligence,
