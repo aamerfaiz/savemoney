@@ -12,6 +12,7 @@ import {
   Scale,
   Repeat,
   CalendarDays,
+  Gauge,
 } from "lucide-react";
 
 export interface NavItem {
@@ -37,6 +38,7 @@ export const navItems: NavItem[] = [
   { label: "Recurring", href: "/recurring", icon: Repeat },
   { label: "Bill Calendar", href: "/calendar", icon: CalendarDays },
   { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
+  { label: "Financial Score", href: "/financial-score", icon: Gauge },
   { label: "Import", href: "/import", icon: Upload },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

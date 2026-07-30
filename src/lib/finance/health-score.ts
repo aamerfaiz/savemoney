@@ -24,7 +24,7 @@ export interface HealthInputs {
   goalCompletion: number;
 }
 
-const WEIGHTS = {
+export const WEIGHTS = {
   savingsRate: 0.22,
   emergencyFund: 0.18,
   debtRatio: 0.18,
@@ -33,6 +33,8 @@ const WEIGHTS = {
   incomeStability: 0.1,
   goalCompletion: 0.06,
 } as const;
+
+export type HealthSignal = keyof typeof WEIGHTS;
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
