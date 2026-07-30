@@ -10,6 +10,7 @@ import {
   Upload,
   TrendingUp,
   Scale,
+  Repeat,
 } from "lucide-react";
 
 export interface NavItem {
@@ -32,6 +33,7 @@ export const navItems: NavItem[] = [
   { label: "Loans", href: "/loans", icon: Landmark },
   { label: "Investments", href: "/investments", icon: TrendingUp },
   { label: "Net Worth", href: "/net-worth", icon: Scale },
+  { label: "Recurring", href: "/recurring", icon: Repeat },
   { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
   { label: "Import", href: "/import", icon: Upload },
   { label: "Settings", href: "/settings", icon: Settings },
