@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export interface ActionResult {
   ok: boolean;
@@ -25,9 +24,6 @@ export type NotificationPayload = z.infer<typeof payloadSchema>;
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
 async function requireUser() {
-  if (!isSupabaseConfigured()) {
-    return { error: "Connect Supabase (set env vars) to sync notifications." };
-  }
   const supabase = await createClient();
   const {
     data: { user },

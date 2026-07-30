@@ -18,13 +18,7 @@ import { captureSnapshot } from "@/lib/networth/actions";
 import type { NetWorthData } from "@/lib/networth/types";
 import type { NetWorthComponent } from "@/lib/finance/net-worth";
 
-export function NetWorthView({
-  data,
-  readOnly,
-}: {
-  data: NetWorthData;
-  readOnly: boolean;
-}) {
+export function NetWorthView({ data }: { data: NetWorthData }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -52,25 +46,17 @@ export function NetWorthView({
             Assets minus liabilities
           </p>
         </div>
-        {!readOnly && (
-          <Button
-            variant="secondary"
-            className="gap-1.5"
-            onClick={onCapture}
-            disabled={pending}
-          >
-            <CameraIcon className="size-4" />
-            {pending ? "Capturing…" : "Capture today"}
-          </Button>
-        )}
+        <Button
+          variant="secondary"
+          className="gap-1.5"
+          onClick={onCapture}
+          disabled={pending}
+        >
+          <CameraIcon className="size-4" />
+          {pending ? "Capturing…" : "Capture today"}
+        </Button>
       </div>
 
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to capture real net-worth
-          snapshots over time.
-        </div>
-      )}
       {error && <p className="text-sm text-negative">{error}</p>}
 
       {/* Hero: net worth + trend */}

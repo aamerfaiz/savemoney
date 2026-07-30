@@ -2,12 +2,11 @@ import { computeBudget } from "@/lib/finance/budget";
 import { computeHealthScore } from "@/lib/finance/health-score";
 import { computeNetWorth, trendChange } from "@/lib/finance/net-worth";
 import { expandOccurrences, toUpcomingItems } from "@/lib/calendar/build";
-import {
-  mockDashboard,
-  type DashboardData,
-  type GoalSummary,
-  type Transaction as DashTxn,
-  type UpcomingItem,
+import type {
+  DashboardData,
+  GoalSummary,
+  Transaction as DashTxn,
+  UpcomingItem,
 } from "@/data/mock-dashboard";
 import { loadGuestData } from "./repo";
 
@@ -23,7 +22,6 @@ const PALETTE = ["#8400ff", "#84cc16", "#f59e0b", "#ef4444", "#a855f7", "#94a3b8
  */
 export async function computeGuestDashboard(): Promise<DashboardData> {
   const data = await loadGuestData();
-  if (data.transactions.length === 0) return mockDashboard;
 
   const now = new Date();
   const monthKey = (d: Date) =>

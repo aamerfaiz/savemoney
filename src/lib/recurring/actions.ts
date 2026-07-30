@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { recurringInputSchema } from "./types";
 
@@ -14,9 +13,6 @@ export interface ActionResult {
 }
 
 async function requireUser() {
-  if (!isSupabaseConfigured()) {
-    return { error: "Connect Supabase (set env vars) to save recurring rules." };
-  }
   const supabase = await createClient();
   const {
     data: { user },

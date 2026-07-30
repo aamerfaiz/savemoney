@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
 import { getGoalsData } from "@/lib/goals/queries";
@@ -21,9 +20,6 @@ export interface ActionResult {
  * today (repeated captures on the same day overwrite rather than pile up).
  */
 export async function captureSnapshot(): Promise<ActionResult> {
-  if (!isSupabaseConfigured()) {
-    return { ok: false, error: "Connect Supabase (set env vars) to save snapshots." };
-  }
   const supabase = await createClient();
   const {
     data: { user },

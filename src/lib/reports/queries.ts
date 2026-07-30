@@ -1,6 +1,5 @@
 import "server-only";
 
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { getAnalyticsData } from "@/lib/analytics/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
@@ -34,9 +33,7 @@ export async function getReportsData(): Promise<ReportsData> {
     getLoansData(),
   ]);
 
-  const snapshots = isSupabaseConfigured()
-    ? await fetchNetWorthSnapshots(await createClient())
-    : [];
+  const snapshots = await fetchNetWorthSnapshots(await createClient());
 
   const nw = buildNetWorth({
     components: {

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export interface ImportBatchSummary {
   id: string;
@@ -14,10 +13,8 @@ export interface ImportBatchSummary {
   createdAt: string;
 }
 
-/** Recent import batches, newest first. Empty in demo mode. */
+/** Recent import batches, newest first. */
 export async function getImportHistory(): Promise<ImportBatchSummary[]> {
-  if (!isSupabaseConfigured()) return [];
-
   const supabase = await createClient();
   const { data } = await supabase
     .from("import_batches")

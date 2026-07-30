@@ -42,7 +42,6 @@ export function TransactionsView({
   categories,
   accounts,
   filter,
-  readOnly,
   createAction = createTransaction,
   updateAction = updateTransaction,
   deleteAction = deleteTransaction,
@@ -52,7 +51,6 @@ export function TransactionsView({
   categories: CategoryOption[];
   accounts: AccountOption[];
   filter: TransactionFilter;
-  readOnly: boolean;
   /** Overrides for guest mode (IndexedDB) — same signatures as the Server Actions. */
   createAction?: typeof createTransaction;
   updateAction?: typeof updateTransaction;
@@ -108,13 +106,6 @@ export function TransactionsView({
         </Button>
       </div>
 
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to add and save real
-          transactions.
-        </div>
-      )}
-
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
         <SummaryTile label="Income" value={formatCurrency(live.income, currency)} tone="positive" />
@@ -161,7 +152,6 @@ export function TransactionsView({
                     key={t.id}
                     t={t}
                     currency={currency}
-                    readOnly={readOnly}
                     onEdit={() => setEditing(t)}
                     onDelete={() => onDelete(t)}
                     divider={i > 0}
@@ -244,14 +234,12 @@ function SummaryTile({
 function TransactionRow({
   t,
   currency,
-  readOnly,
   onEdit,
   onDelete,
   divider,
 }: {
   t: Transaction;
   currency: CurrencyCode;
-  readOnly: boolean;
   onEdit: () => void;
   onDelete: () => void;
   divider: boolean;
@@ -311,7 +299,7 @@ function TransactionRow({
         </div>
       </div>
 
-      {!readOnly && !transfer && (
+      {!transfer && (
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
           <button
             onClick={onEdit}

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import {
   monthlyAmount,
@@ -9,7 +8,6 @@ import {
   type RecurringFrequency,
 } from "@/lib/finance/recurring";
 import type { CurrencyCode } from "@/lib/format";
-import { demoRecurringRules } from "./mock";
 import type { RecurringKind, RecurringRuleWithSchedule } from "./types";
 
 export interface RecurringData {
@@ -41,9 +39,7 @@ interface RecurringRow {
 /** Recurring rules with their next occurrence + monthly-normalized amounts. */
 export async function getRecurringData(): Promise<RecurringData> {
   const currency = await getDisplayCurrency();
-  const raw = isSupabaseConfigured()
-    ? await fetchRules()
-    : demoRecurringRules;
+  const raw = await fetchRules();
   const rules = raw.map((r) => ({ ...r, currency }));
 
   const active = rules.filter((r) => r.isActive && r.nextDate);

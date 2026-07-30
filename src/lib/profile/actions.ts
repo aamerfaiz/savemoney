@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { CURRENCY_CODES } from "@/lib/format";
 
 export interface ActionResult {
@@ -38,9 +37,6 @@ export async function updateProfile(
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
   }
 
-  if (!isSupabaseConfigured()) {
-    return { ok: false, error: "Connect Supabase (set env vars) to save settings." };
-  }
   const supabase = await createClient();
   const {
     data: { user },

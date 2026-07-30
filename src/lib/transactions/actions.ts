@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import {
   transactionInputSchema,
@@ -34,9 +33,6 @@ function parse(formData: FormData) {
 }
 
 async function requireUser() {
-  if (!isSupabaseConfigured()) {
-    return { error: "Connect Supabase (set env vars) to save transactions." };
-  }
   const supabase = await createClient();
   const {
     data: { user },

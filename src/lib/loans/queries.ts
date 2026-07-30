@@ -1,11 +1,9 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeLoanProjection } from "@/lib/finance/loan";
 import type { CurrencyCode } from "@/lib/format";
-import { demoLoans } from "./mock";
 import type { LoanType, LoanWithProjection } from "./types";
 
 export interface LoansData {
@@ -30,10 +28,10 @@ interface LoanRow {
   start_date: string;
 }
 
-/** Loans with amortization projections + portfolio totals. Demo fallback. */
+/** Loans with amortization projections + portfolio totals. */
 export async function getLoansData(): Promise<LoansData> {
   const currency = await getDisplayCurrency();
-  const raw = isSupabaseConfigured() ? await fetchLoans() : demoLoans;
+  const raw = await fetchLoans();
   // Display every loan in the user's base currency (no conversion yet).
   const loans = raw.map((l) => ({ ...l, currency }));
 

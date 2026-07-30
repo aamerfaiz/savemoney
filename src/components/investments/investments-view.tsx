@@ -19,13 +19,7 @@ import {
   type InvestmentWithProjection,
 } from "@/lib/investments/types";
 
-export function InvestmentsView({
-  data,
-  readOnly,
-}: {
-  data: InvestmentsData;
-  readOnly: boolean;
-}) {
+export function InvestmentsView({ data }: { data: InvestmentsData }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -84,13 +78,6 @@ export function InvestmentsView({
         </Button>
       </div>
 
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to add and manage real
-          investments.
-        </div>
-      )}
-
       {/* Portfolio summary */}
       <div className="grid grid-cols-3 gap-3">
         <SummaryTile
@@ -131,7 +118,6 @@ export function InvestmentsView({
             <InvestmentCard
               key={i.id}
               i={i}
-              readOnly={readOnly}
               onEdit={() => setEditing(i)}
               onContribute={() => setContributing(i)}
               onDelete={() => onDelete(i)}
@@ -219,13 +205,11 @@ function SummaryTile({
 
 function InvestmentCard({
   i,
-  readOnly,
   onEdit,
   onContribute,
   onDelete,
 }: {
   i: InvestmentWithProjection;
-  readOnly: boolean;
   onEdit: () => void;
   onContribute: () => void;
   onDelete: () => void;
@@ -248,24 +232,22 @@ function InvestmentCard({
               : ""}
           </div>
         </div>
-        {!readOnly && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
-            <button
-              onClick={onEdit}
-              aria-label="Edit"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              aria-label="Delete"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
+          <button
+            onClick={onEdit}
+            aria-label="Edit"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 flex items-end justify-between">
@@ -302,16 +284,14 @@ function InvestmentCard({
         </span>
       </div>
 
-      {!readOnly && (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="mt-4 w-full"
-          onClick={onContribute}
-        >
-          Add contribution
-        </Button>
-      )}
+      <Button
+        variant="secondary"
+        size="sm"
+        className="mt-4 w-full"
+        onClick={onContribute}
+      >
+        Add contribution
+      </Button>
     </div>
   );
 }

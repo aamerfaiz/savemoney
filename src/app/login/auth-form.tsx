@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, LogIn, Sparkles, UserRound, FilePlus2 } from "lucide-react";
+import { Mail, LogIn, Sparkles, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,15 +25,13 @@ export function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [guestLoading, setGuestLoading] = useState<"sample" | "empty" | null>(null);
+  const [guestLoading, setGuestLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function withSupabase(fn: () => Promise<void>) {
     if (!supabaseConfigured) {
-      setError(
-        "Supabase isn't configured yet. Add your env vars, or continue to the demo below.",
-      );
+      setError("Supabase isn't configured yet. Add your env vars, or continue as a guest above.");
       return;
     }
     setLoading(true);
@@ -81,42 +79,30 @@ export function AuthForm() {
       if (error) throw error;
     });
 
-  const continueAsGuest = async (useSampleData: boolean) => {
-    setGuestLoading(useSampleData ? "sample" : "empty");
+  const continueAsGuest = async () => {
+    setGuestLoading(true);
     setError(null);
     try {
-      await enterGuestMode(useSampleData);
+      await enterGuestMode();
       router.push(redirectTo);
       router.refresh();
     } finally {
-      setGuestLoading(null);
+      setGuestLoading(false);
     }
   };
 
   return (
     <div className="space-y-5">
-      <div className="space-y-2">
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          onClick={() => continueAsGuest(true)}
-          disabled={guestLoading !== null}
-        >
-          <UserRound className="size-4" />
-          {guestLoading === "sample" ? "Setting up…" : "Try with sample data"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={() => continueAsGuest(false)}
-          disabled={guestLoading !== null}
-        >
-          <FilePlus2 className="size-4" />
-          {guestLoading === "empty" ? "Setting up…" : "Start fresh, empty"}
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        onClick={continueAsGuest}
+        disabled={guestLoading}
+      >
+        <UserRound className="size-4" />
+        {guestLoading ? "Setting up…" : "Continue as Guest"}
+      </Button>
       <p className="text-center text-xs text-muted-foreground">
         No sign-up needed. Everything you enter stays on this device.
       </p>
@@ -208,15 +194,6 @@ export function AuthForm() {
         <Sparkles className="size-3.5" />
         {mode === "password" ? "Use a magic link instead" : "Use a password instead"}
       </button>
-
-      {!supabaseConfigured && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
-          Supabase not configured.{" "}
-          <a href="/dashboard" className="font-medium text-brand">
-            Continue to the demo dashboard →
-          </a>
-        </div>
-      )}
     </div>
   );
 }

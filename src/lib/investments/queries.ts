@@ -1,11 +1,9 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeInvestmentProjection } from "@/lib/finance/investment";
 import type { CurrencyCode } from "@/lib/format";
-import { demoInvestments } from "./mock";
 import type { InvestmentType, InvestmentWithProjection } from "./types";
 
 export interface InvestmentsData {
@@ -35,7 +33,7 @@ interface InvestmentRow {
 /** Holdings with gain/loss + future-value projections and portfolio totals. */
 export async function getInvestmentsData(): Promise<InvestmentsData> {
   const currency = await getDisplayCurrency();
-  const raw = isSupabaseConfigured() ? await fetchInvestments() : demoInvestments;
+  const raw = await fetchInvestments();
   // Display every holding in the user's base currency (no conversion yet).
   const investments = raw.map((i) => ({ ...i, currency }));
 

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import type { TransactionKind } from "@/lib/transactions/types";
 import { buildPreview, dedupeKey, parseDate } from "./pipeline";
@@ -18,9 +17,6 @@ interface ImportPayload {
 }
 
 async function requireUser() {
-  if (!isSupabaseConfigured()) {
-    return { error: "Connect Supabase (set env vars) to import." };
-  }
   const supabase = await createClient();
   const {
     data: { user },
@@ -73,9 +69,6 @@ export async function previewImport(
   payload: ImportPayload,
 ): Promise<ImportPreview> {
   const rows = payload.rows.slice(0, MAX_ROWS);
-  if (!isSupabaseConfigured()) {
-    return buildPreview(rows, payload.mapping, payload.defaultKind, new Set());
-  }
   const supabase = await createClient();
   const {
     data: { user },
