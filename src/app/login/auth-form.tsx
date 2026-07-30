@@ -106,7 +106,7 @@ export function AuthForm() {
         {guestLoading ? "Setting up…" : "Login as guest"}
       </Button>
       <p className="text-center text-xs text-muted-foreground">
-        No account needed — your data stays only in this browser (IndexedDB).
+        No sign-up needed. Everything you enter stays on this device.
       </p>
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
