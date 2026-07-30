@@ -486,6 +486,35 @@ export const investmentContributions = pgTable(
   ],
 );
 
+/* ----------------------------------------------------------------------- */
+/* Net worth snapshots                                                     */
+/* ----------------------------------------------------------------------- */
+/* A point-in-time capture of assets vs liabilities so real net-worth history
+ * accrues over time (the breakdown is composed live from investments, goals
+ * and loans; these rows persist the totals as they stood on `captured_at`). */
+
+export const netWorthSnapshots = pgTable(
+  "net_worth_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    capturedAt: date("captured_at").notNull(),
+    totalAssets: numeric("total_assets", { precision: 14, scale: 2 }).notNull(),
+    totalLiabilities: numeric("total_liabilities", { precision: 14, scale: 2 })
+      .notNull(),
+    netWorth: numeric("net_worth", { precision: 14, scale: 2 }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("net_worth_snapshots_user_idx").on(t.userId),
+    index("net_worth_snapshots_captured_idx").on(t.capturedAt),
+  ],
+);
+
 /* Convenience type exports */
 export type Profile = typeof profiles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -500,4 +529,5 @@ export type LoanPayment = typeof loanPayments.$inferSelect;
 export type Investment = typeof investments.$inferSelect;
 export type InvestmentContribution =
   typeof investmentContributions.$inferSelect;
+export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;

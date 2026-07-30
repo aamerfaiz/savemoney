@@ -7,7 +7,12 @@ import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
 import { getLoansData } from "@/lib/loans/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
+import {
+  buildNetWorth,
+  fetchNetWorthSnapshots,
+} from "@/lib/networth/queries";
 import { getTransactions } from "@/lib/transactions/queries";
+import { createClient } from "@/lib/supabase/server";
 import {
   mockDashboard,
   type DashboardData,
@@ -26,43 +31,46 @@ export async function getDashboardData(): Promise<DashboardData> {
     return { ...mockDashboard, currency: await getDisplayCurrency() };
   }
 
-  const [profile, analytics, budgets, goalsData, loansData, investmentsData, txns] =
-    await Promise.all([
-      getProfile(),
-      getAnalyticsData(),
-      getBudgetsData(),
-      getGoalsData(),
-      getLoansData(),
-      getInvestmentsData(),
-      getTransactions("all"),
-    ]);
+  const supabase = await createClient();
+  const [
+    profile,
+    analytics,
+    budgets,
+    goalsData,
+    loansData,
+    investmentsData,
+    snapshots,
+    txns,
+  ] = await Promise.all([
+    getProfile(),
+    getAnalyticsData(),
+    getBudgetsData(),
+    getGoalsData(),
+    getLoansData(),
+    getInvestmentsData(),
+    fetchNetWorthSnapshots(supabase),
+    getTransactions("all"),
+  ]);
 
   const currency = profile.baseCurrency;
   const months = analytics.months;
   const thisMonth = months[months.length - 1] ?? { income: 0, expenses: 0, net: 0 };
 
-  // Net worth: investment holdings plus money set aside for goals, minus
-  // outstanding debt. (A fuller assets/liabilities module lands later in Phase 2.)
-  const netWorth =
-    investmentsData.totalValue +
-    goalsData.totalSaved -
-    loansData.totalRemaining;
-
-  // Reconstruct a 6-month net-worth trajectory from real monthly net cash flow,
-  // anchored so the final point equals the current net worth.
-  const netWorthTrend: { month: string; value: number }[] = [];
-  let running = netWorth;
-  for (let i = months.length - 1; i >= 0; i--) {
-    netWorthTrend.unshift({ month: months[i].label, value: Math.round(running) });
-    running -= months[i].net;
-  }
-  const change =
-    netWorthTrend.length >= 2
-      ? netWorthTrend[netWorthTrend.length - 1].value -
-        netWorthTrend[netWorthTrend.length - 2].value
-      : 0;
-  const prevVal = netWorthTrend.at(-2)?.value ?? 0;
-  const netWorthChangePct = prevVal !== 0 ? change / Math.abs(prevVal) : 0;
+  // Net worth: composed from the same engine the Net Worth page uses (investment
+  // holdings + goal savings − outstanding debt), so the two never diverge.
+  const nw = buildNetWorth({
+    components: {
+      investmentsValue: investmentsData.totalValue,
+      goalsSaved: goalsData.totalSaved,
+      loansRemaining: loansData.totalRemaining,
+    },
+    months,
+    snapshots,
+    currency,
+  });
+  const netWorth = nw.result.netWorth;
+  const netWorthTrend = nw.trend;
+  const netWorthChangePct = nw.changePct;
 
   const entertainment = budgets.budgets.find(
     (b) => b.categoryName?.toLowerCase() === "entertainment",
