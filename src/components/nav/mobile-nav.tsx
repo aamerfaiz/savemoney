@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { navItems } from "./nav-config";
@@ -30,7 +30,15 @@ export function MobileNav() {
   }, [open]);
 
   return (
-    <div className="lg:hidden">
+    <div className="flex items-center gap-1 lg:hidden">
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Open menu"
+        aria-expanded={open}
+        className="flex size-8 items-center justify-center rounded-md text-foreground transition-opacity active:opacity-70"
+      >
+        <Menu className="size-5" />
+      </button>
       <button
         onClick={() => setOpen(true)}
         aria-label="Open menu"
