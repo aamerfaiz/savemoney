@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Gauge,
   FileText,
+  Bell,
 } from "lucide-react";
 
 export interface NavItem {
@@ -41,6 +42,7 @@ export const navItems: NavItem[] = [
   { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
   { label: "Financial Score", href: "/financial-score", icon: Gauge },
   { label: "Reports", href: "/reports", icon: FileText },
+  { label: "Notifications", href: "/notifications", icon: Bell },
   { label: "Import", href: "/import", icon: Upload },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
