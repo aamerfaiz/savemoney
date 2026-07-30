@@ -6,6 +6,7 @@ import { getAnalyticsData } from "@/lib/analytics/queries";
 import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
 import { getLoansData } from "@/lib/loans/queries";
+import { getInvestmentsData } from "@/lib/investments/queries";
 import { getTransactions } from "@/lib/transactions/queries";
 import {
   mockDashboard,
@@ -25,13 +26,14 @@ export async function getDashboardData(): Promise<DashboardData> {
     return { ...mockDashboard, currency: await getDisplayCurrency() };
   }
 
-  const [profile, analytics, budgets, goalsData, loansData, txns] =
+  const [profile, analytics, budgets, goalsData, loansData, investmentsData, txns] =
     await Promise.all([
       getProfile(),
       getAnalyticsData(),
       getBudgetsData(),
       getGoalsData(),
       getLoansData(),
+      getInvestmentsData(),
       getTransactions("all"),
     ]);
 
@@ -39,9 +41,12 @@ export async function getDashboardData(): Promise<DashboardData> {
   const months = analytics.months;
   const thisMonth = months[months.length - 1] ?? { income: 0, expenses: 0, net: 0 };
 
-  // Best-effort net worth until the Phase-2 assets/liabilities module exists:
-  // money set aside for goals minus outstanding debt.
-  const netWorth = goalsData.totalSaved - loansData.totalRemaining;
+  // Net worth: investment holdings plus money set aside for goals, minus
+  // outstanding debt. (A fuller assets/liabilities module lands later in Phase 2.)
+  const netWorth =
+    investmentsData.totalValue +
+    goalsData.totalSaved -
+    loansData.totalRemaining;
 
   // Reconstruct a 6-month net-worth trajectory from real monthly net cash flow,
   // anchored so the final point equals the current net worth.
@@ -100,7 +105,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     monthlyIncome: thisMonth.income,
     monthlyExpenses: thisMonth.expenses,
     savings: thisMonth.net,
-    investments: 0,
+    investments: investmentsData.totalValue,
     netWorth,
     netWorthChangePct,
     cashFlow: thisMonth.net,

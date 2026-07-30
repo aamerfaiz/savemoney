@@ -22,6 +22,12 @@ import {
   Car,
   Target,
   PiggyBank,
+  ChartPie,
+  Layers,
+  Scroll,
+  Bitcoin,
+  Building2,
+  Gem,
   CircleDollarSign,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +57,12 @@ const ICONS: Record<string, LucideIcon> = {
   car: Car,
   target: Target,
   "piggy-bank": PiggyBank,
+  "chart-pie": ChartPie,
+  layers: Layers,
+  scroll: Scroll,
+  bitcoin: Bitcoin,
+  "building-2": Building2,
+  gem: Gem,
 };
 
 export function Icon({

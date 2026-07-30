@@ -64,6 +64,7 @@ export async function getBudgetsData(): Promise<BudgetsData> {
     { data: incomeRows },
     { data: goalRows },
     { data: loanRows },
+    { data: investmentRows },
   ] = await Promise.all([
     supabase
       .from("budgets")
@@ -90,6 +91,11 @@ export async function getBudgetsData(): Promise<BudgetsData> {
     supabase
       .from("loans")
       .select("emi, extra_emi, remaining_amount")
+      .is("deleted_at", null),
+    // Recurring SIP contributions are set aside before discretionary spend too.
+    supabase
+      .from("investments")
+      .select("monthly_contribution")
       .is("deleted_at", null),
   ]);
 
@@ -146,14 +152,16 @@ export async function getBudgetsData(): Promise<BudgetsData> {
   )
     .filter((l) => Number(l.remaining_amount) > 0)
     .reduce((s, l) => s + Number(l.emi) + Number(l.extra_emi ?? 0), 0);
+  const investments = (
+    (investmentRows ?? []) as { monthly_contribution: string | number | null }[]
+  ).reduce((s, i) => s + Number(i.monthly_contribution ?? 0), 0);
 
   const safeToSpend = computeBudget({
     monthlyIncome,
     fixedExpenses,
     goalContributions,
     loanPayments,
-    // Investments contribute 0 until that module exists (Phase 2).
-    investments: 0,
+    investments,
     spentThisMonth,
   });
 
