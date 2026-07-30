@@ -7,6 +7,8 @@ export interface MonthPoint {
   income: number;
   expenses: number;
   net: number;
+  /** Money moved into savings goals this month (goal_contributions). */
+  contributed: number;
   savingsRate: number; // 0–1
 }
 
@@ -20,6 +22,8 @@ export interface AnalyticsTotals {
   income: number;
   expenses: number;
   net: number;
+  /** Total moved into savings goals over the range. */
+  contributed: number;
   savingsRate: number; // 0–1 over the range
   avgMonthlyExpense: number;
 }

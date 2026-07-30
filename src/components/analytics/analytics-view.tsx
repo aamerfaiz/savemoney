@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Wallet, Percent } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, Percent, PiggyBank } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatTile } from "@/components/dashboard/stat-tile";
@@ -35,7 +35,7 @@ export function AnalyticsView({
       )}
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Card className="p-4">
           <StatTile
             label="Income"
@@ -57,6 +57,14 @@ export function AnalyticsView({
             value={formatCurrency(totals.net, currency, { compact: true })}
             icon={Wallet}
             tone={totals.net >= 0 ? "positive" : "negative"}
+          />
+        </Card>
+        <Card className="p-4">
+          <StatTile
+            label="Saved to goals"
+            value={formatCurrency(totals.contributed, currency, { compact: true })}
+            icon={PiggyBank}
+            tone={totals.contributed > 0 ? "positive" : "neutral"}
           />
         </Card>
         <Card className="p-4">

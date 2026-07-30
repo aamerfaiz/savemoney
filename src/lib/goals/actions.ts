@@ -63,6 +63,7 @@ export async function createGoal(
 
   revalidatePath("/goals");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   return { ok: true };
 }
 
@@ -106,6 +107,7 @@ export async function updateGoal(
 
   revalidatePath("/goals");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   return { ok: true };
 }
 
@@ -122,6 +124,7 @@ export async function deleteGoal(id: string): Promise<ActionResult> {
 
   revalidatePath("/goals");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   return { ok: true };
 }
 
@@ -175,6 +178,7 @@ export async function addContribution(
 
   revalidatePath("/goals");
   revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   return { ok: true };
 }
 
