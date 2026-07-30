@@ -79,8 +79,12 @@ guest data for that module — don't add a route there without one.
 ## Phase 3.3 — First feature: Ask a question (this build, minimal)
 
 - [x] `/ai` renders a simple ask box once a key is active; calls
-      `resolver` → `chat()` with the user's message plus enough dashboard
-      context (safe-to-spend, budget status) to answer finance questions.
+      `resolver` → `chat()` with the user's raw question plus a generic
+      system prompt — no dashboard data injected yet.
+- [ ] Feed real dashboard context into the prompt (safe-to-spend, budget
+      status, recent transactions) so answers are actually grounded in the
+      user's numbers instead of generic advice. (placeholder — this is the
+      next thing to build, not "done")
 - [ ] Conversation history / multi-turn memory. (placeholder)
 - [ ] Streaming responses. (placeholder)
 
@@ -109,7 +113,6 @@ enum, `ai_provider_keys` table) and `drizzle/manual/0006_ai_provider_keys_rls.sq
 (RLS + PostgREST-role revokes) are **applied** to the `FinanceOS` Supabase
 project (`ucgholzcnqqwwentdaqt`) via the Supabase MCP — `list_tables` confirms
 `private.ai_provider_keys` exists with RLS enabled and a clean security
-advisor pass. Still outstanding: set `AI_KEYS_ENCRYPTION_KEY` as a real
-secret (Vercel env / `.env.local`) — without it, `src/lib/ai/crypto.ts`
-throws on the first save attempt, and the gate falls back to "no active
-key," routing to Settings, which is a safe default.
+advisor pass. `AI_KEYS_ENCRYPTION_KEY` is set in Vercel — Phase 3.0/3.1/3.2
+are now live end-to-end against the real deployment (DeepSeek only; save a
+key in Settings → AI & Integrations to try it).
