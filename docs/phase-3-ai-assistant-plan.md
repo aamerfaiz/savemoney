@@ -1,0 +1,91 @@
+# Phase 3 — AI Assistant (BYOK) plan
+
+Status tracker for the AI Assistant module described in `AGENTS.md` /
+the `financeos` skill. Each phase below is a placeholder for a build
+increment — check items off (or replace `[ ]` with `[x]`) as they land, and
+extend this file rather than starting a new one when new AI features are
+added.
+
+## UI flow (product decision — locked)
+
+- **Bottom nav** goes from `Dashboard · Transactions · Budget · Goals ·
+  Analytics` to `Dashboard · Transactions · AI · Goals · Analytics`. Budget
+  moves to secondary nav (still reachable from the drawer / desktop sidebar).
+- **AI** occupies the center slot and is visually distinct from the other four
+  (raised, filled brand color) — the way a center action button reads on
+  mobile finance/social apps.
+- Tapping **AI** opens `/ai`.
+  - **No active provider key** → the page shows a "Connect your AI provider"
+    prompt with a path to **Settings → AI & Integrations**, where the user
+    pastes a key (BYOK), tests it, and saves it.
+  - **Active key present** → the page unlocks AI Mode: ask-a-question first,
+    with the rest of the feature list (below) rolling in behind the same
+    gate as each one ships.
+
+## Phase 3.0 — Nav shell + gating (this build)
+
+- [x] `AI` added to `nav-config.ts` as the center primary item (accent style).
+- [x] `Budget` demoted from primary (still in the full nav).
+- [x] `/ai` route: gates on "does the user have an active provider key."
+- [x] Settings → new "AI & Integrations" card (add/test/activate/delete keys).
+
+## Phase 3.1 — Secure key storage (this build)
+
+- [x] `private.ai_provider_keys` table (own Postgres schema, **not** exposed
+      to PostgREST — the anon/authenticated API roles cannot `SELECT` it at
+      all, RLS is a second layer on top of that).
+- [x] AES-256-GCM envelope encryption at rest (`AI_KEYS_ENCRYPTION_KEY`,
+      server-only secret). Only `key_last4` is ever readable in plaintext.
+- [x] Server Actions: `saveProviderKey`, `testProviderKey`, `setActiveKey`,
+      `deleteProviderKey` — plaintext key touches server memory only, for the
+      duration of the call, never logged.
+
+## Phase 3.2 — Provider abstraction (this build)
+
+- [x] `AIProvider` interface (`chat`, `testKey`) in `src/lib/ai/types.ts`.
+- [x] `registry.ts` — provider id → adapter, so Settings and the resolver
+      never hard-code a vendor.
+- [x] `providers/deepseek.ts` — first adapter (DeepSeek R1 Flash / chat
+      completions endpoint).
+- [x] `resolver.ts` — the single chokepoint: loads the user's active key,
+      decrypts, dispatches to the right adapter. Every AI feature below calls
+      through this, never a vendor SDK directly.
+- [ ] `providers/openai.ts`, `providers/gemini.ts`, `providers/claude.ts` —
+      one file each, registered in `registry.ts`. (placeholder)
+
+## Phase 3.3 — First feature: Ask a question (this build, minimal)
+
+- [x] `/ai` renders a simple ask box once a key is active; calls
+      `resolver` → `chat()` with the user's message plus enough dashboard
+      context (safe-to-spend, budget status) to answer finance questions.
+- [ ] Conversation history / multi-turn memory. (placeholder)
+- [ ] Streaming responses. (placeholder)
+
+## Phase 3.4 — Remaining AI features (placeholders, not yet built)
+
+- [ ] Monthly summary (`summarize()` over the month's transactions +
+      analytics data).
+- [ ] Expense insights / anomaly callouts on the dashboard.
+- [ ] Receipt OCR → auto-filled transaction draft.
+- [ ] CSV import intelligence (smarter `detectMapping` suggestions from the
+      AI, layered on the existing pure `src/lib/import/pipeline.ts`).
+- [ ] Auto-categorization suggestions on uncategorized transactions.
+- [ ] What-if simulator ("can I afford a car?") — a dedicated finance engine
+      in `src/lib/finance/`, AI narrates the pure-function output rather than
+      computing numbers itself.
+
+## Out of scope for Phase 3 (later phases per the roadmap)
+
+- Phase 4: SMS/Bank/Email import feeding the same pipeline.
+- Phase 5: native mobile.
+
+## Rollout note
+
+`drizzle/0006_white_scorpion.sql` (generated: `private` schema, `ai_provider`
+enum, `ai_provider_keys` table) and `drizzle/manual/0006_ai_provider_keys_rls.sql`
+(RLS + PostgREST-role revokes) plus the `AI_KEYS_ENCRYPTION_KEY` env var must
+be applied/set out-of-band (Supabase SQL editor or MCP `apply_migration`,
+plus a Vercel env secret) before the Settings AI card or `/ai` route will
+work against a real database — same pattern as the Phase 2 migrations. Until
+then the gate simply reports "no active key" and routes to Settings, which
+is a safe default.

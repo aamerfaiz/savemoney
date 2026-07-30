@@ -15,6 +15,7 @@ import {
   Gauge,
   FileText,
   Bell,
+  Sparkles,
 } from "lucide-react";
 
 export interface NavItem {
@@ -23,6 +24,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Show in the mobile bottom bar (kept to 5 max for thumb reach). */
   primary?: boolean;
+  /** Visually distinct center slot in the bottom bar (currently: AI). */
+  accent?: boolean;
 }
 
 /**
@@ -32,7 +35,8 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, primary: true },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight, primary: true },
-  { label: "Budget", href: "/budget", icon: Wallet, primary: true },
+  { label: "AI", href: "/ai", icon: Sparkles, primary: true, accent: true },
+  { label: "Budget", href: "/budget", icon: Wallet },
   { label: "Goals", href: "/goals", icon: Target, primary: true },
   { label: "Loans", href: "/loans", icon: Landmark },
   { label: "Investments", href: "/investments", icon: TrendingUp },

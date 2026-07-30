@@ -21,6 +21,29 @@ export function BottomNav() {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
+
+          if (item.accent) {
+            return (
+              <li key={item.href} className="flex-1">
+                <Link
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className="flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium text-brand"
+                >
+                  <span
+                    className={cn(
+                      "flex size-12 -translate-y-3 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-[0_6px_20px_-4px_var(--color-brand)] ring-4 ring-background transition-transform",
+                      active ? "scale-105" : "active:scale-95",
+                    )}
+                  >
+                    <Icon className="size-6" />
+                  </span>
+                  <span className="-mt-1.5">{item.label}</span>
+                </Link>
+              </li>
+            );
+          }
+
           return (
             <li key={item.href} className="flex-1">
               <Link
