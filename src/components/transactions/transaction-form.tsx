@@ -32,19 +32,25 @@ export function TransactionForm({
   accounts,
   existing,
   onSuccess,
+  createAction = createTransaction,
+  updateAction = updateTransaction,
 }: {
   categories: CategoryOption[];
   accounts: AccountOption[];
   existing?: Transaction;
   onSuccess: () => void;
+  /** Override for guest mode (IndexedDB) — same signature as the Server Action. */
+  createAction?: typeof createTransaction;
+  /** Override for guest mode (IndexedDB) — same signature as the Server Action. */
+  updateAction?: typeof updateTransaction;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<TransactionKind>(existing?.kind ?? "expense");
   const [isRecurring, setIsRecurring] = useState(existing?.isRecurring ?? false);
 
   const action = existing
-    ? updateTransaction.bind(null, existing.id, existing.kind)
-    : createTransaction;
+    ? updateAction.bind(null, existing.id, existing.kind)
+    : createAction;
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

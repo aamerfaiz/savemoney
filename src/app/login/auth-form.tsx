@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, LogIn, Sparkles } from "lucide-react";
+import { Mail, LogIn, Sparkles, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { enterGuestMode } from "@/lib/guest/session";
 
 const supabaseConfigured =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -24,6 +25,7 @@ export function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,8 +81,40 @@ export function AuthForm() {
       if (error) throw error;
     });
 
+  const continueAsGuest = async () => {
+    setGuestLoading(true);
+    setError(null);
+    try {
+      await enterGuestMode();
+      router.push(redirectTo);
+      router.refresh();
+    } finally {
+      setGuestLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        onClick={continueAsGuest}
+        disabled={guestLoading}
+      >
+        <UserRound className="size-4" />
+        {guestLoading ? "Setting up…" : "Login as guest"}
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        No account needed — your data stays only in this browser (IndexedDB).
+      </p>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        or
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
       <Button
         type="button"
         variant="secondary"
