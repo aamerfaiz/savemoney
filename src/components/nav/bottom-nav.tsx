@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { primaryNavItems } from "./nav-config";
+import { primaryNavItems, visibleNavItems } from "./nav-config";
 
 /** Mobile-first bottom tab bar. Hidden on lg+ where the sidebar takes over. */
-export function BottomNav() {
+export function BottomNav({ isGuest = false }: { isGuest?: boolean }) {
   const pathname = usePathname();
+  const items = visibleNavItems(primaryNavItems, isGuest);
 
   return (
     <nav
@@ -17,7 +18,7 @@ export function BottomNav() {
       aria-label="Primary"
     >
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-2">
-        {primaryNavItems.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;

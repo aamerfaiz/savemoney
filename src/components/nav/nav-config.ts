@@ -18,6 +18,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { GUEST_ALLOWED_PATHS } from "@/lib/guest/constants";
+
 export interface NavItem {
   label: string;
   href: string;
@@ -52,3 +54,18 @@ export const navItems: NavItem[] = [
 ];
 
 export const primaryNavItems = navItems.filter((i) => i.primary);
+
+/** True for the handful of routes with real guest-mode (IndexedDB) support. */
+export function isGuestVisible(item: NavItem): boolean {
+  return GUEST_ALLOWED_PATHS.includes(item.href);
+}
+
+/**
+ * Nav items to render for the given session kind. Guests only see the
+ * routes that actually work without a real account (proxy.ts redirects them
+ * away from the rest server-side too, so this is a UX filter, not the only
+ * guard) — see src/lib/guest/constants.ts.
+ */
+export function visibleNavItems(items: NavItem[], isGuest: boolean): NavItem[] {
+  return isGuest ? items.filter(isGuestVisible) : items;
+}

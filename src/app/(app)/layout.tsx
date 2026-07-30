@@ -19,7 +19,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-dvh w-full">
-      <Sidebar />
+      <Sidebar isGuest={isGuest} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar userName={profile.name} isGuest={isGuest} />
         {/* Bottom padding clears the mobile tab bar */}
@@ -27,7 +27,7 @@ export default async function AppLayout({
           {children}
         </main>
       </div>
-      <BottomNav />
+      <BottomNav isGuest={isGuest} />
     </div>
   );
 }

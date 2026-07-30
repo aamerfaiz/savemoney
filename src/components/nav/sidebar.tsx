@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { navItems } from "./nav-config";
+import { navItems, visibleNavItems } from "./nav-config";
 
 /** Desktop sidebar (lg+). */
-export function Sidebar() {
+export function Sidebar({ isGuest = false }: { isGuest?: boolean }) {
   const pathname = usePathname();
+  const items = visibleNavItems(navItems, isGuest);
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/40 lg:flex">
@@ -20,7 +21,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Primary">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;

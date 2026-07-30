@@ -28,6 +28,29 @@ added.
 - [x] `Budget` demoted from primary (still in the full nav).
 - [x] `/ai` route: gates on "does the user have an active provider key."
 - [x] Settings → new "AI & Integrations" card (add/test/activate/delete keys).
+- [x] Guest mode: `AI` (and every other non-guest-capable route) hidden from
+      nav and blocked server-side — BYOK is inherently tied to a real
+      `auth.users` row, so there's no guest-mode story for it. See
+      "Guest mode" below.
+
+## Guest mode
+
+Guest sessions run entirely client-side against IndexedDB (`src/lib/guest/`)
+and only two routes have real guest data support: `/dashboard` and
+`/transactions` (`GUEST_ALLOWED_PATHS` in `src/lib/guest/constants.ts`).
+Every other route — Budget, Goals, AI, Settings, etc. — reads through the
+real Supabase client and assumes a signed-in user. Two layers keep guests
+away from those safely:
+
+1. `src/lib/supabase/middleware.ts` redirects a guest session hitting a
+   non-allowed path straight to `/dashboard`, server-side, before any query
+   runs.
+2. `src/components/nav/nav-config.ts`'s `visibleNavItems()` filters the
+   bottom bar, the mobile drawer, and the desktop sidebar down to the
+   guest-allowed set, so there's no dead-end link to begin with.
+
+Extend `GUEST_ALLOWED_PATHS` only alongside adding real IndexedDB-backed
+guest data for that module — don't add a route there without one.
 
 ## Phase 3.1 — Secure key storage (this build)
 
@@ -83,9 +106,10 @@ added.
 
 `drizzle/0006_white_scorpion.sql` (generated: `private` schema, `ai_provider`
 enum, `ai_provider_keys` table) and `drizzle/manual/0006_ai_provider_keys_rls.sql`
-(RLS + PostgREST-role revokes) plus the `AI_KEYS_ENCRYPTION_KEY` env var must
-be applied/set out-of-band (Supabase SQL editor or MCP `apply_migration`,
-plus a Vercel env secret) before the Settings AI card or `/ai` route will
-work against a real database — same pattern as the Phase 2 migrations. Until
-then the gate simply reports "no active key" and routes to Settings, which
-is a safe default.
+(RLS + PostgREST-role revokes) are **applied** to the `FinanceOS` Supabase
+project (`ucgholzcnqqwwentdaqt`) via the Supabase MCP — `list_tables` confirms
+`private.ai_provider_keys` exists with RLS enabled and a clean security
+advisor pass. Still outstanding: set `AI_KEYS_ENCRYPTION_KEY` as a real
+secret (Vercel env / `.env.local`) — without it, `src/lib/ai/crypto.ts`
+throws on the first save attempt, and the gate falls back to "no active
+key," routing to Settings, which is a safe default.
