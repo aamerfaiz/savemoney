@@ -245,3 +245,23 @@ export function buildGuestSeed(): GuestSeed {
     profile: { name: "Guest", baseCurrency: "USD" },
   };
 }
+
+/**
+ * Blank starting point for a guest who opts out of sample data. Keeps the
+ * category/account reference lists (the transaction form needs options to
+ * pick from) but no seeded transactions, goals, loans, investments,
+ * recurring rules, or budget limits.
+ */
+export function buildEmptyGuestSeed(): GuestSeed {
+  return {
+    transactions: [],
+    categories: CATEGORIES,
+    accounts: ACCOUNTS,
+    goals: [],
+    loans: [],
+    investments: { totalValue: 0, monthlyContribution: 0 },
+    recurringRules: [],
+    budgetLimits: [],
+    profile: { name: "Guest", baseCurrency: "USD" },
+  };
+}

@@ -1,6 +1,7 @@
 import { getGuestTable, setGuestTable } from "./db";
 import {
   buildGuestSeed,
+  buildEmptyGuestSeed,
   type GuestGoal,
   type GuestInvestments,
   type GuestBudgetLimit,
@@ -23,12 +24,17 @@ export interface GuestData {
   profile: GuestProfile;
 }
 
-/** Seeds IndexedDB once, on first guest login. A no-op afterwards. */
-export async function ensureGuestSeeded(): Promise<void> {
+/**
+ * Seeds IndexedDB once, on first guest login. A no-op afterwards.
+ * `useSampleData` (default true, matching prior behavior) picks demo
+ * transactions/goals/loans/etc. vs. a blank slate with just the
+ * category/account reference lists.
+ */
+export async function ensureGuestSeeded(useSampleData = true): Promise<void> {
   const seeded = await getGuestTable<boolean>("seeded");
   if (seeded) return;
 
-  const seed = buildGuestSeed();
+  const seed = useSampleData ? buildGuestSeed() : buildEmptyGuestSeed();
   await Promise.all([
     setGuestTable("transactions", seed.transactions),
     setGuestTable("categories", seed.categories),

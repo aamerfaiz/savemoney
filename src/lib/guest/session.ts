@@ -12,10 +12,13 @@ export function isGuestCookieSet(): boolean {
     .some((c) => c === `${GUEST_COOKIE}=1` || c.startsWith(`${GUEST_COOKIE}=1;`));
 }
 
-/** Marks this browser as a guest session and seeds IndexedDB on first use. */
-export async function enterGuestMode(): Promise<void> {
+/**
+ * Marks this browser as a guest session and seeds IndexedDB on first use.
+ * `useSampleData` controls whether that seed is demo data or a blank slate.
+ */
+export async function enterGuestMode(useSampleData = true): Promise<void> {
   document.cookie = `${GUEST_COOKIE}=1; path=/; max-age=${MAX_AGE}; samesite=lax`;
-  await ensureGuestSeeded();
+  await ensureGuestSeeded(useSampleData);
 }
 
 /** Clears the guest cookie and wipes all locally-stored guest data. */

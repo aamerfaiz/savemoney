@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail, LogIn, Sparkles, UserRound } from "lucide-react";
+import { Mail, LogIn, Sparkles, UserRound, FilePlus2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ export function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [guestLoading, setGuestLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState<"sample" | "empty" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,30 +81,42 @@ export function AuthForm() {
       if (error) throw error;
     });
 
-  const continueAsGuest = async () => {
-    setGuestLoading(true);
+  const continueAsGuest = async (useSampleData: boolean) => {
+    setGuestLoading(useSampleData ? "sample" : "empty");
     setError(null);
     try {
-      await enterGuestMode();
+      await enterGuestMode(useSampleData);
       router.push(redirectTo);
       router.refresh();
     } finally {
-      setGuestLoading(false);
+      setGuestLoading(null);
     }
   };
 
   return (
     <div className="space-y-5">
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        onClick={continueAsGuest}
-        disabled={guestLoading}
-      >
-        <UserRound className="size-4" />
-        {guestLoading ? "Setting up…" : "Login as guest"}
-      </Button>
+      <div className="space-y-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => continueAsGuest(true)}
+          disabled={guestLoading !== null}
+        >
+          <UserRound className="size-4" />
+          {guestLoading === "sample" ? "Setting up…" : "Try with sample data"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => continueAsGuest(false)}
+          disabled={guestLoading !== null}
+        >
+          <FilePlus2 className="size-4" />
+          {guestLoading === "empty" ? "Setting up…" : "Start fresh, empty"}
+        </Button>
+      </div>
       <p className="text-center text-xs text-muted-foreground">
         No sign-up needed. Everything you enter stays on this device.
       </p>
