@@ -63,6 +63,23 @@ export async function getTransactions(
     }
   }
 
+  // Savings-goal contributions surface as read-only "transfer" rows. They're
+  // neither income nor spend, so they only appear in the unified "all" feed.
+  if (filter === "all") {
+    const { data } = await supabase
+      .from("goal_contributions")
+      .select("id, amount, contributed_at, note, goals(name, icon, deleted_at)")
+      .is("deleted_at", null)
+      .order("contributed_at", { ascending: false })
+      .limit(200);
+
+    for (const r of (data ?? []) as unknown as ContributionRow[]) {
+      // Skip contributions whose goal was deleted.
+      if (!r.goals || r.goals.deleted_at) continue;
+      results.push(mapContribution(r));
+    }
+  }
+
   results.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   return results;
 }
@@ -75,7 +92,8 @@ export function summarize(
   let expenses = 0;
   for (const t of transactions) {
     if (t.kind === "income") income += t.amount;
-    else expenses += t.amount;
+    else if (t.kind === "expense") expenses += t.amount;
+    // transfers are savings movements — excluded from income/expense/net.
   }
   return {
     income,
@@ -102,6 +120,13 @@ type ExpenseRow = BaseRow & {
   note: string | null;
   tags: string[] | null;
 };
+type ContributionRow = {
+  id: string;
+  amount: string | number;
+  contributed_at: string;
+  note: string | null;
+  goals: { name: string | null; icon: string | null; deleted_at: string | null } | null;
+};
 
 function mapRow(
   kind: Transaction["kind"],
@@ -124,5 +149,28 @@ function mapRow(
     isRecurring: r.is_recurring,
     frequency: r.frequency,
     ...extra,
+  };
+}
+
+/** A goal contribution as a read-only "transfer" transaction. */
+function mapContribution(r: ContributionRow): Transaction {
+  const goalName = r.goals?.name ?? "a goal";
+  return {
+    // Prefix keeps it distinct from expense/income ids; it isn't editable here.
+    id: `contrib-${r.id}`,
+    kind: "transfer",
+    amount: Number(r.amount),
+    // Formatted with the display currency at the view layer, like every row.
+    currency: "USD",
+    description: `Moved to ${goalName}`,
+    categoryId: null,
+    categoryName: "Savings",
+    categoryIcon: r.goals?.icon ?? "piggy-bank",
+    accountId: null,
+    accountName: null,
+    date: r.contributed_at,
+    isRecurring: false,
+    frequency: "one_time",
+    note: r.note,
   };
 }

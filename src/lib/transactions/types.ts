@@ -2,9 +2,11 @@ import { z } from "zod";
 
 import type { CurrencyCode } from "@/lib/format";
 
-/** The kind of money movement. Income and expenses live in separate tables
- *  but the UI presents them as one unified "transaction" stream. */
-export type TransactionKind = "income" | "expense";
+/** The kind of money movement. Income and expenses live in separate tables;
+ *  `transfer` is a read-only reflection of a savings-goal contribution (money
+ *  moved from spendable cash into a goal). The UI presents them as one unified
+ *  "transaction" stream. */
+export type TransactionKind = "income" | "expense" | "transfer";
 
 /** A row as the UI consumes it — flattened from either table, with the
  *  category/account names already joined in. */

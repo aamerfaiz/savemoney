@@ -8,6 +8,7 @@ export const demoTransactions: Transaction[] = [
   mk("Shell", "expense", 52.4, "Fuel", "fuel", 2),
   mk("Dividend — VOO", "income", 42.1, "Dividend", "coins", 3, "dividend"),
   mk("Dinner — Nobu", "expense", 128, "Food", "utensils", 4),
+  mk("Moved to Emergency Fund", "transfer", 300, "Savings", "piggy-bank", 4),
   mk("Rent", "expense", 1600, "Rent", "home", 5),
   mk("Freelance — logo", "income", 450, "Freelance", "laptop", 6, "freelance"),
 ];

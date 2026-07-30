@@ -66,7 +66,8 @@ export function TransactionsView({
     let expenses = 0;
     for (const t of items) {
       if (t.kind === "income") income += t.amount;
-      else expenses += t.amount;
+      else if (t.kind === "expense") expenses += t.amount;
+      // transfers (savings movements) don't affect income/expense/net.
     }
     return { income, expenses, net: income - expenses, count: items.length };
   }, [items]);
@@ -241,6 +242,7 @@ function TransactionRow({
   divider: boolean;
 }) {
   const income = t.kind === "income";
+  const transfer = t.kind === "transfer";
 
   return (
     <div
@@ -252,7 +254,11 @@ function TransactionRow({
       <span
         className={cn(
           "flex size-10 shrink-0 items-center justify-center rounded-full",
-          income ? "bg-positive/15 text-positive" : "bg-muted text-muted-foreground",
+          income
+            ? "bg-positive/15 text-positive"
+            : transfer
+              ? "bg-brand/15 text-brand"
+              : "bg-muted text-muted-foreground",
         )}
       >
         <Icon name={t.categoryIcon} className="size-5" />
@@ -261,7 +267,9 @@ function TransactionRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-medium">
-            {t.description || t.categoryName || (income ? "Income" : "Expense")}
+            {t.description ||
+              t.categoryName ||
+              (income ? "Income" : transfer ? "Transfer" : "Expense")}
           </span>
           {t.isRecurring && (
             <Repeat className="size-3 shrink-0 text-brand" aria-label="Recurring" />
@@ -277,10 +285,10 @@ function TransactionRow({
         <div
           className={cn(
             "text-sm font-semibold tabular-nums",
-            income ? "text-positive" : "text-foreground",
+            income ? "text-positive" : transfer ? "text-brand" : "text-foreground",
           )}
         >
-          {income ? "+" : "−"}
+          {income ? "+" : transfer ? "→ " : "−"}
           {formatCurrency(t.amount, currency)}
         </div>
         <div className="text-[11px] text-muted-foreground">
@@ -288,7 +296,7 @@ function TransactionRow({
         </div>
       </div>
 
-      {!readOnly && (
+      {!readOnly && !transfer && (
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
           <button
             onClick={onEdit}

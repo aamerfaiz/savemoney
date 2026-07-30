@@ -21,6 +21,7 @@ import {
   Briefcase,
   Car,
   Target,
+  PiggyBank,
   CircleDollarSign,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   briefcase: Briefcase,
   car: Car,
   target: Target,
+  "piggy-bank": PiggyBank,
 };
 
 export function Icon({

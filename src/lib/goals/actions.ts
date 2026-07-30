@@ -125,6 +125,7 @@ export async function deleteGoal(id: string): Promise<ActionResult> {
   revalidatePath("/goals");
   revalidatePath("/dashboard");
   revalidatePath("/analytics");
+  revalidatePath("/transactions"); // its contributions leave the transfer feed
   return { ok: true };
 }
 
@@ -179,6 +180,7 @@ export async function addContribution(
   revalidatePath("/goals");
   revalidatePath("/dashboard");
   revalidatePath("/analytics");
+  revalidatePath("/transactions"); // the contribution shows as a transfer row
   return { ok: true };
 }
 
