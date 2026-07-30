@@ -79,12 +79,16 @@ guest data for that module — don't add a route there without one.
 ## Phase 3.3 — First feature: Ask a question (this build, minimal)
 
 - [x] `/ai` renders a simple ask box once a key is active; calls
-      `resolver` → `chat()` with the user's raw question plus a generic
-      system prompt — no dashboard data injected yet.
-- [ ] Feed real dashboard context into the prompt (safe-to-spend, budget
-      status, recent transactions) so answers are actually grounded in the
-      user's numbers instead of generic advice. (placeholder — this is the
-      next thing to build, not "done")
+      `resolver` → `chat()` with the user's raw question.
+- [x] `src/lib/ai/context.ts` — `buildFinanceContext()` composes a compact,
+      human-readable snapshot (safe-to-spend, this month's income/expenses/
+      savings rate, per-category budget status, goals, loans, investments,
+      net worth, health score) from the same module queries/finance engines
+      the dashboard uses — never recomputed by hand. `askAssistant` folds
+      this into the system prompt so answers are grounded in real numbers;
+      it falls back to a generic assistant (no crash) if a query hiccups.
+- [ ] Feed recent individual transactions in too (not just aggregates), if
+      users start asking about specific purchases. (placeholder)
 - [ ] Conversation history / multi-turn memory. (placeholder)
 - [ ] Streaming responses. (placeholder)
 
