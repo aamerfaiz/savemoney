@@ -9,13 +9,7 @@ import { SavingsRateChart } from "./savings-rate-chart";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { AnalyticsData } from "@/lib/analytics/types";
 
-export function AnalyticsView({
-  data,
-  readOnly,
-}: {
-  data: AnalyticsData;
-  readOnly: boolean;
-}) {
+export function AnalyticsView({ data }: { data: AnalyticsData }) {
   const { months, totals, byCategory, health, currency, monthsCount } = data;
   const maxCategory = byCategory[0]?.amount ?? 1;
 
@@ -27,12 +21,6 @@ export function AnalyticsView({
         </h1>
         <p className="text-sm text-muted-foreground">Last {monthsCount} months</p>
       </div>
-
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to see your own analytics.
-        </div>
-      )}
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getBillCalendarData } from "@/lib/calendar/queries";
 import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
@@ -69,12 +68,11 @@ export async function getNotificationsData(): Promise<NotificationsData> {
   };
 }
 
-/** dedupeKey → persisted read/dismiss flags. Empty in demo mode. */
+/** dedupeKey → persisted read/dismiss flags. */
 async function fetchState(): Promise<
   Map<string, { read: boolean; dismissed: boolean }>
 > {
   const map = new Map<string, { read: boolean; dismissed: boolean }>();
-  if (!isSupabaseConfigured()) return map;
 
   const supabase = await createClient();
   const { data } = await supabase

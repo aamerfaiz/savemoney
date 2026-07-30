@@ -51,7 +51,7 @@ const SAMPLE_CSV = `Date,Description,Category,Amount,Type
 2026-07-24,Dividend VOO,Dividend,42.10,income
 2026-07-26,Whole Foods,Groceries,84.20,expense`;
 
-export function ImportWizard({ readOnly }: { readOnly: boolean }) {
+export function ImportWizard() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -268,12 +268,6 @@ export function ImportWizard({ readOnly }: { readOnly: boolean }) {
           )}
 
           <PreviewTable preview={preview} />
-
-          {readOnly && (
-            <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Demo mode — sign in with Supabase configured to actually import.
-            </p>
-          )}
 
           <div className="flex items-center justify-between gap-3 pt-2">
             <Button variant="ghost" onClick={() => setStep("map")} className="gap-1.5">

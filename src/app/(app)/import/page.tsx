@@ -1,7 +1,6 @@
 import { ImportWizard } from "@/components/import/import-wizard";
 import { ImportHistory } from "@/components/import/import-history";
 import { getImportHistory } from "@/lib/import/queries";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const metadata = { title: "Import · Finance OS" };
 
@@ -19,7 +18,7 @@ export default async function ImportPage() {
         </p>
       </div>
 
-      <ImportWizard readOnly={!isSupabaseConfigured()} />
+      <ImportWizard />
       <ImportHistory batches={batches} />
     </div>
   );

@@ -56,13 +56,7 @@ function toPayload(i: NotificationItem): NotificationPayload {
   };
 }
 
-export function NotificationsView({
-  data,
-  readOnly,
-}: {
-  data: NotificationsData;
-  readOnly: boolean;
-}) {
+export function NotificationsView({ data }: { data: NotificationsData }) {
   const [, startTransition] = useTransition();
   const [items, setItems] = useState<NotificationItem[]>(data.items);
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -78,22 +72,21 @@ export function NotificationsView({
     setItems((prev) =>
       prev.map((n) => (n.dedupeKey === i.dedupeKey ? { ...n, isRead: true } : n)),
     );
-    if (!readOnly) startTransition(() => void markNotificationRead(toPayload(i)));
+    startTransition(() => void markNotificationRead(toPayload(i)));
   };
 
   const dismiss = (i: NotificationItem) => {
     setItems((prev) => prev.filter((n) => n.dedupeKey !== i.dedupeKey));
-    if (!readOnly) startTransition(() => void dismissNotification(toPayload(i)));
+    startTransition(() => void dismissNotification(toPayload(i)));
   };
 
   const markAll = () => {
     const unreadItems = items.filter((i) => !i.isRead);
     if (unreadItems.length === 0) return;
     setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    if (!readOnly)
-      startTransition(() =>
-        void markAllNotificationsRead(unreadItems.map(toPayload)),
-      );
+    startTransition(() =>
+      void markAllNotificationsRead(unreadItems.map(toPayload)),
+    );
   };
 
   return (
@@ -113,13 +106,6 @@ export function NotificationsView({
           </Button>
         )}
       </div>
-
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to sync read &amp;
-          dismissed state across devices.
-        </div>
-      )}
 
       <div className="grid grid-cols-2 gap-2 rounded-md bg-muted p-1">
         {(["all", "unread"] as const).map((f) => (

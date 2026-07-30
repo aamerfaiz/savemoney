@@ -1,12 +1,10 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeHealthScore } from "@/lib/finance/health-score";
 import { computeGoalProjection } from "@/lib/finance/goals";
 import type { CurrencyCode } from "@/lib/format";
-import { demoAnalytics } from "./mock";
 import {
   CATEGORY_PALETTE,
   type AnalyticsData,
@@ -33,8 +31,6 @@ type GoalRow = {
 /** Aggregated analytics over the trailing `RANGE_MONTHS` months. */
 export async function getAnalyticsData(): Promise<AnalyticsData> {
   const currency = await getDisplayCurrency();
-
-  if (!isSupabaseConfigured()) return { ...demoAnalytics, currency };
 
   const supabase = await createClient();
   const now = new Date();

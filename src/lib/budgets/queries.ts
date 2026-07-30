@@ -1,11 +1,9 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { computeBudget, type BudgetResult } from "@/lib/finance/budget";
 import type { CurrencyCode } from "@/lib/format";
-import { demoBudgets, demoSafeToSpend } from "./mock";
 import {
   budgetStatus,
   type BudgetPeriod,
@@ -42,18 +40,10 @@ type ExpenseRow = {
 
 /**
  * Budgets with this-period spend joined in, plus the monthly safe-to-spend
- * figure from the budgeting engine. Demo data when Supabase isn't configured.
+ * figure from the budgeting engine.
  */
 export async function getBudgetsData(): Promise<BudgetsData> {
   const currency = await getDisplayCurrency();
-
-  if (!isSupabaseConfigured()) {
-    return {
-      budgets: demoBudgets.map((b) => ({ ...b, currency })),
-      safeToSpend: demoSafeToSpend,
-      currency,
-    };
-  }
 
   const supabase = await createClient();
   const now = new Date();

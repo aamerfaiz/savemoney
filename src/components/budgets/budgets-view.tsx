@@ -20,11 +20,9 @@ import type { CategoryOption } from "@/lib/transactions/reference";
 export function BudgetsView({
   data,
   categories,
-  readOnly,
 }: {
   data: BudgetsData;
   categories: CategoryOption[];
-  readOnly: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -60,13 +58,6 @@ export function BudgetsView({
           <Plus className="size-4" /> New budget
         </Button>
       </div>
-
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to set and save real
-          budgets.
-        </div>
-      )}
 
       {/* Safe-to-spend (dynamic budgeting engine) */}
       <Card className="p-5">
@@ -106,7 +97,6 @@ export function BudgetsView({
               <BudgetRow
                 key={b.id}
                 b={b}
-                readOnly={readOnly}
                 onEdit={() => setEditing(b)}
                 onDelete={() => onDelete(b)}
               />
@@ -148,12 +138,10 @@ export function BudgetsView({
 
 function BudgetRow({
   b,
-  readOnly,
   onEdit,
   onDelete,
 }: {
   b: BudgetWithProgress;
-  readOnly: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -186,24 +174,22 @@ function BudgetRow({
             {formatCurrency(b.amount, b.currency)}
           </div>
         </div>
-        {!readOnly && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
-            <button
-              onClick={onEdit}
-              aria-label="Edit"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              aria-label="Delete"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
+          <button
+            onClick={onEdit}
+            aria-label="Edit"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-3">

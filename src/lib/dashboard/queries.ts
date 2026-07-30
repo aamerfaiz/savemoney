@@ -1,7 +1,6 @@
 import "server-only";
 
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { getProfile, getDisplayCurrency } from "@/lib/profile/queries";
+import { getProfile } from "@/lib/profile/queries";
 import { getAnalyticsData } from "@/lib/analytics/queries";
 import { getBudgetsData } from "@/lib/budgets/queries";
 import { getGoalsData } from "@/lib/goals/queries";
@@ -15,24 +14,15 @@ import {
 } from "@/lib/networth/queries";
 import { getTransactions } from "@/lib/transactions/queries";
 import { createClient } from "@/lib/supabase/server";
-import {
-  mockDashboard,
-  type DashboardData,
-  type GoalSummary,
-  type Transaction as DashTxn,
-  type UpcomingItem,
+import type {
+  DashboardData,
+  GoalSummary,
+  Transaction as DashTxn,
+  UpcomingItem,
 } from "@/data/mock-dashboard";
 
-/**
- * The dashboard snapshot. Composed entirely from the real module queries when
- * Supabase is configured; the mock is only used in demo mode so the UI still
- * renders without credentials.
- */
+/** The dashboard snapshot, composed entirely from the real module queries. */
 export async function getDashboardData(): Promise<DashboardData> {
-  if (!isSupabaseConfigured()) {
-    return { ...mockDashboard, currency: await getDisplayCurrency() };
-  }
-
   const supabase = await createClient();
   const [
     profile,

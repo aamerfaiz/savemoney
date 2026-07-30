@@ -1,9 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { CurrencyCode } from "@/lib/format";
-import { demoTransactions } from "./mock";
 import type {
   Transaction,
   TransactionFilter,
@@ -19,17 +17,10 @@ type Embedded = {
 /**
  * Unified transaction feed: reads both `income` and `expenses` (RLS scopes
  * them to the current user), flattens to one `Transaction[]`, newest first.
- * Returns demo data when Supabase isn't configured so the page always renders.
  */
 export async function getTransactions(
   filter: TransactionFilter = "all",
 ): Promise<Transaction[]> {
-  if (!isSupabaseConfigured()) {
-    return filter === "all"
-      ? demoTransactions
-      : demoTransactions.filter((t) => t.kind === filter);
-  }
-
   const supabase = await createClient();
   const results: Transaction[] = [];
 

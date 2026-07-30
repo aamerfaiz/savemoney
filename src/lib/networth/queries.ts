@@ -3,7 +3,6 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
 import { getGoalsData } from "@/lib/goals/queries";
@@ -11,7 +10,6 @@ import { getLoansData } from "@/lib/loans/queries";
 import { getAnalyticsData } from "@/lib/analytics/queries";
 import { computeNetWorth, trendChange } from "@/lib/finance/net-worth";
 import type { CurrencyCode } from "@/lib/format";
-import { demoNetWorth } from "./mock";
 import type { NetWorthData, SnapshotSummary } from "./types";
 
 /** The three sources that make up net worth today (accounts land later). */
@@ -86,7 +84,6 @@ export function buildNetWorth(input: {
 /** Net worth for the standalone page. Composed from the module queries. */
 export async function getNetWorthData(): Promise<NetWorthData> {
   const currency = await getDisplayCurrency();
-  if (!isSupabaseConfigured()) return demoNetWorth(currency);
 
   const supabase = await createClient();
   const [investments, goals, loans, analytics, snapshots] = await Promise.all([

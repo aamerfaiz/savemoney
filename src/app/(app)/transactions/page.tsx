@@ -5,7 +5,6 @@ import { GuestTransactionsView } from "@/components/transactions/guest-transacti
 import { getTransactions, summarize } from "@/lib/transactions/queries";
 import { getCategories, getAccounts } from "@/lib/transactions/reference";
 import { getDisplayCurrency } from "@/lib/profile/queries";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { GUEST_COOKIE } from "@/lib/guest/constants";
 import type { TransactionFilter } from "@/lib/transactions/types";
 
@@ -41,7 +40,6 @@ export default async function TransactionsPage({
       categories={categories}
       accounts={accounts}
       filter={filter}
-      readOnly={!isSupabaseConfigured()}
     />
   );
 }

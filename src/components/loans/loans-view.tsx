@@ -15,13 +15,7 @@ import { deleteLoan } from "@/lib/loans/actions";
 import type { LoansData } from "@/lib/loans/queries";
 import { LOAN_TYPE_ICON, type LoanWithProjection } from "@/lib/loans/types";
 
-export function LoansView({
-  data,
-  readOnly,
-}: {
-  data: LoansData;
-  readOnly: boolean;
-}) {
+export function LoansView({ data }: { data: LoansData }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -65,13 +59,6 @@ export function LoansView({
         </Button>
       </div>
 
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to add and manage real
-          loans.
-        </div>
-      )}
-
       {/* Portfolio summary */}
       <div className="grid grid-cols-3 gap-3">
         <SummaryTile label="Total debt" value={formatCurrency(totalRemaining, currency)} />
@@ -97,7 +84,6 @@ export function LoansView({
             <LoanCard
               key={l.id}
               l={l}
-              readOnly={readOnly}
               onEdit={() => setEditing(l)}
               onPay={() => setPaying(l)}
               onDelete={() => onDelete(l)}
@@ -164,13 +150,11 @@ function SummaryTile({
 
 function LoanCard({
   l,
-  readOnly,
   onEdit,
   onPay,
   onDelete,
 }: {
   l: LoanWithProjection;
-  readOnly: boolean;
   onEdit: () => void;
   onPay: () => void;
   onDelete: () => void;
@@ -191,24 +175,22 @@ function LoanCard({
             {l.extraEmi ? ` + ${formatCurrency(l.extraEmi, l.currency)}` : ""}
           </div>
         </div>
-        {!readOnly && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
-            <button
-              onClick={onEdit}
-              aria-label="Edit"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              aria-label="Delete"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
+          <button
+            onClick={onEdit}
+            aria-label="Edit"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-3">
@@ -252,7 +234,7 @@ function LoanCard({
         </div>
       )}
 
-      {!readOnly && !p.underwater && l.remainingAmount > 0 && (
+      {!p.underwater && l.remainingAmount > 0 && (
         <Button
           variant="secondary"
           size="sm"

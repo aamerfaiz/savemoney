@@ -123,7 +123,6 @@ export function GuestTransactionsView({ filter }: { filter: TransactionFilter })
       categories={categories}
       accounts={accounts}
       filter={filter}
-      readOnly={false}
       createAction={createAction}
       updateAction={updateAction}
       deleteAction={deleteAction}

@@ -15,13 +15,7 @@ import { deleteGoal } from "@/lib/goals/actions";
 import type { GoalsData } from "@/lib/goals/queries";
 import type { GoalWithProgress } from "@/lib/goals/types";
 
-export function GoalsView({
-  data,
-  readOnly,
-}: {
-  data: GoalsData;
-  readOnly: boolean;
-}) {
+export function GoalsView({ data }: { data: GoalsData }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -69,13 +63,6 @@ export function GoalsView({
         </Button>
       </div>
 
-      {readOnly && (
-        <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Demo mode — sign in with Supabase configured to create and fund real
-          goals.
-        </div>
-      )}
-
       {/* Overall summary */}
       <div className="rounded-lg border border-border bg-card p-5">
         <div className="flex items-end justify-between">
@@ -114,7 +101,6 @@ export function GoalsView({
             <GoalCard
               key={g.id}
               g={g}
-              readOnly={readOnly}
               onEdit={() => setEditing(g)}
               onContribute={() => setContributing(g)}
               onDelete={() => onDelete(g)}
@@ -171,13 +157,11 @@ const PRIORITY_STYLE: Record<GoalWithProgress["priority"], string> = {
 
 function GoalCard({
   g,
-  readOnly,
   onEdit,
   onContribute,
   onDelete,
 }: {
   g: GoalWithProgress;
-  readOnly: boolean;
   onEdit: () => void;
   onContribute: () => void;
   onDelete: () => void;
@@ -207,24 +191,22 @@ function GoalCard({
             {g.priority} priority
           </span>
         </div>
-        {!readOnly && (
-          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
-            <button
-              onClick={onEdit}
-              aria-label="Edit"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pencil className="size-4" />
-            </button>
-            <button
-              onClick={onDelete}
-              aria-label="Delete"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
-            >
-              <Trash2 className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
+          <button
+            onClick={onEdit}
+            aria-label="Edit"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="size-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-negative/15 hover:text-negative"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-3">
@@ -251,7 +233,7 @@ function GoalCard({
         </div>
       </div>
 
-      {!readOnly && !done && (
+      {!done && (
         <Button
           variant="secondary"
           size="sm"

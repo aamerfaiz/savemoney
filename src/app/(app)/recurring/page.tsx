@@ -1,7 +1,6 @@
 import { RecurringView } from "@/components/recurring/recurring-view";
 import { getRecurringData } from "@/lib/recurring/queries";
 import { getCategories, getAccounts } from "@/lib/transactions/reference";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const metadata = { title: "Recurring · Finance OS" };
 
@@ -17,7 +16,6 @@ export default async function RecurringPage() {
       data={data}
       categories={categories}
       accounts={accounts}
-      readOnly={!isSupabaseConfigured()}
     />
   );
 }

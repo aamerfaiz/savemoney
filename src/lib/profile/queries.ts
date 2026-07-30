@@ -3,7 +3,6 @@ import "server-only";
 import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { toCurrencyCode, type CurrencyCode } from "@/lib/format";
 
 export interface UserProfile {
@@ -22,12 +21,10 @@ const GUEST: UserProfile = {
 };
 
 /**
- * The signed-in user's profile (name + base currency). Falls back to a neutral
- * guest in demo mode so the app renders without credentials.
+ * The signed-in user's profile (name + base currency). The middleware guards
+ * every route this is called from, so `user` is only ever null defensively.
  */
 export const getProfile = cache(async (): Promise<UserProfile> => {
-  if (!isSupabaseConfigured()) return GUEST;
-
   const supabase = await createClient();
   const {
     data: { user },
