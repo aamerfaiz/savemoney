@@ -10,6 +10,7 @@ import { encryptSecret } from "./crypto";
 import { getProvider } from "./registry";
 import { PROVIDER_META } from "./meta";
 import { chatWithActiveProvider } from "./resolver";
+import { buildFinanceContext } from "./context";
 import type { AIProviderId } from "./types";
 
 export interface ActionResult {
@@ -183,6 +184,9 @@ export interface AskResult {
   error?: string;
 }
 
+const GENERIC_SYSTEM_PROMPT =
+  "You are the Finance OS AI assistant. Answer briefly and concretely about the user's personal finances. If you don't have enough data, say what's missing instead of guessing.";
+
 /** Phase 3.3 — single-turn "ask a question" backed by the active provider. */
 export async function askAssistant(
   _prev: AskResult | undefined,
@@ -191,13 +195,23 @@ export async function askAssistant(
   const question = String(formData.get("question") ?? "").trim();
   if (!question) return { ok: false, error: "Type a question first." };
 
+  // Ground the answer in the user's real numbers when we can build them;
+  // fall back to a generic assistant rather than failing the whole request
+  // if a data query has a hiccup.
+  let context: string | null = null;
+  try {
+    context = await buildFinanceContext();
+  } catch {
+    context = null;
+  }
+
+  const systemPrompt = context
+    ? `You are the Finance OS AI assistant. Use ONLY the real financial data below to ground your answer — never invent numbers. If something the user asks about isn't covered by this data, say so instead of guessing. Be concise and concrete.\n\n${context}`
+    : GENERIC_SYSTEM_PROMPT;
+
   try {
     const answer = await chatWithActiveProvider([
-      {
-        role: "system",
-        content:
-          "You are the Finance OS AI assistant. Answer briefly and concretely about the user's personal finances. If you don't have enough data, say what's missing instead of guessing.",
-      },
+      { role: "system", content: systemPrompt },
       { role: "user", content: question },
     ]);
     return { ok: true, answer };
