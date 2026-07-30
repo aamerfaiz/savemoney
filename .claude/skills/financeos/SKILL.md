@@ -61,7 +61,8 @@ src/
     (app)/               # authed shell (route group)
       layout.tsx         # sidebar + top bar + bottom nav, content padding
       dashboard/page.tsx # the MagicBento dashboard (server component)
-      <module>/page.tsx  # transactions, budget, goals, loans, analytics, settings
+      <module>/page.tsx  # transactions, budget, goals, loans, investments,
+                         # net-worth, analytics, settings
     login/               # auth screen (auth-form.tsx is the client form)
     auth/callback/route.ts  # OAuth / magic-link code exchange
     layout.tsx           # root: fonts, <Providers>, metadata, viewport
@@ -79,7 +80,10 @@ src/
     schema.ts            # Drizzle schema (all tables + enums + types)
     index.ts             # server-side Drizzle client (postgres-js)
   lib/
-    finance/             # budget.ts, health-score.ts (PURE engines)
+    finance/             # budget, health-score, goals, loan, investment,
+                         # net-worth (PURE engines)
+    investments/         # Phase 2 module (types/queries/actions/mock)
+    networth/            # Phase 2 module (buildNetWorth + captureSnapshot)
     supabase/            # client.ts, server.ts, middleware.ts (session)
     format.ts            # formatCurrency / formatPercent / dates
     utils.ts             # cn() classname merge
@@ -90,10 +94,19 @@ src/
 drizzle/
   0000_init_phase1.sql        # generated: tables, enums, FKs
   0001_advisor_hardening.sql  # generated: FK-covering indexes (idempotent)
+  0002_import_batches.sql     # generated: import batches
+  0003_investments.sql        # generated: investments + contributions (Phase 2)
+  0004_net_worth_snapshots.sql# generated: net_worth_snapshots (Phase 2)
   manual/
     0001_rls_and_seed.sql     # hand-written: RLS, triggers, seed (applied out-of-band)
+    0002_investments_rls.sql  # hand-written: RLS for the investments tables
+    0003_net_worth_rls.sql    # hand-written: RLS for net_worth_snapshots
   meta/                       # drizzle snapshots — keep in sync via db:generate
 ```
+
+> Migrations `0003`/`0004` and manual RLS `0002`/`0003` are committed but may
+> not yet be applied to the database — apply them out-of-band (Supabase MCP
+> `apply_migration` / SQL editor) if the investments / net-worth tables 404.
 
 Drizzle owns the numbered schema migrations (`0000`, `0001`, …) and their
 `meta/` snapshots; run `npm run db:generate` after editing `schema.ts` so the
@@ -228,9 +241,18 @@ differentiator.
   0–100 score from savings rate, emergency fund, debt ratio, investment rate,
   budget discipline, income stability, goal completion. Returns score, band,
   and per-signal breakdown.
+- `src/lib/finance/investment.ts` — `computeInvestmentProjection()`: gain/loss,
+  return %, annualized return, and a compounded future-value (SIP) projection
+  from an expected annual return + monthly contribution.
+- `src/lib/finance/net-worth.ts` — `computeNetWorth()`: composes already-summed
+  asset/liability components into totals, an ordered breakdown with per-side
+  shares, and the debt-to-asset ratio; plus a `trendChange()` helper.
+
+Note: `computeBudget`'s `Investments` term and `computeHealthScore`'s
+`investmentRate` are now fed real data (see Phase 2 below) — no longer 0.
 
 Future engines to add here the same way: what-if simulator, loan amortization /
-payoff projection, net-worth history.
+payoff projection (loan.ts done), net-worth history projection.
 
 ## The import pipeline (shared — reuse it for SMS/bank/email later)
 
@@ -310,14 +332,24 @@ module behind "user has a valid active key" (it is an optional module).
   (safe-to-spend via `computeBudget` + per-category limits with live spend),
   **Goals ✅** (`computeGoalProjection`), **Loans ✅** (`computeLoanProjection`:
   amortization, payoff date, interest/time saved from extra EMI; record-payment
-  splits principal/interest). Safe-to-spend now pulls real income, recurring
-  expenses, goal contributions and loan EMIs — only `investments` is still 0
-  (Phase 2). **Analytics ✅** (`src/lib/analytics`: trailing-6-month income vs
+  splits principal/interest). Safe-to-spend pulls real income, recurring
+  expenses, goal contributions, loan EMIs and now investment SIPs (see Phase 2).
+  **Analytics ✅** (`src/lib/analytics`: trailing-6-month income vs
   expenses, savings-rate trend, category breakdown, top categories, derived
   health score; charts in `src/components/analytics`). **CSV import ✅** — see
   the import pipeline below. **Phase 1 is complete.**
-- **Phase 2**: Investments, Net Worth, Reports, Financial Score, Notifications,
-  Recurring transactions, Bill calendar.
+- **Phase 2** (in progress): **Investments ✅** (`src/lib/investments/` +
+  `computeInvestmentProjection`; `investments` + `investment_contributions`
+  tables; holdings with gain/loss + future-value projection, record-contribution
+  action; route `/investments`). Investment SIPs now feed safe-to-spend, and
+  investment contributions drive the health-score `investmentRate`.
+  **Net Worth ✅** (`src/lib/networth/` + `computeNetWorth`; `net_worth_snapshots`
+  table; assets/liabilities breakdown = investments value + goal savings −
+  loan debt, debt-to-asset ratio, `captureSnapshot` action, trend from real
+  snapshots or cash-flow reconstruction; route `/net-worth`). The dashboard net
+  worth + trend are composed from `buildNetWorth` so they never diverge.
+  Remaining: Reports, Financial Score, Notifications, Recurring transactions,
+  Bill calendar.
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
   "AI providers & user API keys" section above — pluggable providers
   (DeepSeek first), What-if Simulator, Receipt OCR, CSV intelligence,
