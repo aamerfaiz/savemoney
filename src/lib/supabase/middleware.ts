@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { GUEST_COOKIE } from "@/lib/guest/constants";
+
 /** Routes that never require an authenticated session. */
 const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest"];
 
@@ -13,6 +15,10 @@ const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest"];
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+
+  // A guest session runs entirely client-side against IndexedDB — no
+  // Supabase user to check, but the cookie alone is enough to pass the guard.
+  if (request.cookies.get(GUEST_COOKIE)?.value === "1") return supabaseResponse;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

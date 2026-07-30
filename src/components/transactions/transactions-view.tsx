@@ -15,7 +15,11 @@ import {
   formatDateShort,
   type CurrencyCode,
 } from "@/lib/format";
-import { deleteTransaction } from "@/lib/transactions/actions";
+import {
+  createTransaction,
+  deleteTransaction,
+  updateTransaction,
+} from "@/lib/transactions/actions";
 import type {
   Transaction,
   TransactionFilter,
@@ -39,6 +43,9 @@ export function TransactionsView({
   accounts,
   filter,
   readOnly,
+  createAction = createTransaction,
+  updateAction = updateTransaction,
+  deleteAction = deleteTransaction,
 }: {
   transactions: Transaction[];
   summary: TransactionSummary;
@@ -46,6 +53,10 @@ export function TransactionsView({
   accounts: AccountOption[];
   filter: TransactionFilter;
   readOnly: boolean;
+  /** Overrides for guest mode (IndexedDB) — same signatures as the Server Actions. */
+  createAction?: typeof createTransaction;
+  updateAction?: typeof updateTransaction;
+  deleteAction?: typeof deleteTransaction;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -76,7 +87,7 @@ export function TransactionsView({
     if (!confirm("Delete this transaction?")) return;
     startTransition(async () => {
       removeItem(t.id);
-      await deleteTransaction(t.id, t.kind);
+      await deleteAction(t.id, t.kind);
       router.refresh();
     });
   };
@@ -181,6 +192,8 @@ export function TransactionsView({
           categories={categories}
           accounts={accounts}
           onSuccess={() => setAdding(false)}
+          createAction={createAction}
+          updateAction={updateAction}
         />
       </Dialog>
 
@@ -195,6 +208,8 @@ export function TransactionsView({
             accounts={accounts}
             existing={editing}
             onSuccess={() => setEditing(null)}
+            createAction={createAction}
+            updateAction={updateAction}
           />
         )}
       </Dialog>
