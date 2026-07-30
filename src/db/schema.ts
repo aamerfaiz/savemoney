@@ -15,6 +15,7 @@
  */
 import {
   pgTable,
+  pgSchema,
   uuid,
   text,
   numeric,
@@ -607,6 +608,56 @@ export const netWorthSnapshots = pgTable(
   ],
 );
 
+/* ----------------------------------------------------------------------- */
+/* AI provider keys (Phase 3, BYOK) — private schema, NOT PostgREST-exposed */
+/* ----------------------------------------------------------------------- */
+/* Lives in its own Postgres schema (rather than `public`) so it is never
+ * added to Supabase's exposed-schemas list — the anon/authenticated API
+ * roles cannot select it at all, no matter what RLS says. The browser must
+ * never be able to read a key, encrypted or not.
+ * `db:generate` still diffs and emits DDL for this table (schemaFilter only
+ * governs live-DB introspection, not codegen from this file) — see the
+ * generated drizzle/0006_white_scorpion.sql, hand-patched with a leading
+ * `CREATE SCHEMA IF NOT EXISTS "private"` since schema creation itself isn't
+ * tracked in drizzle's snapshot. RLS + the PostgREST-role revokes are
+ * hand-written in drizzle/manual/0006_ai_provider_keys_rls.sql, applied
+ * after the generated migration. Declared here so server-only code can
+ * query it type-safely through the direct Postgres client in
+ * src/db/index.ts (never through the Supabase/PostgREST client). */
+
+const privateSchema = pgSchema("private");
+
+// Scoped to the `private` schema (not `pgEnum`'s default `public`) so it
+// stays outside drizzle.config.ts's `schemaFilter: ["public"]` alongside the
+// table below — both are hand-migrated together in drizzle/manual.
+export const aiProvider = privateSchema.enum("ai_provider", [
+  "deepseek",
+  "openai",
+  "gemini",
+  "claude",
+]);
+
+export const aiProviderKeys = privateSchema.table(
+  "ai_provider_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    provider: aiProvider("provider").notNull(),
+    label: text("label"),
+    /** AES-256-GCM ciphertext (base64) — never plaintext, never logged. */
+    encryptedKey: text("encrypted_key").notNull(),
+    keyIv: text("key_iv").notNull(),
+    /** Last 4 chars of the plaintext key, for masked display only. */
+    keyLast4: text("key_last4").notNull(),
+    model: text("model"),
+    isActive: boolean("is_active").notNull().default(true),
+    ...audit,
+  },
+  (t) => [index("ai_provider_keys_user_idx").on(t.userId)],
+);
+
 /* Convenience type exports */
 export type Profile = typeof profiles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -625,3 +676,4 @@ export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type AIProviderKey = typeof aiProviderKeys.$inferSelect;

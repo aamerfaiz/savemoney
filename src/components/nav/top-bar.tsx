@@ -19,7 +19,7 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-lg lg:px-8">
-      <MobileNav />
+      <MobileNav isGuest={isGuest} />
 
       <div className="hidden flex-col lg:flex">
         <span className="text-xs text-muted-foreground">{greeting},</span>

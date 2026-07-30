@@ -7,16 +7,17 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { navItems } from "./nav-config";
+import { navItems, visibleNavItems } from "./nav-config";
 
 /**
  * Mobile-only nav. The top-left logo opens a slide-in drawer with the FULL nav
  * (including the items that don't fit the 5-slot bottom bar — Loans, Import,
  * Settings). Hidden on lg+ where the sidebar covers everything.
  */
-export function MobileNav() {
+export function MobileNav({ isGuest = false }: { isGuest?: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const items = visibleNavItems(navItems, isGuest);
 
   useEffect(() => {
     if (!open) return;
@@ -84,7 +85,7 @@ export function MobileNav() {
             </div>
 
             <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2" aria-label="All pages">
-              {navItems.map((item) => {
+              {items.map((item) => {
                 const active =
                   pathname === item.href || pathname.startsWith(item.href + "/");
                 const Icon = item.icon;

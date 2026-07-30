@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { GUEST_COOKIE } from "@/lib/guest/constants";
+import { GUEST_ALLOWED_PATHS, GUEST_COOKIE } from "@/lib/guest/constants";
 
 /** Routes that never require an authenticated session. */
 const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest"];
@@ -15,12 +15,22 @@ const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest"];
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  // A guest session runs entirely client-side against IndexedDB — no
-  // Supabase user to check, but the cookie alone is enough to pass the guard.
-  if (request.cookies.get(GUEST_COOKIE)?.value === "1") return supabaseResponse;
-
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+
+  // A guest session runs entirely client-side against IndexedDB — no
+  // Supabase user to check. But only the routes with real guest-mode support
+  // read from IndexedDB; every other (app) route assumes a real session and
+  // errors for guests, so bounce those to the dashboard instead of crashing.
+  if (request.cookies.get(GUEST_COOKIE)?.value === "1") {
+    const isGuestAllowed = GUEST_ALLOWED_PATHS.some(
+      (p) => path === p || path.startsWith(p + "/"),
+    );
+    if (isPublic || isGuestAllowed) return supabaseResponse;
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = "/dashboard";
+    return NextResponse.redirect(dashboardUrl);
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

@@ -1,11 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/settings/profile-form";
+import { AiProviderSettings } from "@/components/settings/ai-provider-settings";
 import { getProfile } from "@/lib/profile/queries";
+import { listProviderKeys } from "@/lib/ai/queries";
 
 export const metadata = { title: "Settings · Finance OS" };
 
 export default async function SettingsPage() {
-  const profile = await getProfile();
+  const [profile, providerKeys] = await Promise.all([
+    getProfile(),
+    listProviderKeys(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -24,6 +29,15 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ProfileForm profile={profile} />
+        </CardContent>
+      </Card>
+
+      <Card id="ai">
+        <CardHeader>
+          <CardTitle>AI & Integrations</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AiProviderSettings keys={providerKeys} />
         </CardContent>
       </Card>
     </div>
