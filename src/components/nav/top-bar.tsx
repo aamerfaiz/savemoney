@@ -3,6 +3,7 @@ import { Bell, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./mobile-nav";
 import { ExitGuestButton } from "./exit-guest-button";
+import { LogoutButton } from "./logout-button";
 
 /** App header. On mobile the logo opens the full nav; on desktop the sidebar does. */
 export function TopBar({
@@ -52,6 +53,7 @@ export function TopBar({
               <Plus className="size-4" />
               <span className="hidden sm:inline">Add</span>
             </Button>
+            <LogoutButton />
           </>
         )}
       </div>
