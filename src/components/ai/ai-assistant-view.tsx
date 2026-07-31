@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { askAssistant, type AskResult } from "@/lib/ai/actions";
+import { AnswerMarkdown } from "@/components/ai/answer-markdown";
 
 /** Phase 3.3 — ask-a-question shell. The rest of Phase 3.4 lands behind the
  * same "has an active key" gate as each feature ships. */
@@ -44,8 +45,8 @@ export function AiAssistantView() {
           </p>
         )}
         {state?.ok && state.answer && (
-          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-            {state.answer}
+          <div className="rounded-md border border-border bg-muted/40 p-3">
+            <AnswerMarkdown text={state.answer} />
           </div>
         )}
       </Card>
