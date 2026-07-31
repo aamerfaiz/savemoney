@@ -604,31 +604,57 @@ folded into generic "connect an agent" copy.
         session (`setupVault` actually persisting, then unlocking on a
         second load) is still unverified — needs a real login, which
         this sandbox can't do.
-- [ ] **3.5.2 — Pilot: migrate `private.ai_provider_keys` to
+- [x] **3.5.2 — Pilot: migrate `private.ai_provider_keys` to
       vault-wrapped storage.** Smallest table, already isolated, already
       has its own encrypt/decrypt helper to model the client-side version
       from — and it's the specific thing that prompted locking in "not
-      even me" instead of the server-secret model. Prove the vault
-      pattern here before the twelve finance tables.
-  - [ ] Move `saveProviderKey`/`testProviderKey` to wrap client-side for
-        storage; server persists ciphertext only, and `testProviderKey`'s
-        verification call goes through the relay below rather than a
-        server-side `adapter.testKey()` holding a stored key.
-  - [ ] Build the transient-relay Route Handler: accepts a plaintext
-        vendor key in the request body (sent once, per call, from the
-        unlocked browser), calls the provider adapter, returns the
-        result, never logs/persists the key. Rework
-        `chatWithActiveProvider` (`src/lib/ai/resolver.ts`) and both
-        callers — Ask (`src/lib/ai/actions.ts`) and Smart Entry
-        extraction (`src/lib/ai/smart-entry/extract.ts`) — to go through
-        it instead of decrypting a stored key server-side.
+      even me" instead of the server-secret model. Landed; one item below
+      (the live end-to-end vendor call) is unverified — see the note.
+  - [x] `saveProviderKey` now takes an already-tested, already-DEK-
+        encrypted payload (`src/components/settings/ai-provider-settings.tsx`
+        encrypts client-side via `encryptField` before calling it) —
+        server persists ciphertext only, no server-side `adapter.testKey()`
+        or `encryptSecret()` call remains in the save path.
+        `testProviderKey` needed **no change** — it already only ever
+        handled freshly-typed plaintext from the form, never a stored key,
+        so it already satisfied the transient/no-persist property.
+  - [x] Transient-relay Route Handler built: `src/app/api/v1/ai/ask/
+        route.ts` for Ask, and `src/app/api/v1/ai/extract/route.ts`
+        extended to accept the same relayed `{apiKey, provider, model}`
+        for Smart Entry. `chatWithActiveProvider` (`src/lib/ai/
+        resolver.ts`) is retired in favor of `chatWithProvider(apiKey,
+        providerId, model, messages, options)` — a thin pass-through to
+        the adapter, no DB access, keeping the "one chokepoint" rule from
+        AGENTS.md intact. Both callers — Ask and Smart Entry extraction
+        (`src/lib/ai/smart-entry/extract.ts`) — go through it. `askAssistant`
+        (the old Server Action) is removed; the decrypt-then-relay
+        sequence it would have needed can't run inside a Server Action
+        reached via a plain form, so `ai-assistant-view.tsx` now calls the
+        route directly. New shared client helper:
+        `src/lib/ai/client-key.ts`'s `resolveActiveKey(dek)` (fetch
+        ciphertext via `getActiveProviderKeyBlob`, decrypt with
+        `decryptField`) — used by both Ask and Extract so the sequence
+        isn't duplicated, and it surfaces a friendly "re-save your key"
+        error rather than a raw decrypt exception for keys saved before
+        this landed.
   - [ ] (Optional, non-blocking) Confirm per-provider whether a pure
         client-to-vendor call is possible (CORS), as a future
-        optimization that skips the relay entirely for that provider.
-  - [ ] **Verify**: `npm run build` passes. Manual test: save a key, ask
-        the assistant a question end to end, then confirm via the
-        Supabase MCP / SQL editor that the stored row is unreadable
-        ciphertext with no remaining server secret able to open it.
+        optimization that skips the relay entirely for that provider. Not
+        attempted.
+  - [x] **Verify**: `npm run build` + `npm run lint` pass. Browser-exercised
+        (throwaway preview route, removed before commit) with a simulated
+        unlocked vault: Save ran real client-side `encryptField`, then hit
+        a graceful "Database isn't configured" error; Ask and Extract both
+        ran `resolveActiveKey` and hit the same graceful error — zero
+        console/page errors across all three. **Not verified**: an actual
+        end-to-end vendor call (save → ask → get a real answer) — this
+        sandbox has no Supabase auth session and no real vendor API key to
+        drive that with. Confirmed via the Supabase MCP that the one live
+        row (`private.ai_provider_keys`, DeepSeek, created before this
+        change) is still server-secret-encrypted — it will hit the
+        "couldn't decrypt, re-save it" path the first time it's used,
+        exactly the expected/flagged consequence of this migration, not a
+        bug to fix here.
 - [ ] **3.5.3 — Pilot the finance-data pattern.** Recommend Transactions
       next (it's already "the reference module" per AGENTS.md) — prove
       encrypt-on-write, decrypt-on-read, client-side dashboard tile,

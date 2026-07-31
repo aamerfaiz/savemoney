@@ -1,21 +1,66 @@
 "use client";
 
-import { useActionState } from "react";
-import { CircleAlert, Construction, Send, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { CircleAlert, Construction, Send, ShieldAlert, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { askAssistant, type AskResult } from "@/lib/ai/actions";
 import { AnswerMarkdown } from "@/components/ai/answer-markdown";
+import { resolveActiveKey } from "@/lib/ai/client-key";
+import { useVaultStore } from "@/lib/vault/store";
 
-/** Phase 3.3 — ask-a-question shell. The rest of Phase 3.4 lands behind the
- * same "has an active key" gate as each feature ships. */
+/** Phase 3.3 — ask-a-question shell. Under Phase 3.5 the server can't
+ * decrypt a stored key itself, so asking a question now runs client-side:
+ * decrypt the saved key with the unlocked vault's DEK, then forward it
+ * once, transiently, to /api/v1/ai/ask — see
+ * docs/e2ee-path-b-plan.md "Resolved: the AI Assistant conflict". */
 export function AiAssistantView() {
-  const [state, formAction, pending] = useActionState<
-    AskResult | undefined,
-    FormData
-  >(askAssistant, undefined);
+  const dek = useVaultStore((s) => s.dek);
+  const [question, setQuestion] = useState("");
+  const [pending, setPending] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAsk() {
+    if (!question.trim() || pending) return;
+    if (!dek) {
+      setError("Unlock your vault in Settings → Vault & Encryption first.");
+      return;
+    }
+
+    setPending(true);
+    setError(null);
+    setAnswer(null);
+    try {
+      const key = await resolveActiveKey(dek);
+      if ("error" in key) {
+        setError(key.error);
+        return;
+      }
+
+      const res = await fetch("/api/v1/ai/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          apiKey: key.apiKey,
+          provider: key.provider,
+          model: key.model,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error ?? "Something went wrong.");
+        return;
+      }
+      setAnswer(data.answer);
+    } catch {
+      setError("Couldn't reach the server — check your connection and try again.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -25,28 +70,37 @@ export function AiAssistantView() {
           Ask about your finances
         </div>
 
-        <form action={formAction} className="space-y-3">
+        {!dek && (
+          <p className="flex items-center gap-1.5 text-sm text-warning">
+            <ShieldAlert className="size-4 shrink-0" />
+            Unlock your vault in Settings → Vault & Encryption to ask a
+            question.
+          </p>
+        )}
+
+        <div className="space-y-3">
           <Textarea
-            name="question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
             placeholder="e.g. Can I afford a $400/month car payment right now?"
             required
             disabled={pending}
           />
-          <Button type="submit" disabled={pending}>
+          <Button type="button" onClick={handleAsk} disabled={pending || !question.trim()}>
             <Send className="size-4" />
             {pending ? "Thinking…" : "Ask"}
           </Button>
-        </form>
+        </div>
 
-        {state?.error && (
+        {error && (
           <p className="flex items-center gap-1.5 text-sm text-negative">
             <CircleAlert className="size-4 shrink-0" />
-            {state.error}
+            {error}
           </p>
         )}
-        {state?.ok && state.answer && (
+        {answer && (
           <div className="rounded-md border border-border bg-muted/40 p-3">
-            <AnswerMarkdown text={state.answer} />
+            <AnswerMarkdown text={answer} />
           </div>
         )}
       </Card>

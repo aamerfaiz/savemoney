@@ -2,9 +2,10 @@ import "server-only";
 
 import { z } from "zod";
 
-import { chatWithActiveProvider } from "../resolver";
+import { chatWithProvider } from "../resolver";
 import { buildCapabilityManifest } from "../capabilities/registry";
 import { loadReferenceData, type ReferenceData } from "../capabilities/shared";
+import type { AIProviderId } from "../types";
 
 const MAX_ITEMS = 10;
 const MAX_PROMPT_LENGTH = 2000;
@@ -24,6 +25,14 @@ export type ExtractedItem = z.infer<typeof extractedItemSchema>;
 
 export type ExtractResult = { items: ExtractedItem[] } | { error: string };
 
+export interface RelayedKey {
+  /** Plaintext — decrypted client-side from the vault DEK and forwarded
+   * once, transiently, in this same request. Never logged, never stored. */
+  apiKey: string;
+  provider: AIProviderId;
+  model?: string;
+}
+
 /**
  * Prompt in, an *unvalidated* proposal out — nothing is written here. The
  * model is only ever asked to pick a capability key from a closed list and
@@ -31,7 +40,10 @@ export type ExtractResult = { items: ExtractedItem[] } | { error: string };
  * per-capability Zod validation afterward. See "No code-execution surface"
  * in docs/ai-smart-entry-plan.md.
  */
-export async function extractDraftItems(prompt: string): Promise<ExtractResult> {
+export async function extractDraftItems(
+  prompt: string,
+  key: RelayedKey,
+): Promise<ExtractResult> {
   const trimmed = prompt.trim().slice(0, MAX_PROMPT_LENGTH);
   if (!trimmed) return { error: "Type something to extract first." };
 
@@ -46,7 +58,10 @@ export async function extractDraftItems(prompt: string): Promise<ExtractResult> 
 
   let raw: string;
   try {
-    raw = await chatWithActiveProvider(
+    raw = await chatWithProvider(
+      key.apiKey,
+      key.provider,
+      key.model,
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: trimmed },

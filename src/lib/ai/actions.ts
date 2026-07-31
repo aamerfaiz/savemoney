@@ -1,16 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
-import { encryptSecret } from "./crypto";
 import { getProvider } from "./registry";
 import { PROVIDER_META } from "./meta";
-import { chatWithActiveProvider } from "./resolver";
-import { buildFinanceContext } from "./context";
 import type { AIProviderId } from "./types";
 
 export interface ActionResult {
@@ -38,6 +35,20 @@ const keyInputSchema = z.object({
   model: z.string().trim().optional(),
   label: z.string().trim().max(60).optional(),
 });
+
+const wrappedPayloadSchema = z.object({
+  ciphertext: z.string().min(1),
+  iv: z.string().min(1),
+});
+
+const saveProviderKeyInputSchema = z.object({
+  provider: z.enum(providerIds),
+  model: z.string().trim().optional(),
+  label: z.string().trim().max(60).optional(),
+  keyLast4: z.string().length(4),
+  wrap: wrappedPayloadSchema,
+});
+export type SaveProviderKeyInput = z.infer<typeof saveProviderKeyInputSchema>;
 
 function providerMetaFor(id: AIProviderId) {
   return PROVIDER_META.find((p) => p.id === id);
@@ -70,22 +81,20 @@ export async function testProviderKey(
 }
 
 /**
- * Test + persist a new provider key, encrypted. Only one key is active at a
- * time today (the resolver loads "the" active key, no per-provider slot
- * yet) — saving a new one deactivates any existing key for this user.
+ * Persist a new provider key. Ciphertext only — the client already tested
+ * the key (via `testProviderKey` below) and encrypted it with the vault
+ * DEK before calling this; there is no server-side "read plaintext" path
+ * for this table under Phase 3.5 (see docs/e2ee-path-b-plan.md "Resolved:
+ * the AI Assistant conflict"). Only one key is active at a time today (the
+ * resolver loads "the" active key, no per-provider slot yet) — saving a
+ * new one deactivates any existing key for this user.
  */
 export async function saveProviderKey(
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: SaveProviderKeyInput,
 ): Promise<ActionResult> {
   if (!db) return { ok: false, error: "Database isn't configured in this environment." };
 
-  const parsed = keyInputSchema.safeParse({
-    provider: formData.get("provider"),
-    apiKey: formData.get("apiKey"),
-    model: formData.get("model") || undefined,
-    label: formData.get("label") || undefined,
-  });
+  const parsed = saveProviderKeyInputSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
@@ -99,13 +108,6 @@ export async function saveProviderKey(
   }
 
   const model = parsed.data.model || meta.defaultModel;
-  const adapter = getProvider(parsed.data.provider);
-  const tested = await adapter.testKey(parsed.data.apiKey, model);
-  if (!tested.ok) {
-    return { ok: false, error: tested.error ?? "That key didn't pass the connection test." };
-  }
-
-  const { ciphertext, iv } = encryptSecret(parsed.data.apiKey);
 
   await db.transaction(async (tx) => {
     await tx
@@ -117,9 +119,9 @@ export async function saveProviderKey(
       userId: auth.userId,
       provider: parsed.data.provider,
       label: parsed.data.label || null,
-      encryptedKey: ciphertext,
-      keyIv: iv,
-      keyLast4: parsed.data.apiKey.slice(-4),
+      encryptedKey: parsed.data.wrap.ciphertext,
+      keyIv: parsed.data.wrap.iv,
+      keyLast4: parsed.data.keyLast4,
       model,
       isActive: true,
     });
@@ -128,6 +130,43 @@ export async function saveProviderKey(
   revalidatePath("/settings");
   revalidatePath("/ai");
   return { ok: true };
+}
+
+/**
+ * The active key's ciphertext + IV, for client-side decryption with the
+ * unlocked vault's DEK — never decrypted here. Returns `hasKey: false` if
+ * there's no active key, distinct from an auth/config error.
+ */
+export async function getActiveProviderKeyBlob() {
+  if (!db) return { error: "Database isn't configured in this environment." } as const;
+  const auth = await requireUser();
+  if ("error" in auth) return { error: auth.error } as const;
+
+  const [row] = await db
+    .select({
+      provider: schema.aiProviderKeys.provider,
+      model: schema.aiProviderKeys.model,
+      encryptedKey: schema.aiProviderKeys.encryptedKey,
+      keyIv: schema.aiProviderKeys.keyIv,
+    })
+    .from(schema.aiProviderKeys)
+    .where(
+      and(
+        eq(schema.aiProviderKeys.userId, auth.userId),
+        eq(schema.aiProviderKeys.isActive, true),
+        isNull(schema.aiProviderKeys.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return { hasKey: false } as const;
+
+  return {
+    hasKey: true,
+    provider: row.provider,
+    model: row.model,
+    wrap: { ciphertext: row.encryptedKey, iv: row.keyIv },
+  } as const;
 }
 
 /** Make a stored key the active one, deactivating any others. */
@@ -178,44 +217,8 @@ export async function deleteProviderKey(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export interface AskResult {
-  ok: boolean;
-  answer?: string;
-  error?: string;
-}
-
-const GENERIC_SYSTEM_PROMPT =
-  "You are the Finance OS AI assistant. Answer briefly and concretely about the user's personal finances. If you don't have enough data, say what's missing instead of guessing.";
-
-/** Phase 3.3 — single-turn "ask a question" backed by the active provider. */
-export async function askAssistant(
-  _prev: AskResult | undefined,
-  formData: FormData,
-): Promise<AskResult> {
-  const question = String(formData.get("question") ?? "").trim();
-  if (!question) return { ok: false, error: "Type a question first." };
-
-  // Ground the answer in the user's real numbers when we can build them;
-  // fall back to a generic assistant rather than failing the whole request
-  // if a data query has a hiccup.
-  let context: string | null = null;
-  try {
-    context = await buildFinanceContext();
-  } catch {
-    context = null;
-  }
-
-  const systemPrompt = context
-    ? `You are the Finance OS AI assistant. Use ONLY the real financial data below to ground your answer — never invent numbers. If something the user asks about isn't covered by this data, say so instead of guessing. Be concise and concrete.\n\n${context}`
-    : GENERIC_SYSTEM_PROMPT;
-
-  try {
-    const answer = await chatWithActiveProvider([
-      { role: "system", content: systemPrompt },
-      { role: "user", content: question },
-    ]);
-    return { ok: true, answer };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Something went wrong." };
-  }
-}
+// Ask no longer lives here as a Server Action — the decrypt-then-relay
+// sequence it needs (client unwraps its key with the vault DEK, then
+// forwards it transiently) runs from the client component straight to
+// /api/v1/ai/ask instead. See src/lib/ai/client-key.ts and
+// src/components/ai/ai-assistant-view.tsx.

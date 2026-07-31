@@ -5,9 +5,19 @@ import { requireApiUser } from "@/lib/ai/api-auth";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { extractDraftItems } from "@/lib/ai/smart-entry/extract";
 import { resolveDraftItems } from "@/lib/ai/smart-entry/resolve";
+import { PROVIDER_META } from "@/lib/ai/meta";
+import type { AIProviderId } from "@/lib/ai/types";
+
+const providerIds = PROVIDER_META.map((p) => p.id) as [AIProviderId, ...AIProviderId[]];
 
 const bodySchema = z.object({
   prompt: z.string().trim().min(1, "Type something first.").max(2000),
+  // Decrypted client-side from the vault DEK, forwarded once for this
+  // request only — see docs/e2ee-path-b-plan.md "Resolved: the AI
+  // Assistant conflict". Never logged, never persisted here.
+  apiKey: z.string().trim().min(1, "Add an AI provider key in Settings first."),
+  provider: z.enum(providerIds),
+  model: z.string().trim().optional(),
 });
 
 /**
@@ -40,7 +50,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const extracted = await extractDraftItems(parsed.data.prompt);
+  const extracted = await extractDraftItems(parsed.data.prompt, {
+    apiKey: parsed.data.apiKey,
+    provider: parsed.data.provider,
+    model: parsed.data.model,
+  });
   if ("error" in extracted) {
     return NextResponse.json({ ok: false, error: extracted.error }, { status: 502 });
   }

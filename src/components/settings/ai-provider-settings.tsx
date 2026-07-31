@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CircleAlert, Sparkles, Trash2 } from "lucide-react";
+import { Check, CircleAlert, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,24 +18,23 @@ import {
   type ActionResult,
 } from "@/lib/ai/actions";
 import type { ProviderKeyMeta } from "@/lib/ai/queries";
+import { encryptField } from "@/lib/vault/crypto";
+import { useVaultStore } from "@/lib/vault/store";
 
 export function AiProviderSettings({ keys }: { keys: ProviderKeyMeta[] }) {
   const router = useRouter();
+  const dek = useVaultStore((s) => s.dek);
   const [, startTransition] = useTransition();
   const [provider, setProvider] = useState(PROVIDER_META[0].id);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [testState, testAction, testPending] = useActionState<
     ActionResult | undefined,
     FormData
   >(testProviderKey, undefined);
-  const [saveState, saveAction, savePending] = useActionState<
-    ActionResult | undefined,
-    FormData
-  >(saveProviderKey, undefined);
 
-  useEffect(() => {
-    if (saveState?.ok) router.refresh();
-  }, [saveState, router]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savePending, setSavePending] = useState(false);
 
   const meta = PROVIDER_META.find((p) => p.id === provider)!;
 
@@ -53,6 +52,45 @@ export function AiProviderSettings({ keys }: { keys: ProviderKeyMeta[] }) {
       router.refresh();
     });
   };
+
+  async function handleSave() {
+    if (!formRef.current) return;
+    if (!dek) {
+      setSaveError("Unlock your vault in Settings → Vault & Encryption first.");
+      return;
+    }
+    const fd = new FormData(formRef.current);
+    const apiKey = String(fd.get("apiKey") ?? "").trim();
+    if (apiKey.length < 8) {
+      setSaveError("That key looks too short.");
+      return;
+    }
+    const modelValue = String(fd.get("model") ?? "").trim() || undefined;
+    const labelValue = String(fd.get("label") ?? "").trim() || undefined;
+
+    setSavePending(true);
+    setSaveError(null);
+    try {
+      const wrap = await encryptField(apiKey, dek);
+      const result = await saveProviderKey({
+        provider,
+        model: modelValue,
+        label: labelValue,
+        keyLast4: apiKey.slice(-4),
+        wrap,
+      });
+      if (!result.ok) {
+        setSaveError(result.error ?? "Couldn't save the key.");
+        return;
+      }
+      formRef.current.reset();
+      router.refresh();
+    } catch {
+      setSaveError("Something went wrong saving the key.");
+    } finally {
+      setSavePending(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -104,7 +142,15 @@ export function AiProviderSettings({ keys }: { keys: ProviderKeyMeta[] }) {
         </ul>
       )}
 
-      <form action={saveAction} className="space-y-3 border-t border-border pt-4">
+      {!dek && (
+        <p className="flex items-center gap-1.5 text-sm text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          Unlock your vault below to save a new key — connection testing
+          works either way.
+        </p>
+      )}
+
+      <form ref={formRef} className="space-y-3 border-t border-border pt-4">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Sparkles className="size-4 text-brand" />
           Connect a provider
@@ -161,10 +207,10 @@ export function AiProviderSettings({ keys }: { keys: ProviderKeyMeta[] }) {
           </div>
         </div>
 
-        {(testState?.error || saveState?.error) && (
+        {(testState?.error || saveError) && (
           <p className="flex items-center gap-1.5 text-sm text-negative">
             <CircleAlert className="size-4 shrink-0" />
-            {testState?.error || saveState?.error}
+            {testState?.error || saveError}
           </p>
         )}
         {testState?.ok && (
@@ -182,7 +228,11 @@ export function AiProviderSettings({ keys }: { keys: ProviderKeyMeta[] }) {
           >
             {testPending ? "Testing…" : "Test connection"}
           </Button>
-          <Button type="submit" disabled={testPending || savePending || !meta.available}>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={testPending || savePending || !meta.available || !dek}
+          >
             {savePending ? "Saving…" : "Save key"}
           </Button>
         </div>

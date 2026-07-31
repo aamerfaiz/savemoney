@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleAlert, Sparkles } from "lucide-react";
+import { CircleAlert, ShieldAlert, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,11 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { DraftCard } from "./draft-card";
 import type { DraftItemState, SmartEntryReference } from "./smart-entry-types";
+import { resolveActiveKey } from "@/lib/ai/client-key";
+import { useVaultStore } from "@/lib/vault/store";
 
 type Phase = "idle" | "loading" | "results" | "empty" | "error";
 
 export function SmartEntryView({ reference }: { reference: SmartEntryReference }) {
   const router = useRouter();
+  const dek = useVaultStore((s) => s.dek);
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -27,14 +30,31 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
 
   async function runExtract() {
     if (!prompt.trim() || phase === "loading") return;
+    if (!dek) {
+      setError("Unlock your vault in Settings → Vault & Encryption first.");
+      setPhase("error");
+      return;
+    }
     setPhase("loading");
     setError(null);
     setDrafts([]);
     try {
+      const key = await resolveActiveKey(dek);
+      if ("error" in key) {
+        setError(key.error);
+        setPhase("error");
+        return;
+      }
+
       const res = await fetch("/api/v1/ai/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          apiKey: key.apiKey,
+          provider: key.provider,
+          model: key.model,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -146,6 +166,13 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
         <p className="text-xs text-muted-foreground">
           Describe what happened, what changed, or what to remove — you&apos;ll review and confirm before anything is applied.
         </p>
+        {!dek && (
+          <p className="flex items-center gap-1.5 text-sm text-warning">
+            <ShieldAlert className="size-4 shrink-0" />
+            Unlock your vault in Settings → Vault & Encryption to use Smart
+            Entry.
+          </p>
+        )}
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

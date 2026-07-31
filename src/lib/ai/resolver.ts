@@ -1,50 +1,27 @@
 import "server-only";
 
-import { and, eq, isNull } from "drizzle-orm";
-
-import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
-import { decryptSecret } from "./crypto";
 import { getProvider } from "./registry";
-import type { ChatMessage, ChatOptions } from "./types";
+import type { AIProviderId, ChatMessage, ChatOptions } from "./types";
 
 /**
- * The one chokepoint every AI feature calls through: loads the user's active
- * key, decrypts it, dispatches to the right adapter. Never call a provider
- * adapter or vendor SDK directly from a feature — see AGENTS.md "AI
- * providers & user API keys".
+ * The one chokepoint every AI feature calls through to reach a vendor —
+ * never call a provider adapter or vendor SDK directly from a feature, see
+ * AGENTS.md "AI providers & user API keys".
+ *
+ * Under Phase 3.5 ("not even me") the server can no longer decrypt a stored
+ * key itself — there is no server-held key that can. Callers must already
+ * hold the plaintext key, decrypted client-side from the vault DEK and
+ * forwarded once, transiently, in the same request as this call (the
+ * transient relay — see docs/e2ee-path-b-plan.md "Resolved: the AI
+ * Assistant conflict"). This function never logs or persists it.
  */
-export async function chatWithActiveProvider(
+export async function chatWithProvider(
+  apiKey: string,
+  providerId: AIProviderId,
+  model: string | undefined,
   messages: ChatMessage[],
   options?: ChatOptions,
 ): Promise<string> {
-  if (!db) {
-    throw new Error("Database isn't configured in this environment.");
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("You need to sign in first.");
-
-  const [row] = await db
-    .select()
-    .from(schema.aiProviderKeys)
-    .where(
-      and(
-        eq(schema.aiProviderKeys.userId, user.id),
-        eq(schema.aiProviderKeys.isActive, true),
-        isNull(schema.aiProviderKeys.deletedAt),
-      ),
-    )
-    .limit(1);
-
-  if (!row) {
-    throw new Error("No active AI provider key. Add one in Settings → AI & Integrations.");
-  }
-
-  const apiKey = decryptSecret({ ciphertext: row.encryptedKey, iv: row.keyIv });
-  const provider = getProvider(row.provider);
-  return provider.chat(apiKey, messages, row.model ?? undefined, options);
+  const provider = getProvider(providerId);
+  return provider.chat(apiKey, messages, model, options);
 }
