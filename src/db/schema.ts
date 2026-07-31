@@ -23,6 +23,7 @@ import {
   integer,
   timestamp,
   date,
+  jsonb,
   pgEnum,
   index,
 } from "drizzle-orm/pg-core";
@@ -658,6 +659,98 @@ export const aiProviderKeys = privateSchema.table(
   (t) => [index("ai_provider_keys_user_idx").on(t.userId)],
 );
 
+/* ----------------------------------------------------------------------- */
+/* Vault (Phase 3.5, E2EE "not even me") — private schema, NOT PostgREST-  */
+/* exposed. See docs/e2ee-path-b-plan.md.                                  */
+/* ----------------------------------------------------------------------- */
+/* Never a plaintext-readable table: every column here is either ciphertext
+ * or non-secret metadata (salts, KDF params, timestamps) that's useless
+ * without the secret the user holds. No server-side "read plaintext" action
+ * exists for either table below, by design — see the plan doc's "not even
+ * me" goal. Same `private` schema / PostgREST-lockdown / RLS treatment as
+ * `ai_provider_keys` above; RLS + revokes hand-written in
+ * drizzle/manual/0007_vault_and_mcp_tokens_rls.sql. */
+
+/** One row per user: the wrapped DEK, under each of its two mandatory
+ * unlock paths (password, recovery key). A third, optional per-agent wrap
+ * lives in `mcpAgentTokens` below, not here — it's independently
+ * mintable/revocable and there can be many of them per user. */
+export const vaultKeys = privateSchema.table(
+  "vault_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** AES-256-GCM(DEK) under a KEK derived (Argon2id) from the vault
+     * passphrase. */
+    wrappedDekByPassword: text("wrapped_dek_by_password").notNull(),
+    passwordDekIv: text("password_dek_iv").notNull(),
+    passwordKekSalt: text("password_kek_salt").notNull(),
+    /** Argon2id params used for the passphrase KEK (memory/iterations/
+     * parallelism) — recorded per-user so they can be strengthened for new
+     * setups without invalidating existing vaults. */
+    passwordKdfParams: jsonb("password_kdf_params").notNull(),
+    /** AES-256-GCM(DEK) under a KEK derived (HKDF — the recovery key is
+     * already full-entropy random, not a human secret, so a slow KDF buys
+     * nothing) from the one-time recovery key. */
+    wrappedDekByRecovery: text("wrapped_dek_by_recovery").notNull(),
+    recoveryDekIv: text("recovery_dek_iv").notNull(),
+    recoveryKekSalt: text("recovery_kek_salt").notNull(),
+    /** Set once the user has confirmed (at setup) that they saved the
+     * recovery code. The code itself is never stored — this is just an
+     * acknowledgment timestamp. */
+    recoveryAcknowledgedAt: timestamp("recovery_acknowledged_at", {
+      withTimezone: true,
+    }),
+    ...audit,
+  },
+  (t) => [index("vault_keys_user_idx").on(t.userId)],
+);
+
+export const mcpTokenScope = privateSchema.enum("mcp_token_scope", [
+  /** Metadata/computed summaries only — never unwraps the DEK. Works
+   * headless, no vault-gating. */
+  "read_summary",
+  /** Real field-level financial data — unwraps the DEK transiently,
+   * per-call, via this token's own wrap. */
+  "read_full",
+]);
+
+/** A user-mintable, independently revocable third unlock path for the DEK
+ * (see docs/e2ee-path-b-plan.md "Resolved: MCP agent access"). Many rows
+ * per user — one per connected agent/integration. */
+export const mcpAgentTokens = privateSchema.table(
+  "mcp_agent_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** User-facing name, e.g. "Claude Desktop", "budget-check automation". */
+    label: text("label").notNull(),
+    /** SHA-256 of the raw token, for lookup/rate-limiting only — never
+     * usable to derive the KEK, so a DB leak alone doesn't unlock anything. */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** AES-256-GCM(DEK) under an HKDF-derived KEK — see wrappedDekByRecovery
+     * above for why no slow KDF is needed for a full-entropy secret. */
+    wrappedDekByToken: text("wrapped_dek_by_token").notNull(),
+    tokenDekIv: text("token_dek_iv").notNull(),
+    scope: mcpTokenScope("scope").notNull().default("read_summary"),
+    /** Chosen by the user at creation (preset durations) but always capped
+     * server-side — "no expiry" is never offered. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...audit,
+  },
+  (t) => [
+    index("mcp_agent_tokens_user_idx").on(t.userId),
+    index("mcp_agent_tokens_token_hash_idx").on(t.tokenHash),
+  ],
+);
+
 /* Convenience type exports */
 export type Profile = typeof profiles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -677,3 +770,5 @@ export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type AIProviderKey = typeof aiProviderKeys.$inferSelect;
+export type VaultKeys = typeof vaultKeys.$inferSelect;
+export type McpAgentToken = typeof mcpAgentTokens.$inferSelect;

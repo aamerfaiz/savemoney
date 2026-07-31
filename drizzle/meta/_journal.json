@@ -50,6 +50,13 @@
       "when": 1785421467264,
       "tag": "0006_white_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785498247051,
+      "tag": "0007_nosy_songbird",
+      "breakpoints": true
     }
   ]
 }
