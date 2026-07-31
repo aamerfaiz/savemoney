@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AIProvider, ChatMessage } from "../types";
+import type { AIProvider, ChatMessage, ChatOptions } from "../types";
 
 const BASE_URL = "https://api.deepseek.com";
 
@@ -9,6 +9,7 @@ async function complete(
   model: string,
   messages: ChatMessage[],
   maxTokens: number,
+  jsonMode: boolean,
 ): Promise<string> {
   const res = await fetch(`${BASE_URL}/chat/completions`, {
     method: "POST",
@@ -16,7 +17,16 @@ async function complete(
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+    // DeepSeek's chat completions API is OpenAI-compatible and accepts the
+    // same `response_format: {type: "json_object"}` structured-output mode —
+    // used only to make extraction more reliable. Callers must still parse +
+    // Zod-validate the result themselves; this is never trusted on its own.
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+    }),
   });
 
   if (!res.ok) {
@@ -35,7 +45,7 @@ export const deepseekProvider: AIProvider = {
   id: "deepseek",
   async testKey(apiKey, model = "deepseek-chat") {
     try {
-      await complete(apiKey, model, [{ role: "user", content: "ping" }], 1);
+      await complete(apiKey, model, [{ role: "user", content: "ping" }], 1, false);
       return { ok: true };
     } catch (err) {
       return {
@@ -44,7 +54,13 @@ export const deepseekProvider: AIProvider = {
       };
     }
   },
-  async chat(apiKey, messages, model = "deepseek-chat") {
-    return complete(apiKey, model, messages, 800);
+  async chat(apiKey, messages, model = "deepseek-chat", options?: ChatOptions) {
+    return complete(
+      apiKey,
+      model,
+      messages,
+      options?.maxTokens ?? 800,
+      options?.jsonMode ?? false,
+    );
   },
 };
