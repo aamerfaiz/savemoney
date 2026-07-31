@@ -123,7 +123,10 @@ two-layer scheme (Bitwarden/1Password shape):
 
 1. **KEK (key-encryption key)** — derived client-side from the user's
    secret via Argon2id (WebCrypto doesn't ship Argon2 natively; use a WASM
-   build, e.g. `hash-wasm` or `argon2-browser`) with a random per-user
+   build — **decision (locked): `hash-wasm`**, over `argon2-browser`: more
+   actively maintained, TypeScript-native, SIMD-optimized, and already
+   covers other primitives this plan needs (HKDF for the MCP token KEK
+   below) so it's one dependency instead of two) with a random per-user
    salt. Never leaves the browser, never transmitted, never stored.
 2. **DEK (data-encryption key)** — a random 256-bit AES key, generated
    once per user at vault setup. This is the key that actually
@@ -185,23 +188,31 @@ password in that flow to derive a KEK from. E2EE therefore needs a secret
   for decrypt operations without ever exporting raw bytes to
   JS-reachable memory). No raw key material in
   `localStorage`/`sessionStorage`/cookies, ever.
-- **Quick-unlock (decided): a device-local PIN/biometric layer, modeled
-  directly on how crypto wallets do it.** A wallet's seed phrase is the
-  real, portable secret; its PIN only unlocks an already-decrypted copy
-  cached in that phone's own secure storage — it's never the thing
-  protecting funds against a stolen database, because there is no
-  server-side database of wrapped keys to defend against. Applied here:
+- **Quick-unlock (decided): a device-local 4-digit PIN for v1 — no
+  biometric/WebAuthn yet**, modeled on how crypto wallets do it. A
+  wallet's seed phrase is the real, portable secret; its PIN only unlocks
+  an already-decrypted copy cached in that device's own local storage —
+  it's never the thing protecting funds against a stolen database,
+  because there is no server-side database of wrapped keys to defend
+  against. Applied here:
   - After a normal full-passphrase unlock, the user can opt in to "Quick
     unlock on this device." The app re-wraps the DEK under a
-    PIN-or-WebAuthn-derived key and stores that wrapped copy **only in
-    local `IndexedDB` on that device** — it never touches the server.
-  - Subsequent opens on that device use the short PIN or a WebAuthn
-    platform authenticator (preferred where available — genuinely
-    hardware-backed, key material typically not extractable even with
-    physical device access) to unlock the local cache.
-  - A new device, or a cleared local cache, always falls back to the full
-    passphrase or recovery key — the PIN grants nothing across devices,
-    by design.
+    PIN-derived key and stores that wrapped copy **only in local
+    `IndexedDB` on that device** — it never touches the server.
+  - **Decision (locked): attempt-throttled.** A 4-digit PIN is only
+    10,000 combinations, weak on its own against someone with brief
+    physical access to the device — after a set number of wrong attempts
+    (e.g. 5–10), the app wipes the local wrapped-PIN copy from
+    `IndexedDB`, forcing a fallback to the full passphrase or recovery
+    key. This is a local, client-side counter (there's no server to
+    enforce it against), reset on a successful unlock.
+  - A new device, or a cleared/wiped local cache, always falls back to
+    the full passphrase or recovery key — the PIN grants nothing across
+    devices, by design.
+  - **WebAuthn/biometric quick-unlock is explicitly deferred, not built
+    in v1** — see "Explicitly out of scope for Phase 3.5" below. The PIN
+    re-wrap mechanism is designed so swapping in a WebAuthn-derived key
+    later is additive (a second local wrap), not a rework.
 - **Multi-device (resolved): the vault already "just works" across
   devices**, because the password-wrapped and recovery-wrapped DEK blobs
   are portable, server-stored ciphertext. A new device's flow is just:
@@ -217,9 +228,12 @@ password in that flow to derive a KEK from. E2EE therefore needs a secret
   rotation**: generate a new DEK, re-encrypt every row under it, re-wrap
   for the password, the recovery key, and every remaining trusted device.
   Expensive (touches all the user's data) but honest — the lost device's
-  cached copy of the *old* DEK becomes useless. WebAuthn-backed
-  quick-unlock lowers how often this is actually needed, since that key
-  material generally isn't extractable even with physical possession.
+  cached copy of the *old* DEK becomes useless. With PIN-only
+  quick-unlock in v1 (no WebAuthn yet), this is the *only* remedy for a
+  lost device with quick-unlock enabled — there's no hardware-backed key
+  to fall back on to lower how often it's needed, which is a real cost of
+  deferring WebAuthn, worth remembering if it starts happening often in
+  practice.
 
 ## Scope — what gets encrypted
 
@@ -256,11 +270,13 @@ not just where the ciphertext sits.
 `userId`, foreign keys, `currency`, `date`/`timestamp` columns, `kind`,
 `type`, `status` enums stay plaintext — RLS still needs `userId` to scope
 rows, and dates/kinds are needed for calendar/recurring logic and carry
-little sensitivity alone. Names (goal/loan/investment/account) are a
-judgment call — encrypting them loses "New Car Fund" / "Home Loan" labels
-in any tooling or Supabase dashboard view, which is arguably the point,
-but also makes debugging harder. Flagging as a decision, defaulting to
-**encrypt names too** for consistency with the "not even me" bar.
+little sensitivity alone. **Decision (locked): encrypt names too**
+(goal/loan/investment/account) — no plaintext carve-out for Supabase
+dashboard/tooling debuggability. Losing "New Car Fund" / "Home Loan"
+labels in raw DB tooling is accepted as the point, not a cost; debugging
+against real account data happens by borrowing the account owner's own
+vault credential through the normal unlock flow, not by leaving fields
+readable at rest.
 
 **Storage shape**: each encrypted column becomes `text` (base64
 ciphertext-plus-IV, same packing as `EncryptedPayload` in
@@ -364,8 +380,11 @@ consequences than just moving where ciphertext sits:
   during an in-flight request the user themself initiated — that's a
   narrower, honest exception ("not even me, except transiently, only
   during a request you made, only if the deployed code doesn't
-  misbehave") and needs to be named as such in the Settings UI, not
-  glossed over.
+  misbehave"). **Decision (locked): stays silent** — no Settings-UI
+  disclosure copy about the transient server touch. This is a deliberate
+  product call, made with the trade-off (this doc's own earlier leaning
+  was toward surfacing it, since "not even me" is easier to audit when
+  disclosed) understood and overridden, not defaulted past.
 - Direct client-to-vendor calls (skipping the relay) remain a valid
   **optional future optimization** per provider, if/when a given
   vendor's CORS policy is confirmed to allow it — it shrinks the trust
@@ -431,9 +450,35 @@ under one more independently-derived KEK), not a new kind of secret:
   read-only summary data vs. full transaction detail vs. read+write) —
   no all-or-nothing default. A budget-check automation and a
   full-access assistant should not be able to mint the same token.
-- **Expiry.** Tokens are not eternal bearer secrets by default — a
-  max lifetime (with re-mint, not silent renewal) narrows the standing-risk
+- **Expiry.** **Decision (locked): user picks the duration at creation
+  (Jira/GitHub-PAT style presets — e.g. 7/30/90/365 days), but "no
+  expiry" is not offered — a hard maximum (e.g. 365 days) applies
+  regardless of what's picked.** A token that's leaked and never noticed
+  must still eventually stop working on its own; re-mint is the only path
+  past the cap, never silent renewal. This narrows the standing-risk
   window that makes this path weaker than the transient AI relay.
+- **Client target is broad and untrusted for storage purposes:** Cursor,
+  Claude Code, Claude Desktop, and other MCP clients, not one controlled
+  integration. The threat model must assume the token sits in a
+  plaintext config file on disk (worst case), not an OS keychain (best
+  case) — see the Threat model section above.
+- **Cross-client response compatibility (confirmed, not hypothetical —
+  matches a real issue already hit building this app's AI features):**
+  Claude Code and Claude Desktop currently read only `content[].text` and
+  can drop or ignore `structuredContent`; Cursor does the opposite and
+  prioritizes `structuredContent`. Per the MCP spec's own backward-
+  compatibility guidance, every tool response **must** include the
+  serialized JSON as a `TextContent` block in `content`, with
+  `structuredContent` included alongside as a bonus for clients that use
+  it — never `structuredContent`-only. This applies to every MCP tool
+  built under 3.5.9 and 3.5.9's headless metadata tools alike.
+- **A `get_capabilities` (or similarly named) tool** — not a resource,
+  since tool support is the one primitive every target client reliably
+  has — returns a description of what the MCP server can do (available
+  tools, their scopes, what data each needs unlocked) so a connecting
+  agent can self-orient, the same role a `SKILL.md` plays for Claude
+  Code. Ship this alongside the first batch of headless metadata tools;
+  it needs no vault access itself.
 
 **What this does and doesn't buy.** It closes the "agent needs the browser
 open" gap the vault-gated relay can't, at the honest cost of a standing
@@ -613,45 +658,68 @@ folded into generic "connect an agent" copy.
         Handler described above, scoped per token, rate-limited and
         audit-logged (who/when a token was used — content stays opaque,
         but usage isn't).
+  - [ ] Every tool response includes the JSON as a `content[].text` block
+        (never `structuredContent`-only) — see the cross-client
+        compatibility note above; test against Claude Code, Claude
+        Desktop, and Cursor specifically, not just one client.
+  - [ ] `get_capabilities` tool (self-describing, no vault access
+        needed) — ship with the first headless tools.
   - [ ] **Verify**: `npm run build` passes. Manual test: mint a token,
         call a scoped tool end to end, confirm a revoked token is refused
         immediately, confirm the stored row is unreadable ciphertext with
-        no server secret able to open it absent a valid token.
+        no server secret able to open it absent a valid token, confirm
+        an expired token is refused and that "no expiry" isn't offered
+        as a choice in the UI.
 
-## Open questions (need a decision, not defaulted)
+## Resolved (formerly open questions)
 
-- **Decided, but needs a UI decision to match**: the relay's per-request,
-  no-persistence server touch of the plaintext key is the accepted
-  reading of "not even me" for the AI keys. What's not yet decided is
-  *how* this gets surfaced to the user — e.g. a one-time note in Settings
-  → AI & Integrations explaining that asking the assistant a question
-  means your key transits the server for that single call (never stored,
-  never logged), versus staying silent about it. Leaning toward
-  surfacing it — "not even me" should be a claim the user can audit, not
-  one they have to trust blindly.
-- Encrypt entity *names* (goal/loan/investment/account) or leave them
-  plaintext for easier debugging/support — current default above is
-  encrypt them too, but that's a judgment call worth confirming.
-- Per-provider CORS support (DeepSeek now, OpenAI/Gemini/Claude later) —
-  no longer blocking (the relay doesn't need it), but worth checking
-  later purely as an optimization; see 3.5.2.
-- **MCP token max lifetime** — a hard expiry narrows the standing-risk
-  window but adds re-mint friction for a long-lived automation. Needs a
-  default (e.g. 90 days) confirmed before 3.5.9 ships, not left implicit.
+All of the below were open as of the previous revision and are now
+locked decisions — kept here as a log rather than deleted, so the "why"
+isn't lost:
+
+- AI relay disclosure: **stays silent**, no Settings-UI note. (See
+  "Resolved: the AI Assistant conflict.")
+- Entity names (goal/loan/investment/account): **encrypted**, no
+  plaintext carve-out for debugging. Debugging against real data happens
+  by borrowing the account owner's own vault credential, not by leaving
+  fields readable at rest. (See Scope.)
+- MCP token max lifetime: **user-chosen at creation (preset durations),
+  hard-capped at a maximum (e.g. 365 days) — "no expiry" is not offered.**
+  (See "Resolved: MCP agent access.")
+- MCP token storage on the agent side: **assume the worst case (plaintext
+  config file, no OS keychain)** — the target client set is broad
+  (Cursor, Claude Code, Claude Desktop, others), not one controlled
+  integration, so the threat model can't rely on any one of them's
+  storage guarantees.
+- Device-local quick-unlock: **4-digit PIN only for v1, with
+  attempt-throttling (wipe local cache after N wrong tries)** — WebAuthn/
+  biometric deferred, see below.
+
+## Still open (not blocking 3.5.1, needs a decision before 3.5.9 ships)
+
 - **MCP scope granularity** — per-module (transactions vs. budget vs.
   net-worth vs. everything) is the current assumption; whether read+write
   scopes are offered at all in v1, or read-only only until the pattern's
-  proven, needs a decision.
-- **MCP token storage on the agent side** is outside this app's control
-  (e.g. Claude Desktop's own config file) — worth confirming whether the
-  target agent client supports OS-keychain-backed storage for the token
-  rather than a plaintext config file, since that materially changes the
-  standing-exposure risk named in the Threat model section.
+  proven, still needs a decision.
+- Per-provider CORS support (DeepSeek now, OpenAI/Gemini/Claude later) —
+  no longer blocking (the relay doesn't need it), but worth checking
+  later purely as an optimization; see 3.5.2.
 
 ## Explicitly out of scope for Phase 3.5
 
 - Hiding row existence/counts/timestamps (see Non-goals).
 - Protecting against a compromised client/endpoint.
+- **WebAuthn/biometric quick-unlock** — deferred by decision, not a
+  permanent non-goal. v1 ships PIN-only; the PIN re-wrap mechanism is
+  built so adding a WebAuthn-derived wrap later is additive. Until then,
+  device revocation (lost device with quick-unlock on) always requires a
+  full vault rotation — there's no hardware-backed key to lower how often
+  that's needed.
+- A server-side "debug/support" decryption path of any kind. Debugging
+  against real data during development happens by the account owner
+  sharing their own vault passphrase or recovery code ad hoc, through the
+  normal unlock flow — never a separate standing key. (Confirmed
+  explicitly, not defaulted — see the MCP agent access discussion.)
 - Anything in Phase 4 (SMS/bank/email import) or Phase 5 (native mobile)
   — those inherit this design once it lands but aren't being designed
   here. Native mobile is a particularly good fit later: iOS Keychain /
