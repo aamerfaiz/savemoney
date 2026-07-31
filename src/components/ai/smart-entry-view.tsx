@@ -1,0 +1,225 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { CircleAlert, Sparkles } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { DraftCard } from "./draft-card";
+import type { DraftItemState, SmartEntryReference } from "./smart-entry-types";
+
+type Phase = "idle" | "loading" | "results" | "empty" | "error";
+
+export function SmartEntryView({ reference }: { reference: SmartEntryReference }) {
+  const router = useRouter();
+  const [prompt, setPrompt] = useState("");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<DraftItemState[]>([]);
+
+  const okDrafts = drafts.filter((d) => d.ok);
+  const selectedCount = okDrafts.filter((d) => d.selected).length;
+  const allSelected = okDrafts.length > 0 && selectedCount === okDrafts.length;
+  const anyCommitting = drafts.some((d) => d.committing);
+
+  async function runExtract() {
+    if (!prompt.trim() || phase === "loading") return;
+    setPhase("loading");
+    setError(null);
+    setDrafts([]);
+    try {
+      const res = await fetch("/api/v1/ai/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error ?? "Something went wrong.");
+        setPhase("error");
+        return;
+      }
+      const items: DraftItemState[] = (data.drafts ?? []).map(
+        (d: Omit<DraftItemState, "selected" | "committing">) => ({
+          ...d,
+          fields: d.fields ?? {},
+          warnings: d.warnings ?? [],
+          selected: d.ok,
+          committing: false,
+        }),
+      );
+      setDrafts(items);
+      setPhase(items.length ? "results" : "empty");
+    } catch {
+      setError("Couldn't reach the server — check your connection and try again.");
+      setPhase("error");
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, selected: !d.selected } : d)));
+  }
+
+  function toggleSelectAll() {
+    setDrafts((ds) => ds.map((d) => (d.ok ? { ...d, selected: !allSelected } : d)));
+  }
+
+  function updateField(id: string, key: string, value: string) {
+    setDrafts((ds) =>
+      ds.map((d) => (d.id === id ? { ...d, fields: { ...d.fields, [key]: value } } : d)),
+    );
+  }
+
+  function updateTarget(id: string, targetId: string, targetLabel: string | undefined) {
+    setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, targetId, targetLabel } : d)));
+  }
+
+  function discard(id: string) {
+    setDrafts((ds) => ds.filter((d) => d.id !== id));
+  }
+
+  async function commitItems(targets: DraftItemState[]) {
+    setDrafts((ds) =>
+      ds.map((d) => (targets.some((t) => t.id === d.id) ? { ...d, committing: true, commitError: undefined } : d)),
+    );
+
+    let data: { ok: boolean; results?: { ok: boolean; error?: string }[]; error?: string };
+    try {
+      const res = await fetch("/api/v1/ai/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: targets.map((t) => ({ capability: t.capability, fields: t.fields, targetId: t.targetId })),
+        }),
+      });
+      data = await res.json();
+      if (!res.ok) data.ok = false;
+    } catch {
+      data = { ok: false, error: "Couldn't reach the server — check your connection and try again." };
+    }
+
+    if (!data.ok || !data.results) {
+      const msg = data.error ?? "Couldn't add these — try again.";
+      setDrafts((ds) =>
+        ds.map((d) => (targets.some((t) => t.id === d.id) ? { ...d, committing: false, commitError: msg } : d)),
+      );
+      return;
+    }
+
+    const results = data.results;
+    setDrafts((ds) => {
+      let i = 0;
+      const next: DraftItemState[] = [];
+      for (const d of ds) {
+        if (!targets.some((t) => t.id === d.id)) {
+          next.push(d);
+          continue;
+        }
+        const r = results[i++];
+        if (r?.ok) continue; // committed — drop it from the list
+        next.push({ ...d, committing: false, commitError: r?.error ?? "Couldn't add this." });
+      }
+      return next;
+    });
+    router.refresh();
+  }
+
+  const primaryLabel =
+    selectedCount === 0 ? "Select at least one" : allSelected ? `Add all (${selectedCount})` : `Add selected (${selectedCount})`;
+
+  return (
+    <div className="space-y-5 pb-20">
+      <Card className="space-y-3 p-5">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Sparkles className="size-4 text-brand" />
+          Add from a prompt
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Describe what happened in plain language — you&apos;ll review and confirm before anything is added.
+        </p>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="e.g. Spent 45 on groceries yesterday, and put 200 into my Nifty50 SIP"
+          disabled={phase === "loading"}
+        />
+        <Button onClick={runExtract} disabled={phase === "loading" || !prompt.trim()}>
+          {phase === "loading" ? "Reading…" : "Extract"}
+        </Button>
+      </Card>
+
+      {phase === "loading" && (
+        <div className="space-y-3">
+          <Skeleton className="h-40 w-full rounded-lg" />
+          <Skeleton className="h-40 w-full rounded-lg" />
+        </div>
+      )}
+
+      {error && (
+        <p className="flex items-center gap-1.5 text-sm text-negative">
+          <CircleAlert className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
+
+      {phase === "empty" && (
+        <p className="text-sm text-muted-foreground">
+          Didn&apos;t find anything to record in that — try being more specific about amounts and what they were for.
+        </p>
+      )}
+
+      {drafts.length > 0 && (
+        <>
+          {okDrafts.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                className="size-4 accent-[var(--color-brand)]"
+              />
+              Select all · {selectedCount} of {okDrafts.length} selected
+            </label>
+          )}
+
+          <div className="space-y-3">
+            {drafts.map((d) => (
+              <DraftCard
+                key={d.id}
+                draft={d}
+                reference={reference}
+                onToggleSelect={toggleSelect}
+                onFieldChange={updateField}
+                onTargetChange={updateTarget}
+                onDiscard={discard}
+                onCommitOne={(id) => {
+                  const target = drafts.find((x) => x.id === id);
+                  if (target) commitItems([target]);
+                }}
+              />
+            ))}
+          </div>
+
+          {okDrafts.length > 0 && (
+            <div
+              className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-background/85 px-4 py-3 backdrop-blur-lg lg:sticky lg:inset-x-auto lg:bottom-4 lg:mt-2 lg:rounded-lg lg:border lg:px-4"
+            >
+              <div className="mx-auto max-w-2xl">
+                <Button
+                  className="w-full"
+                  disabled={selectedCount === 0 || anyCommitting}
+                  onClick={() => commitItems(okDrafts.filter((d) => d.selected))}
+                >
+                  {anyCommitting ? "Adding…" : primaryLabel}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

@@ -143,17 +143,16 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     resolve(args, ref) {
       const nameGuess = asString(args.investmentName);
       const investment = matchByName(nameGuess, ref.investments);
+      const warnings: string[] = [];
       if (!investment) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess
-            ? `No investment named "${nameGuess}" found.`
-            : "Missing investment name.",
-        };
+        warnings.push(
+          nameGuess
+            ? `Couldn't match investment "${nameGuess}" — pick one below.`
+            : "No investment specified — pick one below.",
+        );
       }
       const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
+      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
 
       const parsed = investmentContributionSchema.safeParse({
         amount,
@@ -161,14 +160,16 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
         contributedAt: normalizeDate(args.date) ?? todayISO(),
       });
       if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
       }
+      // Unresolved: still a valid draft, just missing a target — the UI
+      // shows a picker (never a guessed id) and commit re-requires it.
       return {
         ok: true,
         fields: parsed.data,
-        targetId: investment.id,
-        targetLabel: investment.name,
-        warnings: [],
+        targetId: investment?.id,
+        targetLabel: investment?.name,
+        warnings,
       };
     },
     execute: (fields, targetId) => recordContribution(targetId!, undefined, toFormData(fields)),
@@ -230,15 +231,14 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     resolve(args, ref) {
       const nameGuess = asString(args.loanName);
       const loan = matchByName(nameGuess, ref.loans);
+      const warnings: string[] = [];
       if (!loan) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `No loan named "${nameGuess}" found.` : "Missing loan name.",
-        };
+        warnings.push(
+          nameGuess ? `Couldn't match loan "${nameGuess}" — pick one below.` : "No loan specified — pick one below.",
+        );
       }
       const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
+      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
 
       const parsed = paymentInputSchema.safeParse({
         amount,
@@ -246,14 +246,14 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
         isExtra: asBool(args.isExtra) ?? false,
       });
       if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
       }
       return {
         ok: true,
         fields: parsed.data,
-        targetId: loan.id,
-        targetLabel: loan.name,
-        warnings: [],
+        targetId: loan?.id,
+        targetLabel: loan?.name,
+        warnings,
       };
     },
     execute: (fields, targetId) => recordPayment(targetId!, undefined, toFormData(fields)),
@@ -312,15 +312,14 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     resolve(args, ref) {
       const nameGuess = asString(args.goalName);
       const goal = matchByName(nameGuess, ref.goals);
+      const warnings: string[] = [];
       if (!goal) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `No goal named "${nameGuess}" found.` : "Missing goal name.",
-        };
+        warnings.push(
+          nameGuess ? `Couldn't match goal "${nameGuess}" — pick one below.` : "No goal specified — pick one below.",
+        );
       }
       const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
+      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
 
       const parsed = goalContributionSchema.safeParse({
         amount,
@@ -328,14 +327,14 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
         note: null,
       });
       if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
       }
       return {
         ok: true,
         fields: parsed.data,
-        targetId: goal.id,
-        targetLabel: goal.name,
-        warnings: [],
+        targetId: goal?.id,
+        targetLabel: goal?.name,
+        warnings,
       };
     },
     execute: (fields, targetId) => addContribution(targetId!, undefined, toFormData(fields)),

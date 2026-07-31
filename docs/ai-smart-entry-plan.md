@@ -210,9 +210,21 @@ during implementation review.
 - [x] `npm run build` + `npm run lint` — both clean.
 - [x] Documented the Route Handler exception in the financeos skill
       (`.claude/skills/financeos/SKILL.md`, Auth section).
-- [ ] `/ai` UI: mode toggle, composer, draft list, confirm/commit — deferred
-      to a follow-up session (design agreed above; not yet wired to these
-      endpoints).
+- [x] `/ai` UI: `AiShell` (Ask/Add toggle) → `SmartEntryView` (composer,
+      calls `/api/v1/ai/extract`) → `DraftCard` list (checkbox select,
+      per-capability editable fields driven by `smart-entry-types.ts`'s
+      `FIELD_SPECS`, target picker for contribution/payment capabilities,
+      warnings, discard) → sticky adaptive commit bar (`Add all (N)` /
+      `Add selected (N)`) + per-card individual "Add", both calling
+      `/api/v1/ai/commit`. Reuses only existing primitives (`Card`, `Badge`,
+      `Input`, `Select`, `Textarea`, `Button`, `Skeleton`, `Icon`) — no new
+      UI dependency. Visually verified at 390px and desktop via a throwaway
+      fixture route (not committed).
+- [x] Changed the three target-required capabilities (investment
+      contribution, loan payment, goal contribution) so an unresolved name
+      is a fixable draft with a picker, not a dead-end error — found while
+      building the UI; `commit.ts`'s ownership re-check already covered the
+      missing-target case, so this was UI-only in terms of new risk.
 - [ ] Durable (DB- or Redis-backed) rate limiting, if usage warrants it.
 - [ ] Bearer-token auth for `/api/v1/ai/*`, once the query/action layer
       accepts an injected Supabase client instead of each instantiating its
