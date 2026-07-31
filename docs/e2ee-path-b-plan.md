@@ -142,6 +142,17 @@ Money and free-text columns across the modules that carry real user data
 | `accounts` | `balance`, possibly `name` |
 | `recurring_rules` | `amount`, `note` |
 | `notifications` | `body` (title is app-generated, low sensitivity) |
+| `private.ai_provider_keys` | `encryptedKey` (the vendor API key itself) |
+
+**`private.ai_provider_keys` is in scope too — locked decision, not a
+maybe.** It's already encrypted (`src/lib/ai/crypto.ts`), but under a
+server-held `AI_KEYS_ENCRYPTION_KEY`, which is exactly the "same method as
+the AI keys, but I can still see it" gap this whole doc exists to close.
+Under Path B it gets the identical vault-key treatment as everything else:
+`encryptedKey`/`keyIv` become wrapped by the user's DEK instead of the
+server secret. See "Resolved: the AI Assistant conflict" below — this one
+choice has a real, larger consequence for how the AI features work, not
+just where the ciphertext sits.
 
 `userId`, foreign keys, `currency`, `date`/`timestamp` columns, `kind`,
 `type`, `status` enums stay plaintext — RLS still needs `userId` to scope
@@ -205,32 +216,58 @@ client-driven instead:
   client-side computation over decrypted data instead of read-time
   server-side.
 
-## Direct conflict: the AI Assistant (BYOK)
+## Resolved: the AI Assistant conflict
 
-This needs an explicit decision, not a default. `buildFinanceContext()`
-(`src/lib/ai/context.ts`) runs server-side specifically so the DeepSeek
-vendor key never touches the browser — a deliberate, documented security
-goal (AGENTS.md: "Keys are never readable by the browser"). Under E2EE the
-server has no plaintext numbers to put in that context at all. Three ways
-to resolve it, none free:
+**Decision (locked): the vendor API key is under the vault too, full stop
+— "not even me" includes the AI keys.** This resolves the three-way fork
+the first draft of this doc left open, and it has real, larger
+consequences than just moving where ciphertext sits:
 
-1. **AI Assistant is unavailable for encrypted accounts.** Simplest,
-   preserves the existing BYOK vendor-key security model untouched, costs
-   the feature entirely for anyone who opts into Path B.
-2. **Move AI calls client-side.** Decrypt the vendor API key in the
-   browser and call DeepSeek directly from the client. This reverses the
-   "never readable by browser" guarantee for the *vendor* key — a real,
-   documented regression to weigh against gaining the feature back.
-3. **User-gated context sharing.** Keep the vendor key server-side (current
-   model intact), but have the *client* decrypt the numbers, build the
-   context string itself, and send that plaintext context (not raw DB
-   rows) to the server for just that one request, with explicit user
-   consent each time ("share your numbers with the AI for this
-   question?"). Narrows the exposure window to opt-in, per-question, but
-   is a deliberate small hole in "not even me" that needs to be named as
-   such, not hidden.
-
-Not deciding this here — recorded as an open question for Phase B.5 below.
+- `AI_KEYS_ENCRYPTION_KEY` (server secret) is retired for provider keys.
+  `saveProviderKey`/`setActiveProviderKey`/`deleteProviderKey`
+  (`src/lib/ai/actions.ts`) stop being able to hand the server plaintext at
+  save time — the client wraps the vendor key with the DEK before it's
+  ever sent, same as any other encrypted field in this plan.
+- The server can therefore **never again decrypt a vendor key to make the
+  call itself.** `chatWithActiveProvider()` (`src/lib/ai/resolver.ts`) —
+  today's one chokepoint that decrypts server-side and calls
+  `provider.chat()` — can no longer do that. This isn't only the Ask
+  feature: **Smart Entry's extraction** (`src/lib/ai/smart-entry/
+  extract.ts`, reached via `/api/v1/ai/extract`) goes through the exact
+  same chokepoint, so both AI features move together, not just Ask.
+- The vendor call itself has to happen where the plaintext key is allowed
+  to exist: the browser. `deepseekProvider.chat()`
+  (`src/lib/ai/providers/deepseek.ts`) — currently a `server-only` fetch —
+  needs a client-callable counterpart that the unlocked vault decrypts the
+  key for, then calls the vendor's chat-completions endpoint directly from
+  the page.
+- **Real open risk, needs a spike before B.2 starts:** whether DeepSeek
+  (and later OpenAI/Gemini/Claude) actually allow browser-origin CORS
+  requests with an `Authorization` header to their chat-completions
+  endpoint. Plenty of vendor APIs deliberately don't, precisely to stop
+  keys leaking into client bundles/network tabs. This needs verifying
+  per-provider before committing to "pure client-side calls" as the
+  mechanism.
+- **Fallback if CORS is blocked: a transient relay, not a stored
+  decrypt.** A Route Handler that receives the *already-decrypted*
+  key in the request body (sent once, over HTTPS, from the unlocked
+  browser), immediately forwards it to the vendor, and never logs or
+  persists it — the plaintext exists only for the lifetime of that one
+  request, in memory, then it's gone. This is weaker than a pure
+  client-only call: it requires trusting that the code you deployed
+  doesn't add a stray log line, whereas a client-only call removes the
+  server from the path entirely. Name this residual trust gap explicitly
+  in the Settings UI if this fallback is what ships, rather than letting
+  "not even me" quietly mean "not even me, unless the server's request
+  handler misbehaves."
+- Rate limiting (`src/lib/ai/rate-limit.ts`) currently protects the
+  extract/commit routes per-user server-side — that's about abuse/cost
+  control on Smart Entry's *own* endpoints, independent of this change,
+  and keeps working either way since it doesn't touch the vendor key.
+- `testProviderKey` (verify a key before saving) has the same shift: the
+  test call moves to wherever the real chat call moves (browser or
+  transient relay), not a server-side `adapter.testKey()` holding
+  plaintext.
 
 ## Build phases
 
@@ -257,27 +294,52 @@ Not deciding this here — recorded as an open question for Phase B.5 below.
         passphrase.
   - [ ] Unlock UI: prompt on session start for any encrypted route: derive
         KEK, unwrap DEK, hold in memory.
-- [ ] **B.2 — Pilot one module end-to-end.** Recommend Transactions (it's
-      already "the reference module" per AGENTS.md) — prove
+- [ ] **B.2 — Pilot: migrate `private.ai_provider_keys` to vault-wrapped
+      storage.** Smallest table, already isolated, already has its own
+      encrypt/decrypt helper to model the client-side version from — and
+      it's the specific thing that prompted locking in "not even me"
+      instead of the server-secret model. Prove the vault pattern here
+      before the twelve finance tables.
+  - [ ] Spike first: confirm whether DeepSeek's chat-completions endpoint
+        accepts a browser-origin CORS request with `Authorization` — this
+        determines whether B.2's vendor-call rework is a pure client-side
+        fetch or needs the transient-relay fallback (see "Resolved: the AI
+        Assistant conflict").
+  - [ ] Move `saveProviderKey`/`testProviderKey` to wrap/verify client-side;
+        server persists ciphertext only.
+  - [ ] Rework `chatWithActiveProvider` → a client-side call path (direct
+        vendor fetch, or the transient relay) for both Ask
+        (`src/lib/ai/actions.ts`) and Smart Entry extraction
+        (`src/lib/ai/smart-entry/extract.ts`).
+- [ ] **B.3 — Pilot the finance-data pattern.** Recommend Transactions
+      next (it's already "the reference module" per AGENTS.md) — prove
       encrypt-on-write, decrypt-on-read, client-side dashboard tile, before
-      touching the other eleven tables.
-- [ ] **B.3 — Roll the pattern out** to the remaining tables in the Scope
+      touching the other eleven finance tables.
+- [ ] **B.4 — Roll the pattern out** to the remaining tables in the Scope
       table above.
-- [ ] **B.4 — Move server-component pages to client-driven fetch +
+- [ ] **B.5 — Move server-component pages to client-driven fetch +
       decrypt + compute**, module by module, per the Architecture shift
       section.
-- [ ] **B.5 — Resolve the AI Assistant conflict** — pick one of the three
-      options above (or a variant), implement it, update
-      `docs/phase-3-ai-assistant-plan.md` to reflect the decision.
 - [ ] **B.6 — Recovery key UX, vault passphrase for OAuth users, session
       unlock/remember-device UX.**
-- [ ] **B.7 — Backfill tooling** for any pre-existing plaintext rows,
-      security review, remove dead server-side plaintext code paths once
-      migrated.
+- [ ] **B.7 — Backfill tooling** for any pre-existing plaintext rows
+      (including today's `AI_KEYS_ENCRYPTION_KEY`-wrapped provider keys —
+      users re-save their key once to move it under the vault), security
+      review, remove dead server-side plaintext code paths (including
+      `AI_KEYS_ENCRYPTION_KEY` and `src/lib/ai/crypto.ts`'s server-secret
+      path) once migrated.
 
 ## Open questions (need a decision, not defaulted)
 
-- AI Assistant resolution (B.5) — which of the three options, or a fourth.
+- CORS feasibility per vendor (DeepSeek now, OpenAI/Gemini/Claude later) —
+  the B.2 spike's answer decides whether AI calls are pure client-side or
+  need the transient-relay fallback; if even the fallback is unworkable
+  for a given vendor, that provider may not be offerable under Path B at
+  all, which is a product call, not just an engineering one.
+- If the transient relay is what ships: is a per-request, no-persistence
+  server touch of the plaintext key an acceptable reading of "not even
+  me," or does that need to be surfaced to the user as an explicit,
+  named exception rather than shipped silently?
 - "Remember this device" convenience vs. re-deriving the KEK every
   session — and if in scope, what backs it (WebAuthn-gated local wrapped
   key is the standard answer).
