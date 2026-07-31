@@ -235,39 +235,48 @@ consequences than just moving where ciphertext sits:
   feature: **Smart Entry's extraction** (`src/lib/ai/smart-entry/
   extract.ts`, reached via `/api/v1/ai/extract`) goes through the exact
   same chokepoint, so both AI features move together, not just Ask.
-- The vendor call itself has to happen where the plaintext key is allowed
-  to exist: the browser. `deepseekProvider.chat()`
-  (`src/lib/ai/providers/deepseek.ts`) — currently a `server-only` fetch —
-  needs a client-callable counterpart that the unlocked vault decrypts the
-  key for, then calls the vendor's chat-completions endpoint directly from
-  the page.
-- **Real open risk, needs a spike before B.2 starts:** whether DeepSeek
-  (and later OpenAI/Gemini/Claude) actually allow browser-origin CORS
-  requests with an `Authorization` header to their chat-completions
-  endpoint. Plenty of vendor APIs deliberately don't, precisely to stop
-  keys leaking into client bundles/network tabs. This needs verifying
-  per-provider before committing to "pure client-side calls" as the
-  mechanism.
-- **Fallback if CORS is blocked: a transient relay, not a stored
-  decrypt.** A Route Handler that receives the *already-decrypted*
-  key in the request body (sent once, over HTTPS, from the unlocked
-  browser), immediately forwards it to the vendor, and never logs or
-  persists it — the plaintext exists only for the lifetime of that one
-  request, in memory, then it's gone. This is weaker than a pure
-  client-only call: it requires trusting that the code you deployed
-  doesn't add a stray log line, whereas a client-only call removes the
-  server from the path entirely. Name this residual trust gap explicitly
-  in the Settings UI if this fallback is what ships, rather than letting
-  "not even me" quietly mean "not even me, unless the server's request
-  handler misbehaves."
+- **Decision (locked): the actual vendor call stays server-side, via a
+  transient relay — not a pure browser-to-vendor fetch.** A pure
+  client-side call (browser calls DeepSeek directly) depends on every
+  current and future provider's chat-completions endpoint permitting
+  browser-origin CORS with an `Authorization` header — unverified, and
+  plenty of vendor APIs deliberately don't allow it precisely to stop keys
+  leaking into client bundles/network tabs (Anthropic's own SDK gates this
+  behind `dangerouslyAllowBrowser: true` and warns against it in
+  production). Betting the whole AI feature set on that per-vendor
+  behavior is fragile. The relay removes that dependency entirely while
+  keeping the "no server-held master key" property that actually matters
+  for "not even me."
+- **How the relay works**: the browser (vault unlocked, DEK in memory)
+  decrypts the vendor key locally, then sends the *plaintext* key in the
+  body of a single HTTPS request to a Route Handler
+  (`src/app/api/v1/ai/*` — the existing documented exception to "mutations
+  are Server Actions," see AGENTS.md). That handler immediately uses it to
+  call the vendor, streams/returns the result, and **never logs or
+  persists the key** — it exists in server memory for the lifetime of
+  that one request only, then it's gone. Nothing new is written to
+  `ai_provider_keys` or anywhere else in plaintext at any point.
+- **What this does and doesn't buy.** It fully closes the original gap —
+  there is no `AI_KEYS_ENCRYPTION_KEY`-style server secret that can
+  decrypt a stored key at rest, ever, so a DB leak/backup theft/stolen
+  service-role credential still yields nothing usable. What it does *not*
+  do is make the server literally incapable of seeing the key during an
+  in-flight request the user themself initiated — that's a narrower,
+  honest exception ("not even me, except transiently, only during a
+  request you made, only if the deployed code doesn't misbehave") and
+  needs to be named as such in the Settings UI, not glossed over.
+- Direct client-to-vendor calls (skipping the relay) remain a valid
+  **optional future optimization** per provider, if/when a given vendor's
+  CORS policy is confirmed to allow it — it shrinks the trust window
+  further for that provider. Not required, not blocking B.2.
 - Rate limiting (`src/lib/ai/rate-limit.ts`) currently protects the
   extract/commit routes per-user server-side — that's about abuse/cost
   control on Smart Entry's *own* endpoints, independent of this change,
-  and keeps working either way since it doesn't touch the vendor key.
-- `testProviderKey` (verify a key before saving) has the same shift: the
-  test call moves to wherever the real chat call moves (browser or
-  transient relay), not a server-side `adapter.testKey()` holding
-  plaintext.
+  and keeps working unchanged since it doesn't touch the vendor key.
+- `testProviderKey` (verify a key before saving) goes through the same
+  relay shape: the browser sends the freshly-entered plaintext key once
+  for a test call, never a server-side `adapter.testKey()` holding a
+  *stored* key.
 
 ## Build phases
 
@@ -300,17 +309,21 @@ consequences than just moving where ciphertext sits:
       it's the specific thing that prompted locking in "not even me"
       instead of the server-secret model. Prove the vault pattern here
       before the twelve finance tables.
-  - [ ] Spike first: confirm whether DeepSeek's chat-completions endpoint
-        accepts a browser-origin CORS request with `Authorization` — this
-        determines whether B.2's vendor-call rework is a pure client-side
-        fetch or needs the transient-relay fallback (see "Resolved: the AI
-        Assistant conflict").
-  - [ ] Move `saveProviderKey`/`testProviderKey` to wrap/verify client-side;
-        server persists ciphertext only.
-  - [ ] Rework `chatWithActiveProvider` → a client-side call path (direct
-        vendor fetch, or the transient relay) for both Ask
-        (`src/lib/ai/actions.ts`) and Smart Entry extraction
-        (`src/lib/ai/smart-entry/extract.ts`).
+  - [ ] Move `saveProviderKey`/`testProviderKey` to wrap client-side for
+        storage; server persists ciphertext only, and `testProviderKey`'s
+        verification call goes through the relay below rather than a
+        server-side `adapter.testKey()` holding a stored key.
+  - [ ] Build the transient-relay Route Handler: accepts a plaintext
+        vendor key in the request body (sent once, per call, from the
+        unlocked browser), calls the provider adapter, returns the
+        result, never logs/persists the key. Rework
+        `chatWithActiveProvider` (`src/lib/ai/resolver.ts`) and both
+        callers — Ask (`src/lib/ai/actions.ts`) and Smart Entry extraction
+        (`src/lib/ai/smart-entry/extract.ts`) — to go through it instead
+        of decrypting a stored key server-side.
+  - [ ] (Optional, non-blocking) Confirm per-provider whether a pure
+        client-to-vendor call is possible (CORS), as a future
+        optimization that skips the relay entirely for that provider.
 - [ ] **B.3 — Pilot the finance-data pattern.** Recommend Transactions
       next (it's already "the reference module" per AGENTS.md) — prove
       encrypt-on-write, decrypt-on-read, client-side dashboard tile, before
@@ -331,15 +344,19 @@ consequences than just moving where ciphertext sits:
 
 ## Open questions (need a decision, not defaulted)
 
-- CORS feasibility per vendor (DeepSeek now, OpenAI/Gemini/Claude later) —
-  the B.2 spike's answer decides whether AI calls are pure client-side or
-  need the transient-relay fallback; if even the fallback is unworkable
-  for a given vendor, that provider may not be offerable under Path B at
-  all, which is a product call, not just an engineering one.
-- If the transient relay is what ships: is a per-request, no-persistence
-  server touch of the plaintext key an acceptable reading of "not even
-  me," or does that need to be surfaced to the user as an explicit,
-  named exception rather than shipped silently?
+- ~~CORS feasibility per vendor~~ — resolved: the transient relay is the
+  primary mechanism regardless of CORS support, so this no longer blocks
+  B.2. Per-provider CORS remains worth checking later purely as an
+  optional optimization (see B.2), not a design dependency.
+- **Decided, but needs a UI decision to match**: the relay's per-request,
+  no-persistence server touch of the plaintext key is the accepted
+  reading of "not even me" for the AI keys. What's not yet decided is
+  *how* this gets surfaced to the user — e.g. a one-time note in Settings
+  → AI & Integrations explaining that asking the assistant a question
+  means your key transits the server for that single call (never stored,
+  never logged), versus staying silent about it. Leaning toward surfacing
+  it — "not even me" should be a claim the user can audit, not one they
+  have to trust blindly.
 - "Remember this device" convenience vs. re-deriving the KEK every
   session — and if in scope, what backs it (WebAuthn-gated local wrapped
   key is the standard answer).
