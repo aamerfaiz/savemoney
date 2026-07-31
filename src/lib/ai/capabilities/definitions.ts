@@ -25,8 +25,7 @@ import {
 } from "@/lib/goals/types";
 import { createGoal, addContribution, updateGoal, deleteGoal } from "@/lib/goals/actions";
 
-import { budgetInputSchema, BUDGET_PERIODS } from "@/lib/budgets/types";
-import { createBudget, updateBudget, deleteBudget } from "@/lib/budgets/actions";
+import { deleteBudget } from "@/lib/budgets/actions";
 
 import { recurringInputSchema, RECURRING_FREQUENCIES } from "@/lib/recurring/types";
 import {
@@ -42,7 +41,6 @@ import {
   fetchCurrentInvestment,
   fetchCurrentLoan,
   fetchCurrentGoal,
-  fetchCurrentBudget,
   fetchCurrentRecurring,
 } from "./shared";
 import {
@@ -61,18 +59,20 @@ const emptySchema = z.object({});
  * Every capability Smart Entry can propose. One entry per existing
  * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`.
  *
- * No `transaction.*` capabilities as of Phase 3.5.3 (removed, not disabled):
- * income/expenses are now encrypted under the vault DEK, and this file's
- * `execute()` calls run entirely server-side via /api/v1/ai/commit, which
- * has no DEK to encrypt with. Properly supporting them would mean moving
- * amount validation client-side (before encryption) while commit.ts's
- * independent re-validation (`def.schema.safeParse`, the "never trust
- * fields" defense-in-depth check) can no longer inspect a real numeric
- * amount post-encryption — a real redesign of that trust boundary, not
- * done here. Adding/editing/deleting a transaction still works normally
- * through the Transactions page itself (src/lib/transactions/
- * client-actions.ts), which encrypts client-side the same way. Only the
- * natural-language Smart Entry shortcut is unavailable for transactions.
+ * No `transaction.*` capabilities as of Phase 3.5.3, and no `budget.create`/
+ * `budget.edit` as of Phase 3.5.4 (removed, not disabled): once a table's
+ * `amount` is encrypted under the vault DEK, this file's `execute()` calls
+ * — which run entirely server-side via /api/v1/ai/commit — have no DEK to
+ * encrypt with. Properly supporting them would mean moving amount
+ * validation client-side (before encryption) while commit.ts's independent
+ * re-validation (`def.schema.safeParse`, the "never trust fields"
+ * defense-in-depth check) can no longer inspect a real numeric amount
+ * post-encryption — a real redesign of that trust boundary, not done here.
+ * Creating/editing a budget still works normally through the Budget page
+ * itself (src/lib/budgets/client-actions.ts), which encrypts client-side
+ * the same way. `budget.delete` is unaffected (no amount involved) and
+ * stays. Only the natural-language Smart Entry shortcut is unavailable for
+ * creating/editing transactions and budgets.
  */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
   {
@@ -549,93 +549,6 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
     },
     execute: (_fields, targetId) => deleteGoal(targetId!),
-  },
-
-  {
-    key: "budget.create",
-    module: "budget",
-    label: "New budget",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A new spending budget/limit. args: categoryName (string, optional — " +
-      "omit for an overall/all-spending budget), period (one of weekly/" +
-      "monthly/yearly, optional, defaults to monthly), amount (number, " +
-      "required), startsOn (YYYY-MM-DD, optional, defaults to today).",
-    schema: budgetInputSchema,
-    async resolve(args, ref) {
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
-
-      const warnings: string[] = [];
-      const categoryGuess = asString(args.categoryName);
-      const category = matchByName(categoryGuess, ref.expenseCategories);
-      if (categoryGuess && !category) {
-        warnings.push(`Couldn't match category "${categoryGuess}" — will save as an overall budget.`);
-      }
-      const period = normalizeEnum(args.period, BUDGET_PERIODS);
-
-      const parsed = budgetInputSchema.safeParse({
-        categoryId: category?.id ?? null,
-        period: period ?? undefined,
-        amount,
-        startsOn: normalizeDate(args.startsOn) ?? todayISO(),
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings };
-    },
-    execute: (fields) => createBudget(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "budget.edit",
-    module: "budget",
-    label: "Edit budget",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Save",
-    promptDescription:
-      "Change an EXISTING budget's amount, period, or category. args: " +
-      "budgetName (string, required — describe it, e.g. the category name " +
-      "and/or period, matched against the user's own budgets), plus ONLY the " +
-      "fields the user wants changed: categoryName, period, amount, startsOn.",
-    schema: budgetInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.budgetName);
-      const match = matchByName(nameGuess, ref.budgets);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `Couldn't find a budget matching "${nameGuess}".` : "Missing which budget to change.",
-        };
-      }
-      const current = await fetchCurrentBudget(match.id);
-      if (!current) return { ok: false, warnings: [], error: "That budget could not be found." };
-
-      const warnings: string[] = [];
-      const categoryGuess = asString(args.categoryName);
-      const category = categoryGuess ? matchByName(categoryGuess, ref.expenseCategories) : undefined;
-      if (categoryGuess && !category) {
-        warnings.push(`Couldn't match category "${categoryGuess}" — left as-is.`);
-      }
-      const period = normalizeEnum(args.period, BUDGET_PERIODS);
-
-      const parsed = budgetInputSchema.safeParse({
-        categoryId: category ? category.id : current.categoryId,
-        period: period ?? current.period,
-        amount: toNumber(args.amount) ?? current.amount,
-        startsOn: normalizeDate(args.startsOn) ?? current.startsOn,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings };
-    },
-    execute: (fields, targetId) => updateBudget(targetId!, undefined, toFormData(fields)),
   },
 
   {

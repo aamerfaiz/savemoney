@@ -10,7 +10,7 @@
  */
 
 import { decryptPacked } from "@/lib/vault/crypto";
-import type { RawIncomeRow, RawExpenseRow } from "./raw-data";
+import type { RawIncomeRow, RawExpenseRow, RawBudgetRow } from "./raw-data";
 
 export interface DecryptedIncomeRow {
   id: string;
@@ -44,6 +44,16 @@ export interface DecryptedExpenseRow {
   spentAt: string;
   isRecurring: boolean;
   frequency: string;
+}
+
+export interface DecryptedBudgetRow {
+  id: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  period: string;
+  amount: number;
+  currency: string;
 }
 
 export interface DecryptResult<T> {
@@ -80,6 +90,19 @@ export async function decryptExpenseRows(
         tags: tagsJson ? (JSON.parse(tagsJson) as string[]) : null,
       };
     }),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptBudgetRows(
+  rows: RawBudgetRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedBudgetRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedBudgetRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
   );
   return splitSettled(settled);
 }

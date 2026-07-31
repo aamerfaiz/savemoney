@@ -1,0 +1,1 @@
+ALTER TABLE "budgets" ALTER COLUMN "amount" SET DATA TYPE text USING amount::text;

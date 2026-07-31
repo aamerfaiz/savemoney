@@ -2,7 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertTriangle, ShieldAlert } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,15 @@ import type { CategoryOption } from "@/lib/transactions/reference";
 export function BudgetsView({
   data,
   categories,
+  dek,
+  failedCount = 0,
 }: {
   data: BudgetsData;
   categories: CategoryOption[];
+  dek: CryptoKey;
+  /** Budgets that existed but couldn't be decrypted with the current DEK —
+   * e.g. pre-3.5.4 rows saved before encryption was enabled. */
+  failedCount?: number;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -58,6 +64,15 @@ export function BudgetsView({
           <Plus className="size-4" /> New budget
         </Button>
       </div>
+
+      {failedCount > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          {failedCount} {failedCount === 1 ? "budget" : "budgets"} couldn&apos;t
+          be read — saved before encryption was enabled and can&apos;t be
+          recovered. Re-enter if you still need them.
+        </p>
+      )}
 
       {/* Safe-to-spend (dynamic budgeting engine) */}
       <Card className="p-5">
@@ -120,7 +135,7 @@ export function BudgetsView({
         title="New budget"
         description="Set a spending limit for a category or overall."
       >
-        <BudgetForm categories={categories} onSuccess={() => setAdding(false)} />
+        <BudgetForm categories={categories} onSuccess={() => setAdding(false)} dek={dek} />
       </Dialog>
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} title="Edit budget">
@@ -129,6 +144,7 @@ export function BudgetsView({
             categories={categories}
             existing={editing}
             onSuccess={() => setEditing(null)}
+            dek={dek}
           />
         )}
       </Dialog>

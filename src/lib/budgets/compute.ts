@@ -9,7 +9,11 @@
 
 import { computeBudget, type BudgetResult } from "@/lib/finance/budget";
 import type { CurrencyCode } from "@/lib/format";
-import type { DecryptedExpenseRow, DecryptedIncomeRow } from "@/lib/finance/decrypt";
+import type {
+  DecryptedBudgetRow,
+  DecryptedExpenseRow,
+  DecryptedIncomeRow,
+} from "@/lib/finance/decrypt";
 import type { FinanceRawData } from "@/lib/finance/raw-data";
 import { budgetStatus, type BudgetPeriod, type BudgetWithProgress } from "./types";
 import { periodStart } from "./period";
@@ -23,11 +27,12 @@ export interface BudgetsData {
 export function computeBudgetsData(
   expenses: DecryptedExpenseRow[],
   income: DecryptedIncomeRow[],
-  raw: Pick<FinanceRawData, "budgets" | "activeGoals" | "loans" | "investmentMonthlyContributions">,
+  decryptedBudgets: DecryptedBudgetRow[],
+  raw: Pick<FinanceRawData, "activeGoals" | "loans" | "investmentMonthlyContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): BudgetsData {
-  const budgets: BudgetWithProgress[] = raw.budgets.map((b) => {
+  const budgets: BudgetWithProgress[] = decryptedBudgets.map((b) => {
     const period = b.period as BudgetPeriod;
     const from = iso(periodStart(period, now));
     const spent = expenses

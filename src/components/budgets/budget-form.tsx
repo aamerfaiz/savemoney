@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import type { ActionResult } from "@/lib/budgets/actions";
 import {
-  createBudget,
-  updateBudget,
-  type ActionResult,
-} from "@/lib/budgets/actions";
+  encryptedCreateBudget,
+  encryptedUpdateBudget,
+} from "@/lib/budgets/client-actions";
 import { BUDGET_PERIODS, type BudgetWithProgress } from "@/lib/budgets/types";
 import type { CategoryOption } from "@/lib/transactions/reference";
 
@@ -21,13 +21,17 @@ export function BudgetForm({
   categories,
   existing,
   onSuccess,
+  dek,
 }: {
   categories: CategoryOption[];
   existing?: BudgetWithProgress;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
-  const action = existing ? updateBudget.bind(null, existing.id) : createBudget;
+  const action = existing
+    ? encryptedUpdateBudget.bind(null, dek, existing.id)
+    : encryptedCreateBudget.bind(null, dek);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

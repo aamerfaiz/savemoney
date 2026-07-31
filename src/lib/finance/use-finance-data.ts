@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { CurrencyCode } from "@/lib/format";
 import { fetchFinanceRawData } from "./raw-data";
-import { decryptExpenseRows, decryptIncomeRows } from "./decrypt";
+import { decryptBudgetRows, decryptExpenseRows, decryptIncomeRows } from "./decrypt";
 import { computeBudgetsData, type BudgetsData } from "@/lib/budgets/compute";
 import { computeAnalyticsData } from "@/lib/analytics/compute";
 import { computeTransactionsList } from "@/lib/transactions/compute";
@@ -27,11 +27,12 @@ export interface FinanceData {
   analytics: AnalyticsData;
   transactions: Transaction[];
   /** Rows that existed but couldn't be decrypted with the current DEK —
-   * either encrypted under a different vault, or (right now) pre-3.5.3
-   * rows that were never encrypted at all. Surfaced so the UI can say so
-   * instead of silently under-counting. */
+   * either encrypted under a different vault, or (right now) pre-3.5.3/
+   * pre-3.5.4 rows that were never encrypted at all. Surfaced so the UI
+   * can say so instead of silently under-counting. */
   failedIncomeCount: number;
   failedExpenseCount: number;
+  failedBudgetCount: number;
 }
 
 export function useFinanceData(currency: CurrencyCode) {
@@ -49,12 +50,19 @@ export function useFinanceData(currency: CurrencyCode) {
       const raw = await fetchFinanceRawData();
       if ("error" in raw) throw new Error(raw.error);
 
-      const [incomeResult, expenseResult] = await Promise.all([
+      const [incomeResult, expenseResult, budgetResult] = await Promise.all([
         decryptIncomeRows(raw.income, dek),
         decryptExpenseRows(raw.expenses, dek),
+        decryptBudgetRows(raw.budgets, dek),
       ]);
 
-      const budgets = computeBudgetsData(expenseResult.rows, incomeResult.rows, raw, currency);
+      const budgets = computeBudgetsData(
+        expenseResult.rows,
+        incomeResult.rows,
+        budgetResult.rows,
+        raw,
+        currency,
+      );
       const analytics = computeAnalyticsData(incomeResult.rows, expenseResult.rows, raw, currency);
       const transactions = computeTransactionsList(
         incomeResult.rows,
@@ -68,6 +76,7 @@ export function useFinanceData(currency: CurrencyCode) {
         transactions,
         failedIncomeCount: incomeResult.failedCount,
         failedExpenseCount: expenseResult.failedCount,
+        failedBudgetCount: budgetResult.failedCount,
       };
     },
   });

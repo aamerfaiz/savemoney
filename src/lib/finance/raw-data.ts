@@ -63,12 +63,13 @@ export interface RawBudgetRow {
   categoryName: string | null;
   categoryIcon: string | null;
   period: string;
-  amount: number;
+  /** Packed ciphertext (Phase 3.5.4) — decrypt via decryptBudgetRows(). */
+  amount: string;
   currency: string;
 }
 
-/** None of these are encrypted this pass — bundled in alongside the
- * ciphertext rows purely because computeBudgetsData/computeAnalyticsData
+/** None of the rest of this is encrypted this pass — bundled in alongside
+ * the ciphertext rows purely because computeBudgetsData/computeAnalyticsData
  * must now run client-side, so everything they need has to be fetchable
  * from there, secret or not. */
 export interface FinanceRawData {
@@ -247,7 +248,7 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
       id: string;
       category_id: string | null;
       period: string;
-      amount: string | number;
+      amount: string;
       currency: string;
       categories: { name: string | null; icon: string | null } | null;
     }[]
@@ -257,7 +258,7 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
     categoryName: b.categories?.name ?? null,
     categoryIcon: b.categories?.icon ?? null,
     period: b.period,
-    amount: Number(b.amount),
+    amount: b.amount,
     currency: b.currency,
   }));
 

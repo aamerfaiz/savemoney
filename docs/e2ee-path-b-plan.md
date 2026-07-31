@@ -810,7 +810,39 @@ folded into generic "connect an agent" copy.
         `npm run lint` both clean. **Not verified**: a real browser
         session — this sandbox still has no Supabase auth credentials,
         same limitation as every phase so far.
-  - [ ] `budgets.amount`
+  - [x] `budgets.amount` — done. Migration `encrypt_budgets_amount_column`
+        applied to the live project (`numeric(14,2)` → `text`, `USING
+        amount::text`); Drizzle schema/migration committed as
+        `drizzle/0009_nebulous_serpent_society.sql`. Read path: `raw-data.ts`
+        now returns `amount` as packed ciphertext on `RawBudgetRow`; a new
+        `decryptBudgetRows()` in `finance/decrypt.ts` (same
+        `Promise.allSettled` fault-tolerance as income/expenses) feeds
+        `computeBudgetsData()`, which now takes decrypted budget rows as an
+        explicit parameter instead of reading `raw.budgets` itself — the only
+        call site was `useFinanceData()`. Write path: `budget-form.tsx` now
+        requires a `dek: CryptoKey` prop (threaded from
+        `authed-budgets-view.tsx` → `budgets-view.tsx`, matching the
+        `AuthedTransactionsView` pattern) and binds new
+        `encryptedCreateBudget`/`encryptedUpdateBudget` wrappers in a new
+        `src/lib/budgets/client-actions.ts`, mirroring
+        `transactions/client-actions.ts`; `budgets/actions.ts`'s
+        `createBudget`/`updateBudget` now take a typed
+        `EncryptedBudgetInput` object instead of `(prevState, formData)`
+        directly (no longer bindable straight to `useActionState`).
+        `budgets-view.tsx` gained the same "N budgets couldn't be read"
+        decrypt-failure banner as Transactions
+        (`FinanceData.failedBudgetCount`).
+        **Scope cut**: removed the `budget.create`/`budget.edit` Smart
+        Entry capabilities from `ai/capabilities/definitions.ts` (and the
+        now-dead `fetchCurrentBudget` helper from `shared.ts`) — same
+        reasoning as the `transaction.*` removal in 3.5.3: their
+        `execute()` runs server-side via `/api/v1/ai/commit` with no DEK to
+        encrypt an amount with. `budget.delete` is untouched (no amount
+        involved). Creating/editing a budget still works normally through
+        the Budget page. **Verified**: `npm run build`/`npm run lint`
+        clean; migration applied via Supabase MCP, `get_advisors` shows no
+        new findings. **Not verified**: a real browser session, same
+        sandbox limitation as every phase so far.
   - [ ] `goals.targetAmount`/`currentAmount`/`monthlyContribution`
   - [ ] `loans.principal`/`emi`/`remainingAmount`/`extraEmi`
   - [ ] `investments.investedAmount`/`currentValue`/`monthlyContribution`

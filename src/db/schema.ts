@@ -317,7 +317,9 @@ export const budgets = pgTable(
       onDelete: "cascade",
     }),
     period: budgetPeriod("period").notNull().default("monthly"),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     startsOn: date("starts_on").notNull(),
     ...audit,

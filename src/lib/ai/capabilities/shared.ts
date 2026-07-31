@@ -202,22 +202,6 @@ export async function fetchCurrentGoal(id: string) {
   };
 }
 
-export async function fetchCurrentBudget(id: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("budgets")
-    .select("category_id, period, amount, starts_on")
-    .eq("id", id)
-    .single();
-  if (!data) return null;
-  return {
-    categoryId: data.category_id as string | null,
-    period: data.period as string,
-    amount: Number(data.amount),
-    startsOn: data.starts_on as string,
-  };
-}
-
 export async function fetchCurrentRecurring(id: string) {
   const supabase = await createClient();
   const { data } = await supabase
