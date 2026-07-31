@@ -123,6 +123,18 @@ guest data for that module — don't add a route there without one.
       computing numbers itself. Unrelated to Smart Entry (read-only
       narration, not data entry).
 
+## Phase 3.5 — End-to-end encryption ("not even me")
+
+Not part of the original Phase 3 spec — added after a security-model
+discussion concluded that server-side envelope encryption (this file's
+Phase 3.1/3.2 model, `AI_KEYS_ENCRYPTION_KEY`) isn't sufficient once the
+bar is "even the developer can't read it," not just "a DB leak can't read
+it." Scope reaches every financial table, not just the AI keys, so it's
+tracked in its own doc rather than inline here.
+
+- [ ] Design only, not started. Full plan, phase-wise build (3.5.0–3.5.8),
+      and open questions: `docs/e2ee-path-b-plan.md`.
+
 ## Out of scope for Phase 3 (later phases per the roadmap)
 
 - Phase 4: SMS/Bank/Email import feeding the same pipeline.
