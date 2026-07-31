@@ -781,18 +781,44 @@ folded into generic "connect an agent" copy.
         verified**: a real end-to-end session (real login, real data) —
         this sandbox has no Supabase auth credentials to drive that with,
         same limitation as every phase so far.
-- [ ] **3.5.4 — Roll the pattern out** to the remaining ten finance tables
-      (`budgets.amount`; `goals.targetAmount`/`currentAmount`/
-      `monthlyContribution`; `loans.principal`/`emi`/`remainingAmount`/
-      `extraEmi`; `investments.investedAmount`/`currentValue`/
-      `monthlyContribution`; `net_worth_snapshots.*`; `goal_contributions.
-      amount`; `investment_contributions.amount`; `loan_payments.*`;
-      `recurring_rules.amount`; `notifications.body`), module by module,
-      following the skill's "Add a new feature module" shape for each.
-      Each one likely repeats 3.5.3's real lesson: trace every consumer
-      before assuming a table can be migrated in isolation — `raw-data.ts`
-      /`side-data.ts`/the `use*Data` hooks already built are the place to
-      extend, not a new parallel fetch layer per table.
+- [ ] **3.5.4 — Roll the pattern out** to the remaining finance tables,
+      module by module, following the skill's "Add a new feature module"
+      shape for each. Each one likely repeats 3.5.3's real lesson: trace
+      every consumer before assuming a table can be migrated in isolation —
+      `raw-data.ts`/`side-data.ts`/the `use*Data` hooks already built are
+      the place to extend, not a new parallel fetch layer per table.
+  - [x] `notifications.body` — done. Chosen first because it's uniquely
+        low-risk: one consumer file, write-only (the live list is always
+        recomputed fresh by `computeNotificationsData`;
+        `fetchNotificationStateAction` only ever reads back
+        `dedupe_key`/`is_read`/`is_dismissed`, confirmed by re-reading
+        `compute.ts` — `state` is never destructured for `body`), and the
+        column was already `text` so no schema/migration was needed at
+        all — purely an application-layer write-path change. `title`
+        stays plaintext (app-generated, low sensitivity, matches the
+        locked decision above); `body` is packed-encrypted client-side via
+        a new `src/lib/notifications/client-actions.ts`
+        (`encryptedMarkNotificationRead`/`encryptedDismissNotification`/
+        `encryptedMarkAllNotificationsRead`), mirroring the
+        `transactions/client-actions.ts` shape from 3.5.3.
+        `notifications-view.tsx` now takes `dek: CryptoKey` as a required
+        prop from `authed-notifications.tsx` (which already gated
+        rendering on `dek` being non-null). Widened `body`'s Zod max from
+        500 to 4000 in `notifications/actions.ts` — packed ciphertext
+        (iv + base64 ciphertext + delimiter) runs well past the
+        plaintext's own length. **Verified**: `npm run build` and
+        `npm run lint` both clean. **Not verified**: a real browser
+        session — this sandbox still has no Supabase auth credentials,
+        same limitation as every phase so far.
+  - [ ] `budgets.amount`
+  - [ ] `goals.targetAmount`/`currentAmount`/`monthlyContribution`
+  - [ ] `loans.principal`/`emi`/`remainingAmount`/`extraEmi`
+  - [ ] `investments.investedAmount`/`currentValue`/`monthlyContribution`
+  - [ ] `net_worth_snapshots.*`
+  - [ ] `goal_contributions.amount`
+  - [ ] `investment_contributions.amount`
+  - [ ] `loan_payments.*`
+  - [ ] `recurring_rules.amount`
   - [ ] **Verify**: build + screenshot per module as it lands, same as
         3.5.3.
 - [x] **3.5.5 — mostly absorbed into 3.5.3.** Transactions, Dashboard,

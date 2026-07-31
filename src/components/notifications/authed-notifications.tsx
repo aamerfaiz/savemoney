@@ -67,5 +67,5 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
     state: extras.data.state,
   });
 
-  return <NotificationsView data={data} />;
+  return <NotificationsView data={data} dek={dek} />;
 }

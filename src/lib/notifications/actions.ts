@@ -15,7 +15,9 @@ const payloadSchema = z.object({
   type: z.string().max(40),
   severity: z.string().max(20),
   title: z.string().max(200),
-  body: z.string().max(500).optional().nullable(),
+  // Packed ciphertext (iv:base64 + base64 ciphertext) runs well past the
+  // plaintext's own length — see src/lib/notifications/client-actions.ts.
+  body: z.string().max(4000).optional().nullable(),
   href: z.string().max(200).optional().nullable(),
 });
 
