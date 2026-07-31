@@ -24,7 +24,7 @@ import {
   markAllNotificationsRead,
   type NotificationPayload,
 } from "@/lib/notifications/actions";
-import type { NotificationsData } from "@/lib/notifications/queries";
+import type { NotificationsData } from "@/lib/notifications/compute";
 import type {
   NotificationItem,
   NotificationType,

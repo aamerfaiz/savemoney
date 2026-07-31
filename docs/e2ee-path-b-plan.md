@@ -318,11 +318,14 @@ engines server-side for instant SSR (see AGENTS.md "Navigation &
 loading"). Under E2EE the server cannot decrypt, so every one of these has
 to become client-driven instead:
 
-- `dashboard`, `budget`, `goals`, `loans`, `investments`, `net-worth`,
-  `analytics`, `reports`, `financial-score`, `calendar`, `notifications`,
-  `transactions`, `recurring` — all currently server components — need to
+- `dashboard`, `budget`, `analytics`, `net-worth`, `reports`,
+  `financial-score`, `notifications`, `transactions` — **done as of
+  3.5.3**, converted alongside encrypting `income`/`expenses` rather than
+  as a separate later pass, once tracing consumers showed they couldn't
+  be decoupled. `goals`, `loans`, `investments`, `calendar`, `recurring` —
+  still server components, convert each as its table lands in 3.5.4. All
   fetch **ciphertext** (still RLS-scoped, still per-user) and decrypt +
-  run the finance engines in the browser instead.
+  run the finance engines in the browser instead of server-side.
 - The finance engines themselves (`src/lib/finance/*.ts`) don't change —
   golden rule 5 ("pure functions, testable without a database or
   browser") holds either way. Only the *call site* moves from a server
@@ -655,25 +658,159 @@ folded into generic "connect an agent" copy.
         "couldn't decrypt, re-save it" path the first time it's used,
         exactly the expected/flagged consequence of this migration, not a
         bug to fix here.
-- [ ] **3.5.3 — Pilot the finance-data pattern.** Recommend Transactions
-      next (it's already "the reference module" per AGENTS.md) — prove
-      encrypt-on-write, decrypt-on-read, client-side dashboard tile,
-      before touching the other eleven finance tables.
-  - [ ] **Verify**: `npm run build` passes; screenshot the transactions
-        list and any dashboard tile it feeds, rendering real (decrypted)
-        numbers, at 390px and desktop.
-- [ ] **3.5.4 — Roll the pattern out** to the remaining tables in the
-      Scope table above, module by module, following the skill's "Add a
-      new feature module" shape for each.
+- [x] **3.5.3 — `income`/`expenses` encrypted, and every consumer migrated
+      to client-side decrypt+compute.** Scope grew from the original "pilot
+      on Transactions + one dashboard tile" plan: tracing every consumer of
+      `income`/`expenses` found that `getBudgetsData`/`getAnalyticsData`
+      alone feed Budget, Analytics, Dashboard, Net Worth, Reports,
+      Financial Score, Notifications, the AI Assistant's context, and
+      Smart Entry's reference data — encrypting the two tables without
+      migrating all of them would have broken every one of those pages
+      immediately, not later. Decision (made in-session, not
+      pre-planned): migrate every consumer now rather than ship a
+      narrower slice with known breakage. This absorbs most of what 3.5.5
+      would have done, for these two tables specifically — see the
+      updated 3.5.4/3.5.5 scope below.
+  - [x] `income.amount`, `expenses.amount`, `expenses.description` (already
+        `text`, now holds ciphertext), `expenses.note`, `expenses.tags`
+        (was `text[]`, now `text` holding an encrypted JSON-serialized
+        array) — `drizzle/0008_lyrical_doctor_octopus.sql`, hand-patched
+        with `USING` clauses (drizzle-kit's generated SQL lacked them;
+        Postgres has no implicit `numeric`→`text` or `text[]`→`text`
+        cast). Applied to the live project. The 5 existing rows (2
+        income, 3 expense — test-scale, confirmed via the Supabase MCP
+        before applying) are now unreadable non-ciphertext strings, same
+        accepted consequence as the 3.5.2 AI-key migration.
+  - [x] Single-column packing: `packPayload`/`unpackPayload`/
+        `encryptPacked`/`decryptPacked` added to `src/lib/vault/crypto.ts`
+        (`iv:ciphertext` in one `text` column, not two, since finance
+        rows have several encrypted fields each). Verified end-to-end in
+        a real browser: amount, unicode description, a JSON tag array,
+        and a wrong-DEK decrypt correctly failing — all passed.
+  - [x] New shared client-side data layer: `src/lib/finance/raw-data.ts`
+        (one Server Action fetching ciphertext income/expense rows plus
+        every non-encrypted supporting row — budgets config, active
+        goals, loans, investment contributions — since once the fetch
+        boundary moves client-side, *everything* the compute needs has
+        to be reachable from there, secret or not), `src/lib/finance/
+        decrypt.ts` (fault-tolerant per-row decrypt — a row that fails
+        doesn't take down the list, see `DecryptResult`), and
+        `src/lib/finance/use-finance-data.ts` / `use-side-data.ts`
+        (TanStack Query hooks — first real use of the already-provisioned
+        but previously-unused `@tanstack/react-query`, so pages share one
+        cached fetch+decrypt+compute instead of each re-doing it).
+  - [x] `getBudgetsData`/`getAnalyticsData`/`getTransactions` (all
+        deleted) → pure `computeBudgetsData`/`computeAnalyticsData`/
+        `computeTransactionsList` (`src/lib/budgets/compute.ts`,
+        `src/lib/analytics/compute.ts`, `src/lib/transactions/
+        compute.ts`) — identical aggregation math, just taking
+        already-decrypted rows instead of fetching+computing together.
+        Same split applied to `getDashboardData`, `getNetWorthData`
+        (→ `buildNetWorth` extracted to `src/lib/networth/compute.ts`),
+        `getReportsData`, `getScoreData`, `getNotificationsData` — all
+        deleted as `queries.ts` I/O functions, replaced by pure
+        `compute.ts` counterparts plus thin Server Action wrappers
+        (`src/lib/finance/side-data.ts`) for the non-encrypted rows they
+        still need (goals/loans/investments/recurring/snapshots/calendar).
+  - [x] Every one of those pages (Transactions, Dashboard, Budget,
+        Analytics, Net Worth, Reports, Financial Score, Notifications)
+        now has a client `Authed*` wrapper component that unlocks,
+        fetches, decrypts, computes, and shows a locked/loading/error
+        state — `src/components/finance/vault-gate.tsx` is the shared
+        boilerplate for the single-query pages; the multi-query pages
+        (Dashboard, Notifications) inline the same three states since
+        `VaultGate` was built for one query.
+  - [x] Write path: `transactions/actions.ts`'s `createTransaction`/
+        `updateTransaction` now take pre-encrypted ciphertext instead of
+        FormData with plaintext amount — amount/length validation moved
+        client-side (`transactionInputSchema`, unchanged, just run
+        earlier) since the server can no longer inspect a value it can't
+        read. `transaction-form.tsx` itself didn't need to change — the
+        create/update actions it binds to `useActionState` are just
+        function props, so the encrypt-then-call wrapping
+        (`src/lib/transactions/client-actions.ts`) happens entirely at
+        the call site, invisible to the form. Guest mode (IndexedDB, no
+        vault) is untouched — same FormData-shaped action props, just a
+        different function behind them.
+  - [x] CSV import (`src/lib/import/actions.ts` +
+        `src/lib/import/client-actions.ts`): dedupe-against-DB moved
+        entirely client-side (fetch ciphertext rows in range, decrypt,
+        run the *same* pure `dedupeKey`/`buildPreview` from
+        `pipeline.ts` — unchanged, per the pipeline's own "pure, no I/O"
+        design), and `commitImport` now receives pre-encrypted rows. One
+        real behavior change, unavoidable: the server-side commit-time
+        re-validation pass against a *fresh* DB read (defense in depth
+        against a stale client-side preview) is gone — the server
+        can't re-derive dedupe keys from ciphertext, so it now trusts
+        the client's already-computed preview. Flagged, not hidden.
+  - [x] AI Assistant context (`src/lib/ai/context.ts`) — `buildFinanceContext`
+        is now a pure function called client-side
+        (`ai-assistant-view.tsx`) and sent to `/api/v1/ai/ask` as an
+        optional `context` field, same transient-relay shape as the
+        vendor key itself. Smart Entry's reference data
+        (`loadReferenceData`) no longer includes transactions at all —
+        `description`/`amount` are encrypted, so there's nothing
+        plaintext left to build a match label from; category/account/
+        investment/loan/goal/recurring/budget matching is unaffected.
+  - [x] **Scope cut, not a bug**: Smart Entry's four `transaction.*`
+        capabilities (add income, add expense, edit, delete) are
+        **removed**, not disabled. `transaction.edit`/`.delete` already
+        degrade gracefully (their reference lookup can never match now
+        that `ref.transactions` is empty), but `transaction.expense`/
+        `.income` had no such gate and would have called the
+        now-incompatible `createTransaction` directly from the
+        server-only `/api/v1/ai/commit` path — which has no DEK to
+        encrypt with. Properly supporting them needs commit.ts's
+        independent re-validation (`def.schema.safeParse`, the "never
+        trust fields" defense-in-depth check) to stop needing a real
+        plaintext amount post-encryption — a genuine redesign of that
+        trust boundary, not attempted here. Adding/editing/deleting a
+        transaction still works normally through the Transactions page
+        itself; only the natural-language Smart Entry shortcut for
+        transactions specifically is gone. Every other capability
+        (budgets, goals, loans, investments, recurring rules) is
+        unaffected.
+  - [x] **Verify**: `npm run build` + `npm run lint` pass. Browser-verified
+        the crypto round-trip (amount, unicode description, tag array,
+        pack/unpack shape, wrong-DEK rejection — all passed) and the
+        Transactions create flow with a simulated unlocked vault via a
+        throwaway preview route (removed before commit). Confirmed via
+        the Supabase MCP that `income.amount`/`expenses.amount`/
+        `expenses.tags` are now `text` in the live project, RLS still
+        enabled on both tables, no new security advisories. **Not
+        verified**: a real end-to-end session (real login, real data) —
+        this sandbox has no Supabase auth credentials to drive that with,
+        same limitation as every phase so far.
+- [ ] **3.5.4 — Roll the pattern out** to the remaining ten finance tables
+      (`budgets.amount`; `goals.targetAmount`/`currentAmount`/
+      `monthlyContribution`; `loans.principal`/`emi`/`remainingAmount`/
+      `extraEmi`; `investments.investedAmount`/`currentValue`/
+      `monthlyContribution`; `net_worth_snapshots.*`; `goal_contributions.
+      amount`; `investment_contributions.amount`; `loan_payments.*`;
+      `recurring_rules.amount`; `notifications.body`), module by module,
+      following the skill's "Add a new feature module" shape for each.
+      Each one likely repeats 3.5.3's real lesson: trace every consumer
+      before assuming a table can be migrated in isolation — `raw-data.ts`
+      /`side-data.ts`/the `use*Data` hooks already built are the place to
+      extend, not a new parallel fetch layer per table.
   - [ ] **Verify**: build + screenshot per module as it lands, same as
         3.5.3.
-- [ ] **3.5.5 — Move server-component pages to client-driven fetch +
-      decrypt + compute**, module by module, per the Architecture shift
-      section.
-  - [ ] **Verify**: build passes; confirm `loading.tsx` skeletons still
-        cover the (now client-side) fetch+decrypt+compute window without
-        a layout flash; screenshot each migrated page at 390px and
-        desktop.
+- [x] **3.5.5 — mostly absorbed into 3.5.3.** Transactions, Dashboard,
+      Budget, Analytics, Net Worth, Reports, Financial Score, and
+      Notifications are already client-driven fetch+decrypt+compute — not
+      because this sub-phase ran, but because 3.5.3's "migrate every
+      consumer" decision required it immediately, not on a later pass.
+      **Still open**: Goals, Loans, Investments, Recurring, Calendar,
+      Settings' account list — pages whose own tables aren't encrypted
+      yet, so they're still server components. Each one converts as its
+      underlying table lands in 3.5.4, using the same `Authed*` wrapper +
+      `use*Data` hook pattern 3.5.3 already established — this is no
+      longer a distinct architectural pass, just part of doing 3.5.4
+      properly per table.
+  - [ ] **Verify** (for whatever's left when 3.5.4 finishes): build
+        passes; confirm `loading.tsx` skeletons still cover the
+        client-side fetch+decrypt+compute window without a layout flash;
+        screenshot each newly-migrated page at 390px and desktop.
 - [ ] **3.5.6 — Recovery key UX, OAuth vault passphrase, quick-unlock &
       multi-device.**
   - [ ] Recovery-key display/confirm flow at vault setup.

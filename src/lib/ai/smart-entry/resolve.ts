@@ -1,8 +1,5 @@
 import "server-only";
 
-import { getAnalyticsData } from "@/lib/analytics/queries";
-import type { AnalyticsData } from "@/lib/analytics/types";
-
 import { loadReferenceData } from "../capabilities/shared";
 import { getCapability } from "../capabilities/registry";
 import { checkAnomaly } from "./anomaly";
@@ -36,7 +33,13 @@ export interface DraftResult {
  * the target's current row to merge onto (see `AICapability.resolve`).
  */
 export async function resolveDraftItems(items: ExtractedItem[]): Promise<DraftResult[]> {
-  const [ref, analytics] = await Promise.all([loadReferenceData(), safeAnalytics()]);
+  const ref = await loadReferenceData();
+  // Analytics (for the soft spending-anomaly check) can no longer be read
+  // server-side under Phase 3.5.3 — income/expenses are encrypted under the
+  // vault DEK. The check is advisory only (see checkAnomaly's null handling
+  // below), so it's disabled rather than threading decrypted data through
+  // the extract/relay pipeline for a non-blocking nicety.
+  const analytics = null;
 
   return Promise.all(
     items.map(async (item, index) => {
@@ -79,14 +82,4 @@ export async function resolveDraftItems(items: ExtractedItem[]): Promise<DraftRe
       };
     }),
   );
-}
-
-async function safeAnalytics(): Promise<AnalyticsData | null> {
-  try {
-    return await getAnalyticsData();
-  } catch {
-    // Anomaly warnings are a soft nice-to-have — never fail the whole
-    // extraction because the analytics query hiccuped.
-    return null;
-  }
 }

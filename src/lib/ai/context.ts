@@ -1,31 +1,33 @@
-import "server-only";
-
-import { getBudgetsData } from "@/lib/budgets/queries";
-import { getGoalsData } from "@/lib/goals/queries";
-import { getLoansData } from "@/lib/loans/queries";
-import { getInvestmentsData } from "@/lib/investments/queries";
-import { getAnalyticsData } from "@/lib/analytics/queries";
-import { getNetWorthData } from "@/lib/networth/queries";
-import { formatCurrency, formatPercent } from "@/lib/format";
-
 /**
  * A compact, human-readable snapshot of the user's real finances, fed into
  * the AI prompt so answers are grounded in actual numbers instead of
- * generic advice. Composed entirely from the same module queries/finance
- * engines the dashboard uses (see AGENTS.md "Keep finance logic as pure
- * functions") — nothing here recomputes a number by hand.
+ * generic advice. Composed entirely from already-decrypted/computed data —
+ * see the "Resolved: the AI Assistant conflict" + Architecture shift
+ * sections of docs/e2ee-path-b-plan.md: the server can no longer read
+ * income/expenses itself, so this now runs client-side (in
+ * ai-assistant-view.tsx) and the resulting string is sent to the
+ * /api/v1/ai/ask relay alongside the plaintext vendor key — grounding
+ * data, not a secret, but still only ever built where the vault is
+ * unlocked.
  */
-export async function buildFinanceContext(): Promise<string> {
-  const [budgets, goals, loans, investments, analytics, netWorth] =
-    await Promise.all([
-      getBudgetsData(),
-      getGoalsData(),
-      getLoansData(),
-      getInvestmentsData(),
-      getAnalyticsData(),
-      getNetWorthData(),
-    ]);
 
+import { formatCurrency, formatPercent } from "@/lib/format";
+import type { BudgetsData } from "@/lib/budgets/compute";
+import type { AnalyticsData } from "@/lib/analytics/types";
+import type { GoalsData } from "@/lib/goals/queries";
+import type { LoansData } from "@/lib/loans/queries";
+import type { InvestmentsData } from "@/lib/investments/queries";
+import type { NetWorthData } from "@/lib/networth/types";
+
+export function buildFinanceContext(input: {
+  budgets: BudgetsData;
+  goals: GoalsData;
+  loans: LoansData;
+  investments: InvestmentsData;
+  analytics: AnalyticsData;
+  netWorth: NetWorthData;
+}): string {
+  const { budgets, goals, loans, investments, analytics, netWorth } = input;
   const currency = budgets.currency;
   const money = (n: number) => formatCurrency(n, currency);
   const thisMonth = analytics.months[analytics.months.length - 1];

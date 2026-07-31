@@ -228,8 +228,13 @@ export const income = pgTable(
       onDelete: "set null",
     }),
     sourceType: incomeType("source_type").notNull().default("salary"),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    /** AES-256-GCM ciphertext (packed iv+ciphertext, see
+     * src/lib/vault/crypto.ts packPayload) under the user's vault DEK —
+     * Phase 3.5.3. Postgres-level numeric constraints are lost here by
+     * design; validation moves entirely to the client before encryption. */
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
+    /** Packed ciphertext, or NULL (never encrypt an absent value). */
     description: text("description"),
     receivedAt: date("received_at").notNull(),
     isRecurring: boolean("is_recurring").notNull().default(false),
@@ -266,11 +271,19 @@ export const expenses = pgTable(
     categoryId: uuid("category_id").references(() => categories.id, {
       onDelete: "set null",
     }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    /** AES-256-GCM ciphertext (packed iv+ciphertext, see
+     * src/lib/vault/crypto.ts packPayload) under the user's vault DEK —
+     * Phase 3.5.3. Postgres-level numeric constraints are lost here by
+     * design; validation moves entirely to the client before encryption. */
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
+    /** Packed ciphertext, or NULL (never encrypt an absent value). */
     description: text("description"),
     note: text("note"),
-    tags: text("tags").array(),
+    /** Packed ciphertext of the JSON-serialized tag array, or NULL. Was a
+     * native Postgres array; encrypting forecloses SQL-level tag filters,
+     * same trade-off as every other encrypted column (see the plan doc). */
+    tags: text("tags"),
     spentAt: date("spent_at").notNull(),
     isRecurring: boolean("is_recurring").notNull().default(false),
     frequency: frequency("frequency").notNull().default("one_time"),

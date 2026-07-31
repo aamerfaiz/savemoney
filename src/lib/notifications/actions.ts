@@ -111,6 +111,33 @@ export async function dismissNotification(
   return res;
 }
 
+/** dedupeKey -> persisted read/dismiss flags, for client-side composition
+ * (Phase 3.5.3 — notifications now assembles alongside client-computed
+ * budgets, so the whole page moved client-side; see src/lib/notifications/
+ * compute.ts). */
+export async function fetchNotificationStateAction(): Promise<
+  Record<string, { read: boolean; dismissed: boolean }>
+> {
+  const auth = await requireUser();
+  if ("error" in auth) return {};
+
+  const { data } = await auth.supabase
+    .from("notifications")
+    .select("dedupe_key, is_read, is_dismissed")
+    .is("deleted_at", null)
+    .not("dedupe_key", "is", null);
+
+  const state: Record<string, { read: boolean; dismissed: boolean }> = {};
+  for (const r of (data ?? []) as {
+    dedupe_key: string;
+    is_read: boolean;
+    is_dismissed: boolean;
+  }[]) {
+    state[r.dedupe_key] = { read: r.is_read, dismissed: r.is_dismissed };
+  }
+  return state;
+}
+
 export async function markAllNotificationsRead(
   payloads: NotificationPayload[],
 ): Promise<ActionResult> {

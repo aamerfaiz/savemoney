@@ -263,4 +263,32 @@ export async function hashToken(bytes: Uint8Array<ArrayBuffer>): Promise<string>
   return toBase64(new Uint8Array(digest));
 }
 
+/* ----------------------------------------------------------------------- */
+/* Single-column packing — for tables with many encrypted fields per row   */
+/* (finance data), one `text` column per field beats two (ciphertext + iv) */
+/* to avoid doubling column counts across a dozen tables.                  */
+/* ----------------------------------------------------------------------- */
+
+const PACK_DELIMITER = ":"; // not in the base64 alphabet — unambiguous split
+
+export function packPayload(payload: EncryptedPayload): string {
+  return `${payload.iv}${PACK_DELIMITER}${payload.ciphertext}`;
+}
+
+export function unpackPayload(packed: string): EncryptedPayload {
+  const i = packed.indexOf(PACK_DELIMITER);
+  if (i === -1) throw new Error("Malformed encrypted payload.");
+  return { iv: packed.slice(0, i), ciphertext: packed.slice(i + 1) };
+}
+
+/** Encrypts a plaintext string straight to its packed, storable form. */
+export async function encryptPacked(plaintext: string, dek: CryptoKey): Promise<string> {
+  return packPayload(await encryptField(plaintext, dek));
+}
+
+/** Decrypts a packed column value back to plaintext. */
+export async function decryptPacked(packed: string, dek: CryptoKey): Promise<string> {
+  return decryptField(unpackPayload(packed), dek);
+}
+
 export { toBase64, fromBase64 };

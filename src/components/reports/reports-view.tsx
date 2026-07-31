@@ -7,7 +7,7 @@ import { Printer, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import type { ReportsData } from "@/lib/reports/queries";
+import type { ReportsData } from "@/lib/reports/compute";
 
 type Scope = 1 | 3 | 6;
 

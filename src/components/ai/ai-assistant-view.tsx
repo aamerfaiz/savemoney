@@ -8,15 +8,23 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { AnswerMarkdown } from "@/components/ai/answer-markdown";
 import { resolveActiveKey } from "@/lib/ai/client-key";
+import { buildFinanceContext } from "@/lib/ai/context";
+import { buildNetWorth } from "@/lib/networth/compute";
+import { useFinanceData } from "@/lib/finance/use-finance-data";
+import { useSideData } from "@/lib/finance/use-side-data";
 import { useVaultStore } from "@/lib/vault/store";
+import type { CurrencyCode } from "@/lib/format";
 
 /** Phase 3.3 — ask-a-question shell. Under Phase 3.5 the server can't
- * decrypt a stored key itself, so asking a question now runs client-side:
- * decrypt the saved key with the unlocked vault's DEK, then forward it
- * once, transiently, to /api/v1/ai/ask — see
+ * decrypt a stored key (or income/expenses) itself, so asking a question
+ * now runs client-side: decrypt the saved key with the unlocked vault's
+ * DEK, build the grounding context from already-decrypted finance data,
+ * then forward both once, transiently, to /api/v1/ai/ask — see
  * docs/e2ee-path-b-plan.md "Resolved: the AI Assistant conflict". */
-export function AiAssistantView() {
+export function AiAssistantView({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
+  const finance = useFinanceData(currency);
+  const side = useSideData();
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -39,6 +47,30 @@ export function AiAssistantView() {
         return;
       }
 
+      // Grounding context is best-effort — if the finance data isn't ready
+      // yet, ask ungrounded rather than blocking the question.
+      let context: string | undefined;
+      if (finance.data && side.data) {
+        const netWorth = buildNetWorth({
+          components: {
+            investmentsValue: side.data.investmentsData.totalValue,
+            goalsSaved: side.data.goalsData.totalSaved,
+            loansRemaining: side.data.loansData.totalRemaining,
+          },
+          months: finance.data.analytics.months,
+          snapshots: side.data.snapshots,
+          currency,
+        });
+        context = buildFinanceContext({
+          budgets: finance.data.budgets,
+          goals: side.data.goalsData,
+          loans: side.data.loansData,
+          investments: side.data.investmentsData,
+          analytics: finance.data.analytics,
+          netWorth,
+        });
+      }
+
       const res = await fetch("/api/v1/ai/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,6 +79,7 @@ export function AiAssistantView() {
           apiKey: key.apiKey,
           provider: key.provider,
           model: key.model,
+          context,
         }),
       });
       const data = await res.json();

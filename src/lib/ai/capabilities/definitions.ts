@@ -2,9 +2,6 @@ import "server-only";
 
 import { z } from "zod";
 
-import { transactionInputSchema, INCOME_SOURCE_TYPES } from "@/lib/transactions/types";
-import { createTransaction, updateTransaction, deleteTransaction } from "@/lib/transactions/actions";
-
 import {
   investmentInputSchema,
   contributionInputSchema as investmentContributionSchema,
@@ -47,7 +44,6 @@ import {
   fetchCurrentGoal,
   fetchCurrentBudget,
   fetchCurrentRecurring,
-  fetchCurrentTransaction,
 } from "./shared";
 import {
   asBool,
@@ -58,215 +54,27 @@ import {
   toNumber,
 } from "./extract-utils";
 
-/** Trivial schema for delete capabilities — nothing to validate but the
- * routing info a couple of them need (see transaction.delete). */
+/** Trivial schema for delete capabilities — nothing to validate. */
 const emptySchema = z.object({});
-const transactionKindSchema = z.object({ kind: z.enum(["income", "expense"]) });
 
-/** Every capability Smart Entry can propose. One entry per existing
- * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`. */
+/**
+ * Every capability Smart Entry can propose. One entry per existing
+ * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`.
+ *
+ * No `transaction.*` capabilities as of Phase 3.5.3 (removed, not disabled):
+ * income/expenses are now encrypted under the vault DEK, and this file's
+ * `execute()` calls run entirely server-side via /api/v1/ai/commit, which
+ * has no DEK to encrypt with. Properly supporting them would mean moving
+ * amount validation client-side (before encryption) while commit.ts's
+ * independent re-validation (`def.schema.safeParse`, the "never trust
+ * fields" defense-in-depth check) can no longer inspect a real numeric
+ * amount post-encryption — a real redesign of that trust boundary, not
+ * done here. Adding/editing/deleting a transaction still works normally
+ * through the Transactions page itself (src/lib/transactions/
+ * client-actions.ts), which encrypts client-side the same way. Only the
+ * natural-language Smart Entry shortcut is unavailable for transactions.
+ */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
-  {
-    key: "transaction.expense",
-    module: "transaction",
-    label: "Expense",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      'A single expense already made. args: amount (number, required), date ' +
-      "(YYYY-MM-DD, optional, defaults to today), categoryName (string, best " +
-      "guess), accountName (string, optional), description (short string, " +
-      "optional).",
-    schema: transactionInputSchema,
-    async resolve(args, ref) {
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
-
-      const warnings: string[] = [];
-      const categoryGuess = asString(args.categoryName);
-      const category = matchByName(categoryGuess, ref.expenseCategories);
-      if (categoryGuess && !category) {
-        warnings.push(`Couldn't match category "${categoryGuess}" — will save uncategorized.`);
-      }
-      const accountGuess = asString(args.accountName);
-      const account = matchByName(accountGuess, ref.accounts);
-      if (accountGuess && !account) {
-        warnings.push(`Couldn't match account "${accountGuess}".`);
-      }
-
-      const parsed = transactionInputSchema.safeParse({
-        kind: "expense",
-        amount,
-        date: normalizeDate(args.date) ?? todayISO(),
-        categoryId: category?.id ?? null,
-        accountId: account?.id ?? null,
-        description: asString(args.description),
-        note: null,
-        isRecurring: false,
-        frequency: "one_time",
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings };
-    },
-    execute: (fields) => createTransaction(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "transaction.income",
-    module: "transaction",
-    label: "Income",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A single income already received. args: amount (number, required), date " +
-      "(YYYY-MM-DD, optional, defaults to today), sourceType (one of salary/" +
-      "freelance/rental/interest/business/dividend/other, optional), " +
-      "accountName (string, optional), description (short string, optional).",
-    schema: transactionInputSchema,
-    async resolve(args, ref) {
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
-
-      const warnings: string[] = [];
-      const accountGuess = asString(args.accountName);
-      const account = matchByName(accountGuess, ref.accounts);
-      if (accountGuess && !account) {
-        warnings.push(`Couldn't match account "${accountGuess}".`);
-      }
-      const sourceType = normalizeEnum(args.sourceType, INCOME_SOURCE_TYPES);
-
-      const parsed = transactionInputSchema.safeParse({
-        kind: "income",
-        amount,
-        date: normalizeDate(args.date) ?? todayISO(),
-        categoryId: null,
-        accountId: account?.id ?? null,
-        description: asString(args.description),
-        sourceType: sourceType ?? undefined,
-        isRecurring: false,
-        frequency: "one_time",
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings };
-    },
-    execute: (fields) => createTransaction(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "transaction.edit",
-    module: "transaction",
-    label: "Edit transaction",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Save",
-    promptDescription:
-      "Change an EXISTING income or expense the user already recorded. args: " +
-      "transactionDescription (string, required — describe it well enough to " +
-      "find: what it was for, roughly how much, and/or roughly when), plus " +
-      "ONLY the fields the user wants changed: amount (number), date " +
-      "(YYYY-MM-DD), categoryName (string), accountName (string), description " +
-      "(string). Only searches the user's ~30 most recent transactions.",
-    schema: transactionInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.transactionDescription) ?? asString(args.description);
-      const match = matchByName(nameGuess, ref.transactions);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess
-            ? `Couldn't find a recent transaction matching "${nameGuess}" — try including the exact amount or date.`
-            : "Missing a description of which transaction to change.",
-        };
-      }
-      const current = await fetchCurrentTransaction(match.id, match.kind);
-      if (!current) return { ok: false, warnings: [], error: "That transaction could not be found." };
-
-      const categoryPool = match.kind === "income" ? ref.incomeCategories : ref.expenseCategories;
-      const categoryGuess = asString(args.categoryName);
-      const category = categoryGuess ? matchByName(categoryGuess, categoryPool) : undefined;
-      const warnings: string[] = [];
-      if (categoryGuess && !category) {
-        warnings.push(`Couldn't match category "${categoryGuess}" — left as-is.`);
-      }
-      const accountGuess = asString(args.accountName);
-      const account = accountGuess ? matchByName(accountGuess, ref.accounts) : undefined;
-      if (accountGuess && !account) {
-        warnings.push(`Couldn't match account "${accountGuess}" — left as-is.`);
-      }
-
-      const candidate: Record<string, unknown> = {
-        kind: match.kind,
-        amount: toNumber(args.amount) ?? current.amount,
-        date: normalizeDate(args.date) ?? current.date,
-        categoryId: category ? category.id : current.categoryId,
-        accountId: account ? account.id : current.accountId,
-        description: asString(args.description) ?? current.description,
-        isRecurring: false,
-        frequency: "one_time",
-      };
-      if (match.kind === "expense") candidate.note = current.note;
-      if (match.kind === "income") {
-        candidate.sourceType = normalizeEnum(args.sourceType, INCOME_SOURCE_TYPES) ?? current.sourceType;
-      }
-
-      const parsed = transactionInputSchema.safeParse(candidate);
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings };
-    },
-    execute: (fields, targetId) =>
-      updateTransaction(
-        targetId!,
-        fields.kind as "income" | "expense",
-        undefined,
-        toFormData(fields),
-      ),
-  },
-
-  {
-    key: "transaction.delete",
-    module: "transaction",
-    label: "Delete transaction",
-    requiresTarget: true,
-    destructive: true,
-    actionLabel: "Delete",
-    promptDescription:
-      "Remove an EXISTING income or expense the user already recorded. args: " +
-      "transactionDescription (string, required — describe it well enough to " +
-      "find: what it was for, roughly how much, and/or roughly when). Only " +
-      "searches the user's ~30 most recent transactions.",
-    schema: transactionKindSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.transactionDescription) ?? asString(args.description);
-      const match = matchByName(nameGuess, ref.transactions);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess
-            ? `Couldn't find a recent transaction matching "${nameGuess}" — try including the exact amount or date.`
-            : "Missing a description of which transaction to delete.",
-        };
-      }
-      return {
-        ok: true,
-        fields: { kind: match.kind },
-        targetId: match.id,
-        targetLabel: match.name,
-        warnings: [],
-      };
-    },
-    execute: (fields, targetId) => deleteTransaction(targetId!, fields.kind as "income" | "expense"),
-  },
-
   {
     key: "investment.contribution",
     module: "investment",

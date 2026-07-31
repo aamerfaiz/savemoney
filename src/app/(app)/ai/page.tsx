@@ -2,12 +2,16 @@ import { AiShell } from "@/components/ai/ai-shell";
 import { ConnectProviderPrompt } from "@/components/ai/connect-provider-prompt";
 import { hasActiveProviderKey } from "@/lib/ai/queries";
 import { loadReferenceData } from "@/lib/ai/capabilities/shared";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "AI Assistant · Finance OS" };
 
 export default async function AiPage() {
   const connected = await hasActiveProviderKey();
-  const reference = connected ? await loadReferenceData() : null;
+  const [reference, currency] = await Promise.all([
+    connected ? loadReferenceData() : Promise.resolve(null),
+    getDisplayCurrency(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -21,7 +25,11 @@ export default async function AiPage() {
         </p>
       </div>
 
-      {connected && reference ? <AiShell reference={reference} /> : <ConnectProviderPrompt />}
+      {connected && reference ? (
+        <AiShell reference={reference} currency={currency} />
+      ) : (
+        <ConnectProviderPrompt />
+      )}
     </div>
   );
 }

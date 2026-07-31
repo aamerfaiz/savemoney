@@ -13,7 +13,7 @@ import { BudgetForm } from "./budget-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { deleteBudget } from "@/lib/budgets/actions";
-import type { BudgetsData } from "@/lib/budgets/queries";
+import type { BudgetsData } from "@/lib/budgets/compute";
 import type { BudgetWithProgress } from "@/lib/budgets/types";
 import type { CategoryOption } from "@/lib/transactions/reference";
 

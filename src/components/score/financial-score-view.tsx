@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import type { ScoreData } from "@/lib/score/queries";
+import type { ScoreData } from "@/lib/score/compute";
 import type { HealthResult } from "@/lib/finance/health-score";
 import {
   SIGNALS,

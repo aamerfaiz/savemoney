@@ -27,14 +27,16 @@ export interface ReferenceData {
   /** Synthetic "label" per row (no real name column on budgets) — see
    * `budgetLabel()`. */
   budgets: NamedOption[];
-  /** Recent transactions only (capped) — a name-less row is matched against
-   * a synthesized label of description/category/amount/date. Editing or
-   * deleting something older than this window isn't resolvable yet; the
-   * capability surfaces that as a clear error rather than guessing. */
+  /** Always empty as of Phase 3.5.3 — `amount`/`description` are encrypted
+   * under the user's vault DEK now, unreadable server-side, so there's no
+   * plaintext left here to build a match label from. Editing or deleting a
+   * transaction by name through Smart Entry is disabled rather than
+   * matching against ciphertext or leaking it into the model's prompt; the
+   * capability surfaces "couldn't find that" the same as any unmatched
+   * reference. Category/account/investment/loan/goal/recurring/budget
+   * matching is unaffected — none of those are encrypted. */
   transactions: TransactionOption[];
 }
-
-const RECENT_TRANSACTIONS_LIMIT = 30;
 
 /**
  * Every reference set a capability might need to resolve a name against,
@@ -54,8 +56,6 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     { data: goals },
     { data: recurring },
     { data: budgets },
-    { data: expenses },
-    { data: income },
   ] = await Promise.all([
     supabase.from("categories").select("id, name, kind").is("deleted_at", null),
     supabase
@@ -80,45 +80,10 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       .from("budgets")
       .select("id, category_id, period")
       .is("deleted_at", null),
-    supabase
-      .from("expenses")
-      .select("id, amount, spent_at, description, category_id")
-      .is("deleted_at", null)
-      .order("spent_at", { ascending: false })
-      .limit(RECENT_TRANSACTIONS_LIMIT),
-    supabase
-      .from("income")
-      .select("id, amount, received_at, description, category_id")
-      .is("deleted_at", null)
-      .order("received_at", { ascending: false })
-      .limit(RECENT_TRANSACTIONS_LIMIT),
   ]);
 
   const cats = (categories ?? []) as { id: string; name: string; kind: string }[];
   const categoryName = (id: string | null) => cats.find((c) => c.id === id)?.name ?? null;
-
-  const expenseRows = (
-    (expenses ?? []) as {
-      id: string;
-      amount: string | number;
-      spent_at: string;
-      description: string | null;
-      category_id: string | null;
-    }[]
-  ).map((e) => transactionOption(e.id, "expense", e.amount, e.spent_at, e.description, categoryName(e.category_id)));
-  const incomeRows = (
-    (income ?? []) as {
-      id: string;
-      amount: string | number;
-      received_at: string;
-      description: string | null;
-      category_id: string | null;
-    }[]
-  ).map((i) => transactionOption(i.id, "income", i.amount, i.received_at, i.description, categoryName(i.category_id)));
-
-  const transactions = [...expenseRows, ...incomeRows]
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, RECENT_TRANSACTIONS_LIMIT);
 
   return {
     expenseCategories: cats
@@ -168,20 +133,8 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       id: b.id,
       name: `${categoryName(b.category_id) ?? "Overall"} budget (${b.period})`,
     })),
-    transactions,
+    transactions: [],
   };
-}
-
-function transactionOption(
-  id: string,
-  kind: "income" | "expense",
-  amount: string | number,
-  date: string,
-  description: string | null,
-  category: string | null,
-): TransactionOption {
-  const what = description || category || (kind === "income" ? "Income" : "Expense");
-  return { id, kind, date, name: `${what} · ${Number(amount)} · ${date}` };
 }
 
 /**

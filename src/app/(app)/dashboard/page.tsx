@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { AuthedDashboard } from "@/components/dashboard/authed-dashboard";
 import { GuestDashboard } from "@/components/dashboard/guest-dashboard";
-import { getDashboardData } from "@/lib/dashboard/queries";
+import { getProfile } from "@/lib/profile/queries";
 import { GUEST_COOKIE } from "@/lib/guest/constants";
 
 export const metadata = { title: "Dashboard · Finance OS" };
@@ -13,6 +13,6 @@ export default async function DashboardPage() {
     return <GuestDashboard />;
   }
 
-  const d = await getDashboardData();
-  return <DashboardView d={d} />;
+  const profile = await getProfile();
+  return <AuthedDashboard userName={profile.name} currency={profile.baseCurrency} />;
 }

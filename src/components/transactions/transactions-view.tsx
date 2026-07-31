@@ -15,14 +15,11 @@ import {
   formatDateShort,
   type CurrencyCode,
 } from "@/lib/format";
-import {
-  createTransaction,
-  deleteTransaction,
-  updateTransaction,
-} from "@/lib/transactions/actions";
+import { deleteTransaction, type ActionResult } from "@/lib/transactions/actions";
 import type {
   Transaction,
   TransactionFilter,
+  TransactionKind,
   TransactionSummary,
 } from "@/lib/transactions/types";
 import type {
@@ -36,14 +33,28 @@ const TABS: { key: TransactionFilter; label: string }[] = [
   { key: "expense", label: "Expenses" },
 ];
 
+/** Same shape `useActionState` needs — `transaction-form.tsx` binds
+ * whichever create/update action it's given without caring what's behind
+ * it: the real (vault-encrypting) path, or guest mode's IndexedDB path. */
+type CreateAction = (
+  prev: ActionResult | undefined,
+  formData: FormData,
+) => Promise<ActionResult>;
+type UpdateAction = (
+  id: string,
+  kind: TransactionKind,
+  prev: ActionResult | undefined,
+  formData: FormData,
+) => Promise<ActionResult>;
+
 export function TransactionsView({
   transactions,
   summary,
   categories,
   accounts,
   filter,
-  createAction = createTransaction,
-  updateAction = updateTransaction,
+  createAction,
+  updateAction,
   deleteAction = deleteTransaction,
 }: {
   transactions: Transaction[];
@@ -51,9 +62,9 @@ export function TransactionsView({
   categories: CategoryOption[];
   accounts: AccountOption[];
   filter: TransactionFilter;
-  /** Overrides for guest mode (IndexedDB) — same signatures as the Server Actions. */
-  createAction?: typeof createTransaction;
-  updateAction?: typeof updateTransaction;
+  createAction: CreateAction;
+  updateAction: UpdateAction;
+  /** Override for guest mode (IndexedDB) — same signature as the Server Action. */
   deleteAction?: typeof deleteTransaction;
 }) {
   const router = useRouter();

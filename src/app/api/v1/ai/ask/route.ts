@@ -4,7 +4,6 @@ import { z } from "zod";
 import { requireApiUser } from "@/lib/ai/api-auth";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { chatWithProvider } from "@/lib/ai/resolver";
-import { buildFinanceContext } from "@/lib/ai/context";
 import { PROVIDER_META } from "@/lib/ai/meta";
 import type { AIProviderId } from "@/lib/ai/types";
 
@@ -18,6 +17,10 @@ const bodySchema = z.object({
   apiKey: z.string().trim().min(1, "Add an AI provider key in Settings first."),
   provider: z.enum(providerIds),
   model: z.string().trim().optional(),
+  // Built client-side (src/lib/ai/context.ts) from decrypted finance data —
+  // the server can no longer read income/expenses itself under Phase 3.5.3.
+  // Not a secret, but only ever built where the vault is unlocked.
+  context: z.string().max(8000).optional(),
 });
 
 const GENERIC_SYSTEM_PROMPT =
@@ -53,19 +56,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Ground the answer in the user's real numbers when we can build them;
-  // fall back to a generic assistant rather than failing the whole request
-  // if a data query has a hiccup. Finance data itself isn't under the vault
-  // yet (that's 3.5.3+), so this read is unaffected by this change.
-  let context: string | null = null;
-  try {
-    context = await buildFinanceContext();
-  } catch {
-    context = null;
-  }
-
-  const systemPrompt = context
-    ? `You are the Finance OS AI assistant. Use ONLY the real financial data below to ground your answer — never invent numbers. If something the user asks about isn't covered by this data, say so instead of guessing. Be concise and concrete.\n\n${context}`
+  // Grounding context is optional — built client-side from decrypted data;
+  // if the client couldn't build it (vault just unlocked, a query hiccup),
+  // fall back to a generic assistant rather than failing the request.
+  const systemPrompt = parsed.data.context
+    ? `You are the Finance OS AI assistant. Use ONLY the real financial data below to ground your answer — never invent numbers. If something the user asks about isn't covered by this data, say so instead of guessing. Be concise and concrete.\n\n${parsed.data.context}`
     : GENERIC_SYSTEM_PROMPT;
 
   try {
