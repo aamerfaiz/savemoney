@@ -14,6 +14,14 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatOptions {
+  /** Ask the vendor to constrain output to a single JSON object, when it
+   * supports that mode. Callers still must `JSON.parse` + validate the
+   * result themselves — this is a request, not a guarantee. */
+  jsonMode?: boolean;
+  maxTokens?: number;
+}
+
 /**
  * One adapter per vendor. AI features call through `resolver.ts`, never an
  * adapter or vendor SDK directly, so adding a provider never touches a
@@ -23,5 +31,10 @@ export interface AIProvider {
   id: AIProviderId;
   /** Verify a key actually works before it's ever persisted. */
   testKey(apiKey: string, model?: string): Promise<{ ok: boolean; error?: string }>;
-  chat(apiKey: string, messages: ChatMessage[], model?: string): Promise<string>;
+  chat(
+    apiKey: string,
+    messages: ChatMessage[],
+    model?: string,
+    options?: ChatOptions,
+  ): Promise<string>;
 }

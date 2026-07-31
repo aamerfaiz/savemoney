@@ -184,6 +184,16 @@ tokens — don't pass hard-coded RGB.
   `@/lib/supabase/middleware`. **Auth is only enforced when the Supabase env
   vars are set** — absent them the app runs in demo mode on mock data. Keep
   that graceful fallback so the UI is always runnable.
+- **Mutations default to Server Actions — one deliberate exception.** The
+  `/api/v1/ai/*` Route Handlers (`src/app/api/v1/ai/{extract,commit}/`) are
+  plain JSON endpoints instead, because Phase 5 (native mobile via Expo)
+  needs a contract callable from a non-browser client, and Server Actions
+  are bound to Next's RSC action-id protocol. Don't generalize this pattern
+  to other features without the same reason — everything else stays Server
+  Actions. See `docs/ai-smart-entry-plan.md` for the full rationale,
+  including why bearer-token auth isn't wired end-to-end yet (the query/
+  action layer these routes call through still instantiates its own
+  cookie-bound Supabase client internally).
 
 ## Personalization, currency & optimistic UI
 

@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "./crypto";
 import { getProvider } from "./registry";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, ChatOptions } from "./types";
 
 /**
  * The one chokepoint every AI feature calls through: loads the user's active
@@ -16,6 +16,7 @@ import type { ChatMessage } from "./types";
  */
 export async function chatWithActiveProvider(
   messages: ChatMessage[],
+  options?: ChatOptions,
 ): Promise<string> {
   if (!db) {
     throw new Error("Database isn't configured in this environment.");
@@ -45,5 +46,5 @@ export async function chatWithActiveProvider(
 
   const apiKey = decryptSecret({ ciphertext: row.encryptedKey, iv: row.keyIv });
   const provider = getProvider(row.provider);
-  return provider.chat(apiKey, messages, row.model ?? undefined);
+  return provider.chat(apiKey, messages, row.model ?? undefined, options);
 }

@@ -179,19 +179,44 @@ All of the above reuses existing primitives only (`Card`, `Badge`, `Input`,
 Finalize any remaining visual details (module color-coding, grouping order)
 during implementation review.
 
-## Sequencing (not yet started)
+## Sequencing
 
-- [ ] `src/lib/ai/capabilities/` registry + per-capability Zod re-exports.
-- [ ] Extraction prompt template + DeepSeek JSON-mode call (verify
-      `response_format: json_object` support before relying on it).
-- [ ] `/api/v1/ai/extract` + `/api/v1/ai/commit` Route Handlers (session +
-      future bearer-token auth, rate limiting, ownership re-checks).
-- [ ] Name→id resolution against the user's real reference data.
-- [ ] Anomaly guard (reuse existing analytics/history queries — no new
-      calculation logic).
-- [ ] `/ai` UI: mode toggle, composer, draft list, confirm/commit.
-- [ ] Update `AGENTS.md` / financeos skill with the Route Handler exception.
-- [ ] `npm run build` + mobile (390px) and desktop screenshot verification.
+- [x] `src/lib/ai/capabilities/` registry — `types.ts`, `shared.ts`
+      (reference-data loader + name matcher + FormData bridge),
+      `extract-utils.ts`, `definitions.ts` (all 10 capabilities), `registry.ts`
+      (lookup + prompt manifest). Every `schema` field is the module's real,
+      imported Zod schema — none redefined.
+- [x] DeepSeek adapter: JSON-mode (`response_format: json_object`) plumbed
+      through `AIProvider.chat`'s new `ChatOptions` param and
+      `chatWithActiveProvider`. Still defensively `JSON.parse`s inside a
+      try/catch either way — JSON mode is a reliability aid, not something
+      trusted blindly.
+- [x] `src/lib/ai/smart-entry/extract.ts` — builds the delimited system
+      prompt (capability manifest + reference names + today's date, wrapped
+      in `<user_data>` with an explicit "data, not instructions" framing),
+      calls the provider, defensively parses the JSON.
+- [x] `src/lib/ai/smart-entry/resolve.ts` + `anomaly.ts` — name→id
+      resolution against the user's own RLS-scoped rows, real per-capability
+      Zod validation, soft (non-blocking) amount-anomaly warnings using
+      existing analytics/reference data — no new calculation logic.
+- [x] `src/lib/ai/smart-entry/commit.ts` + `POST /api/v1/ai/extract` +
+      `POST /api/v1/ai/commit` Route Handlers. Commit independently
+      re-validates every item against its real schema and re-checks target
+      ownership — never trusts the request body, per the McHire lesson.
+      Cookie-session auth only for now (`src/lib/ai/api-auth.ts`) — see that
+      file's note on what bearer-token support still requires.
+- [x] Best-effort per-instance rate limiting (`src/lib/ai/rate-limit.ts`) —
+      explicitly documented as not durable; a shared store is a follow-up.
+- [x] `npm run build` + `npm run lint` — both clean.
+- [x] Documented the Route Handler exception in the financeos skill
+      (`.claude/skills/financeos/SKILL.md`, Auth section).
+- [ ] `/ai` UI: mode toggle, composer, draft list, confirm/commit — deferred
+      to a follow-up session (design agreed above; not yet wired to these
+      endpoints).
+- [ ] Durable (DB- or Redis-backed) rate limiting, if usage warrants it.
+- [ ] Bearer-token auth for `/api/v1/ai/*`, once the query/action layer
+      accepts an injected Supabase client instead of each instantiating its
+      own cookie-bound one (Phase 5 prerequisite).
 
 ## Out of scope for this pass
 
