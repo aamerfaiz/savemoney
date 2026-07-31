@@ -2,7 +2,7 @@
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Check, CircleAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, CircleAlert, ShieldAlert } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,20 @@ import { ContributionForm } from "./contribution-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { deleteGoal } from "@/lib/goals/actions";
-import type { GoalsData } from "@/lib/goals/queries";
+import type { GoalsData } from "@/lib/goals/compute";
 import type { GoalWithProgress } from "@/lib/goals/types";
 
-export function GoalsView({ data }: { data: GoalsData }) {
+export function GoalsView({
+  data,
+  dek,
+  failedCount = 0,
+}: {
+  data: GoalsData;
+  dek: CryptoKey;
+  /** Goals that existed but couldn't be decrypted with the current DEK —
+   * e.g. pre-3.5.4 rows saved before encryption was enabled. */
+  failedCount?: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -62,6 +72,15 @@ export function GoalsView({ data }: { data: GoalsData }) {
           <Plus className="size-4" /> New goal
         </Button>
       </div>
+
+      {failedCount > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          {failedCount} {failedCount === 1 ? "goal" : "goals"} couldn&apos;t be
+          read — saved before encryption was enabled and can&apos;t be
+          recovered. Re-enter if you still need them.
+        </p>
+      )}
 
       {/* Overall summary */}
       <div className="rounded-lg border border-border bg-card p-5">
@@ -124,12 +143,12 @@ export function GoalsView({ data }: { data: GoalsData }) {
         title="New goal"
         description="Set a target and track your progress."
       >
-        <GoalForm onSuccess={() => setAdding(false)} />
+        <GoalForm onSuccess={() => setAdding(false)} dek={dek} />
       </Dialog>
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} title="Edit goal">
         {editing && (
-          <GoalForm existing={editing} onSuccess={() => setEditing(null)} />
+          <GoalForm existing={editing} onSuccess={() => setEditing(null)} dek={dek} />
         )}
       </Dialog>
 
@@ -142,6 +161,7 @@ export function GoalsView({ data }: { data: GoalsData }) {
           <ContributionForm
             goal={contributing}
             onSuccess={() => setContributing(null)}
+            dek={dek}
           />
         )}
       </Dialog>

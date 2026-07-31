@@ -8,7 +8,11 @@
 import { computeHealthScore } from "@/lib/finance/health-score";
 import { computeGoalProjection } from "@/lib/finance/goals";
 import type { CurrencyCode } from "@/lib/format";
-import type { DecryptedExpenseRow, DecryptedIncomeRow } from "@/lib/finance/decrypt";
+import type {
+  DecryptedActiveGoal,
+  DecryptedExpenseRow,
+  DecryptedIncomeRow,
+} from "@/lib/finance/decrypt";
 import type { FinanceRawData } from "@/lib/finance/raw-data";
 import { CATEGORY_PALETTE, type AnalyticsData, type CategorySlice, type MonthPoint } from "./types";
 
@@ -17,7 +21,8 @@ const RANGE_MONTHS = 6;
 export function computeAnalyticsData(
   income: DecryptedIncomeRow[],
   expenses: DecryptedExpenseRow[],
-  raw: Pick<FinanceRawData, "contributions" | "loans" | "activeGoals" | "investmentContributions">,
+  decryptedActiveGoals: DecryptedActiveGoal[],
+  raw: Pick<FinanceRawData, "contributions" | "loans" | "investmentContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): AnalyticsData {
@@ -48,7 +53,7 @@ export function computeAnalyticsData(
     .filter((l) => l.remainingAmount > 0)
     .reduce((s, l) => s + l.emi + l.extraEmi, 0);
 
-  const goalCompletion = goalCompletionShare(raw.activeGoals);
+  const goalCompletion = goalCompletionShare(decryptedActiveGoals);
   const investedThisWindow = raw.investmentContributions.reduce((s, r) => s + r.amount, 0);
   const investmentRate = totals.income > 0 ? investedThisWindow / totals.income : 0;
   const health = deriveHealth(months, totals, totalEmi, goalCompletion, investmentRate);
@@ -116,9 +121,7 @@ function totalsFrom(months: MonthPoint[]) {
   };
 }
 
-function goalCompletionShare(
-  goals: FinanceRawData["activeGoals"],
-): number {
+function goalCompletionShare(goals: DecryptedActiveGoal[]): number {
   if (goals.length === 0) return 0.6;
   const onTrack = goals.filter((g) => {
     const { onTrack } = computeGoalProjection({

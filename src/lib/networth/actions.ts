@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
-import { getGoalsData } from "@/lib/goals/queries";
 import { getLoansData } from "@/lib/loans/queries";
 import { computeNetWorth } from "@/lib/finance/net-worth";
 
@@ -18,17 +17,22 @@ export interface ActionResult {
  * Capture today's net worth as a snapshot so real history accrues. Composes
  * the live totals from investments, goals and loans, then upserts the row for
  * today (repeated captures on the same day overwrite rather than pile up).
+ *
+ * `goalsSavedTotal` arrives pre-computed from the caller (Phase 3.5.4) —
+ * `goals.current_amount` is encrypted now, so this server-side action can no
+ * longer read it itself; the client already has the decrypted total via
+ * `useSideData()`. investments/loans aren't encrypted yet, so those still
+ * fetch server-side as before.
  */
-export async function captureSnapshot(): Promise<ActionResult> {
+export async function captureSnapshot(goalsSavedTotal: number): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "You need to sign in first." };
 
-  const [investments, goals, loans] = await Promise.all([
+  const [investments, loans] = await Promise.all([
     getInvestmentsData(),
-    getGoalsData(),
     getLoansData(),
   ]);
 
@@ -44,7 +48,7 @@ export async function captureSnapshot(): Promise<ActionResult> {
       key: "goals",
       label: "Goal savings",
       icon: "target",
-      amount: goals.totalSaved,
+      amount: goalsSavedTotal,
       kind: "asset",
     },
     {

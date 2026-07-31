@@ -19,7 +19,7 @@ export function AuthedDashboard({
 }) {
   const dek = useVaultStore((s) => s.dek);
   const finance = useFinanceData(currency);
-  const side = useSideData();
+  const side = useSideData(currency);
 
   if (!dek) {
     return (

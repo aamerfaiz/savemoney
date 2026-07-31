@@ -1,16 +1,65 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { goalInputSchema, contributionInputSchema } from "./types";
+import { GOAL_PRIORITIES, GOAL_STATUSES } from "./types";
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
 }
+
+/**
+ * What the server actually validates now (Phase 3.5.4): shape only, for the
+ * fields that stay plaintext. `targetAmount`/`currentAmount`/
+ * `monthlyContribution` arrive as already-packed ciphertext — the client
+ * validated the real values (positive, within range) *before* encrypting,
+ * via the same `goalInputSchema` it always used. `status` is derived
+ * client-side too (`currentAmount >= targetAmount`), since the server can no
+ * longer compare two ciphertext amounts. See
+ * src/lib/goals/client-actions.ts, which builds this input.
+ */
+const encryptedGoalInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  icon: z.string().max(40).optional().nullable(),
+  targetAmount: z.string().min(1),
+  currentAmount: z.string().min(1),
+  currency: z.string().length(3),
+  deadline: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .nullable(),
+  priority: z.enum(GOAL_PRIORITIES),
+  monthlyContribution: z.string().min(1).optional().nullable(),
+  status: z.enum(GOAL_STATUSES),
+});
+
+export type EncryptedGoalInput = z.infer<typeof encryptedGoalInputSchema>;
+
+/** `goal_contributions.amount` isn't encrypted this pass — only the
+ * running `goals.current_amount` balance it feeds is. Because that balance
+ * is ciphertext now, the server can no longer read-modify-write it (add
+ * this contribution to whatever's currently stored): the client computes
+ * the new total from its own already-decrypted `current_amount` and sends
+ * the encrypted result + derived status directly. This trades the
+ * database's atomic increment for a client-computed one — two concurrent
+ * contributions from the same user (e.g. two open tabs) could race and one
+ * could clobber the other's update. Accepted for a single-user app; see
+ * docs/e2ee-path-b-plan.md 3.5.4. */
+const encryptedContributionInputSchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().trim().max(200).optional().nullable(),
+  newCurrentAmount: z.string().min(1),
+  newStatus: z.enum(GOAL_STATUSES),
+});
+
+export type EncryptedContributionInput = z.infer<typeof encryptedContributionInputSchema>;
 
 async function requireUser() {
   const supabase = await createClient();
@@ -21,20 +70,8 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-export async function createGoal(
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = goalInputSchema.safeParse({
-    name: formData.get("name"),
-    icon: emptyToNull(formData.get("icon")),
-    targetAmount: formData.get("targetAmount"),
-    currentAmount: formData.get("currentAmount") || 0,
-    currency: formData.get("currency") || "USD",
-    deadline: emptyToNull(formData.get("deadline")),
-    priority: formData.get("priority") || "medium",
-    monthlyContribution: emptyToNull(formData.get("monthlyContribution")),
-  });
+export async function createGoal(input: EncryptedGoalInput): Promise<ActionResult> {
+  const parsed = encryptedGoalInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -53,7 +90,7 @@ export async function createGoal(
     deadline: v.deadline ?? null,
     priority: v.priority,
     monthly_contribution: v.monthlyContribution ?? null,
-    status: v.currentAmount >= v.targetAmount ? "completed" : "active",
+    status: v.status,
   });
   if (error) return { ok: false, error: error.message };
 
@@ -63,21 +100,8 @@ export async function createGoal(
   return { ok: true };
 }
 
-export async function updateGoal(
-  id: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = goalInputSchema.safeParse({
-    name: formData.get("name"),
-    icon: emptyToNull(formData.get("icon")),
-    targetAmount: formData.get("targetAmount"),
-    currentAmount: formData.get("currentAmount") || 0,
-    currency: formData.get("currency") || "USD",
-    deadline: emptyToNull(formData.get("deadline")),
-    priority: formData.get("priority") || "medium",
-    monthlyContribution: emptyToNull(formData.get("monthlyContribution")),
-  });
+export async function updateGoal(id: string, input: EncryptedGoalInput): Promise<ActionResult> {
+  const parsed = encryptedGoalInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -96,7 +120,7 @@ export async function updateGoal(
       deadline: v.deadline ?? null,
       priority: v.priority,
       monthly_contribution: v.monthlyContribution ?? null,
-      status: v.currentAmount >= v.targetAmount ? "completed" : "active",
+      status: v.status,
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
@@ -125,34 +149,20 @@ export async function deleteGoal(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Record a contribution and advance the goal's saved amount. */
+/** Record a contribution and advance the goal's saved amount. The new
+ * `current_amount`/`status` arrive pre-computed and pre-encrypted (see the
+ * schema comment above) — this just persists both writes. */
 export async function addContribution(
   goalId: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedContributionInput,
 ): Promise<ActionResult> {
-  const parsed = contributionInputSchema.safeParse({
-    amount: formData.get("amount"),
-    contributedAt:
-      formData.get("contributedAt") || new Date().toISOString().slice(0, 10),
-    note: emptyToNull(formData.get("note")),
-  });
+  const parsed = encryptedContributionInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
   const v = parsed.data;
-
-  // Read the goal (RLS-scoped) to compute the new saved amount + status.
-  const { data: goal, error: readErr } = await supabase
-    .from("goals")
-    .select("current_amount, target_amount")
-    .eq("id", goalId)
-    .single();
-  if (readErr || !goal) {
-    return { ok: false, error: readErr?.message ?? "Goal not found." };
-  }
 
   const { error: insErr } = await supabase.from("goal_contributions").insert({
     goal_id: goalId,
@@ -163,12 +173,11 @@ export async function addContribution(
   });
   if (insErr) return { ok: false, error: insErr.message };
 
-  const newAmount = Number(goal.current_amount) + v.amount;
   const { error: updErr } = await supabase
     .from("goals")
     .update({
-      current_amount: newAmount,
-      status: newAmount >= Number(goal.target_amount) ? "completed" : "active",
+      current_amount: v.newCurrentAmount,
+      status: v.newStatus,
     })
     .eq("id", goalId);
   if (updErr) return { ok: false, error: updErr.message };
@@ -180,12 +189,7 @@ export async function addContribution(
   return { ok: true };
 }
 
-function emptyToNull(v: FormDataEntryValue | null): string | null {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s === "" ? null : s;
-}
-
-function fieldErrors(err: import("zod").ZodError): ActionResult {
+function fieldErrors(err: z.ZodError): ActionResult {
   const fieldErrors: Record<string, string> = {};
   for (const issue of err.issues) {
     const key = issue.path[0];

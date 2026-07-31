@@ -68,6 +68,17 @@ export interface RawBudgetRow {
   currency: string;
 }
 
+/** Active-goals row for the safe-to-spend/health-score path — a narrower,
+ * parallel fetch from the same `goals` table as src/lib/goals/queries.ts's
+ * `fetchGoalsRaw()` (full list, for the Goals page). Packed ciphertext
+ * (Phase 3.5.4) — decrypt via decryptActiveGoals() in finance/decrypt.ts. */
+export interface RawActiveGoalRow {
+  targetAmount: string;
+  currentAmount: string;
+  monthlyContribution: string | null;
+  deadline: string | null;
+}
+
 /** None of the rest of this is encrypted this pass — bundled in alongside
  * the ciphertext rows purely because computeBudgetsData/computeAnalyticsData
  * must now run client-side, so everything they need has to be fetchable
@@ -79,12 +90,7 @@ export interface FinanceRawData {
   budgets: RawBudgetRow[];
   /** Active goals only — feeds both the safe-to-spend monthly-contribution
    * sum and the health score's on-track share. */
-  activeGoals: {
-    targetAmount: number;
-    currentAmount: number;
-    monthlyContribution: number | null;
-    deadline: string | null;
-  }[];
+  activeGoals: RawActiveGoalRow[];
   loans: { emi: number; extraEmi: number; remainingAmount: number }[];
   investmentMonthlyContributions: number[];
   investmentContributions: { amount: number; contributedAt: string }[];
@@ -262,18 +268,17 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
     currency: b.currency,
   }));
 
-  const activeGoals = (
+  const activeGoals: RawActiveGoalRow[] = (
     (goalRows ?? []) as {
-      target_amount: string | number;
-      current_amount: string | number;
-      monthly_contribution: string | number | null;
+      target_amount: string;
+      current_amount: string;
+      monthly_contribution: string | null;
       deadline: string | null;
     }[]
   ).map((g) => ({
-    targetAmount: Number(g.target_amount),
-    currentAmount: Number(g.current_amount),
-    monthlyContribution:
-      g.monthly_contribution == null ? null : Number(g.monthly_contribution),
+    targetAmount: g.target_amount,
+    currentAmount: g.current_amount,
+    monthlyContribution: g.monthly_contribution,
     deadline: g.deadline,
   }));
 

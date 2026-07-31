@@ -10,6 +10,7 @@
 import { computeBudget, type BudgetResult } from "@/lib/finance/budget";
 import type { CurrencyCode } from "@/lib/format";
 import type {
+  DecryptedActiveGoal,
   DecryptedBudgetRow,
   DecryptedExpenseRow,
   DecryptedIncomeRow,
@@ -28,7 +29,8 @@ export function computeBudgetsData(
   expenses: DecryptedExpenseRow[],
   income: DecryptedIncomeRow[],
   decryptedBudgets: DecryptedBudgetRow[],
-  raw: Pick<FinanceRawData, "activeGoals" | "loans" | "investmentMonthlyContributions">,
+  decryptedActiveGoals: DecryptedActiveGoal[],
+  raw: Pick<FinanceRawData, "loans" | "investmentMonthlyContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): BudgetsData {
@@ -66,7 +68,7 @@ export function computeBudgetsData(
   const monthlyIncome = income
     .filter((r) => r.receivedAt >= monthStart)
     .reduce((s, r) => s + r.amount, 0);
-  const goalContributions = raw.activeGoals.reduce(
+  const goalContributions = decryptedActiveGoals.reduce(
     (s, g) => s + (g.monthlyContribution ?? 0),
     0,
   );

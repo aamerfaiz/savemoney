@@ -14,7 +14,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { CurrencyCode } from "@/lib/format";
 import { fetchFinanceRawData } from "./raw-data";
-import { decryptBudgetRows, decryptExpenseRows, decryptIncomeRows } from "./decrypt";
+import {
+  decryptActiveGoals,
+  decryptBudgetRows,
+  decryptExpenseRows,
+  decryptIncomeRows,
+} from "./decrypt";
 import { computeBudgetsData, type BudgetsData } from "@/lib/budgets/compute";
 import { computeAnalyticsData } from "@/lib/analytics/compute";
 import { computeTransactionsList } from "@/lib/transactions/compute";
@@ -50,20 +55,28 @@ export function useFinanceData(currency: CurrencyCode) {
       const raw = await fetchFinanceRawData();
       if ("error" in raw) throw new Error(raw.error);
 
-      const [incomeResult, expenseResult, budgetResult] = await Promise.all([
+      const [incomeResult, expenseResult, budgetResult, activeGoalsResult] = await Promise.all([
         decryptIncomeRows(raw.income, dek),
         decryptExpenseRows(raw.expenses, dek),
         decryptBudgetRows(raw.budgets, dek),
+        decryptActiveGoals(raw.activeGoals, dek),
       ]);
 
       const budgets = computeBudgetsData(
         expenseResult.rows,
         incomeResult.rows,
         budgetResult.rows,
+        activeGoalsResult.rows,
         raw,
         currency,
       );
-      const analytics = computeAnalyticsData(incomeResult.rows, expenseResult.rows, raw, currency);
+      const analytics = computeAnalyticsData(
+        incomeResult.rows,
+        expenseResult.rows,
+        activeGoalsResult.rows,
+        raw,
+        currency,
+      );
       const transactions = computeTransactionsList(
         incomeResult.rows,
         expenseResult.rows,

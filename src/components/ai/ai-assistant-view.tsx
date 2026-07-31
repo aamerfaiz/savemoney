@@ -24,7 +24,7 @@ import type { CurrencyCode } from "@/lib/format";
 export function AiAssistantView({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const finance = useFinanceData(currency);
-  const side = useSideData();
+  const side = useSideData(currency);
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);

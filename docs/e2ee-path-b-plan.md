@@ -843,7 +843,69 @@ folded into generic "connect an agent" copy.
         clean; migration applied via Supabase MCP, `get_advisors` shows no
         new findings. **Not verified**: a real browser session, same
         sandbox limitation as every phase so far.
-  - [ ] `goals.targetAmount`/`currentAmount`/`monthlyContribution`
+  - [x] `goals.targetAmount`/`currentAmount`/`monthlyContribution` — done.
+        The biggest sub-item so far: unlike budgets, `goals` fed a *second*,
+        separate root query (`raw-data.ts`'s `activeGoals`, for safe-to-spend
+        + health score) on top of the Goals page's own full-list query, and
+        the Goals page itself was still a server component (`getGoalsData()`
+        computed projections server-side). Migration
+        `encrypt_goals_amount_columns` applied live (`numeric` → `text` × 3,
+        `USING <col>::text`, dropped the stale `current_amount` default).
+        **Read path**: `goals/queries.ts`'s `fetchGoalsRaw()` now returns
+        ciphertext only (no more server-side `computeGoalProjection`/sort/
+        totals); new `src/lib/goals/compute.ts`'s `computeGoalsData()` is
+        the pure client-callable replacement (mirrors `budgets/compute.ts`).
+        New `decryptGoalRows()`/`decryptActiveGoals()` in `finance/
+        decrypt.ts` (the latter for the narrower `activeGoals` shape).
+        `computeBudgetsData`/`computeAnalyticsData` now take decrypted
+        active-goals as an explicit param instead of `raw.activeGoals`.
+        `side-data.ts`'s `fetchGoalsDataAction()` now returns raw rows;
+        `use-side-data.ts` gained a `dek`/`currency` param and decrypts+
+        computes goals itself (loans/investments/recurring/snapshots stay
+        server-computed — not encrypted yet), exposing `failedGoalCount`.
+        `authed-notifications.tsx` had its own separate parallel goals fetch
+        (missed on a first pass, caught by tracing every consumer per the
+        3.5.3 lesson) — updated the same way inline.
+        **Write path**: `goal-form.tsx`/`contribution-form.tsx` now require
+        a `dek: CryptoKey` prop (threaded from a new
+        `authed-goals-view.tsx`, replacing the server-component
+        `goals/page.tsx`); new `src/lib/goals/client-actions.ts` mirrors
+        `budgets/client-actions.ts`. `createGoal`/`updateGoal` now take a
+        typed `EncryptedGoalInput`; `status` (`active`/`completed`) is now
+        derived client-side before encrypting, since the server can no
+        longer compare two ciphertext amounts to derive it itself.
+        **Hardest piece**: `addContribution` used to be a server-side
+        read-modify-write (`SELECT current_amount` → add the contribution →
+        `UPDATE`) — impossible once `current_amount` is ciphertext the
+        server can't read. Redesigned so the client (which already has the
+        goal's decrypted `currentAmount`/`targetAmount` on-screen) computes
+        the new running total and status itself, encrypts the total, and
+        sends both to the server as a trusted write (`goal_contributions.
+        amount` itself stays plaintext and server-validated — that table
+        isn't encrypted until its own turn in this list).
+        **Known tradeoff, documented not hidden**: this trades the
+        database's atomic increment for a client-computed one — two
+        concurrent contributions to the same goal (e.g. two open tabs)
+        could race and one clobber the other's total. Accepted for a
+        single-user app; would need revisiting for the shared-accounts
+        Phase 4 feature.
+        `net_worth/actions.ts`'s `captureSnapshot()` used to call
+        `getGoalsData()` directly server-side for the "Goal savings" net
+        worth component — now takes `goalsSavedTotal` as a parameter,
+        supplied by the client (`authed-networth.tsx` already has it
+        decrypted via `useSideData`); investments/loans still fetch
+        server-side there since they're not encrypted yet.
+        **Scope cut**: removed `goal.create`/`goal.edit`/`goal.contribution`
+        Smart Entry capabilities (and the now-dead `fetchCurrentGoal`
+        helper, and the `monthly_contribution`-based `typicalAmount` in
+        `loadReferenceData()`'s goals reference) — same reasoning as
+        budgets, with `goal.contribution` additionally blocked by needing
+        the goal's current decrypted amount server-side to compute a new
+        total, which is exactly what's no longer possible.
+        `goal.delete` is untouched. **Verified**: `npm run build`/
+        `npm run lint` clean; migration applied via Supabase MCP,
+        `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `loans.principal`/`emi`/`remainingAmount`/`extraEmi`
   - [ ] `investments.investedAmount`/`currentValue`/`monthlyContribution`
   - [ ] `net_worth_snapshots.*`

@@ -8,7 +8,7 @@ import { buildNotifications } from "./generate";
 import type { NotificationItem } from "./types";
 import type { CurrencyCode } from "@/lib/format";
 import type { BudgetsData } from "@/lib/budgets/compute";
-import type { GoalsData } from "@/lib/goals/queries";
+import type { GoalsData } from "@/lib/goals/compute";
 import type { LoansData } from "@/lib/loans/queries";
 import type { BillCalendarData } from "@/lib/calendar/queries";
 

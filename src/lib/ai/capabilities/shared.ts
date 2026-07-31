@@ -68,10 +68,9 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       .select("id, name, monthly_contribution")
       .is("deleted_at", null),
     supabase.from("loans").select("id, name, emi").is("deleted_at", null),
-    supabase
-      .from("goals")
-      .select("id, name, monthly_contribution")
-      .is("deleted_at", null),
+    // No `monthly_contribution` here — encrypted since Phase 3.5.4, same as
+    // budgets never had a plaintext amount to build a typicalAmount from.
+    supabase.from("goals").select("id, name").is("deleted_at", null),
     supabase
       .from("recurring_rules")
       .select("id, name")
@@ -111,17 +110,9 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     loans: (
       (loans ?? []) as { id: string; name: string; emi: string | number }[]
     ).map((l) => ({ id: l.id, name: l.name, typicalAmount: Number(l.emi) })),
-    goals: (
-      (goals ?? []) as {
-        id: string;
-        name: string;
-        monthly_contribution: string | number | null;
-      }[]
-    ).map((g) => ({
+    goals: ((goals ?? []) as { id: string; name: string }[]).map((g) => ({
       id: g.id,
       name: g.name,
-      typicalAmount:
-        g.monthly_contribution == null ? undefined : Number(g.monthly_contribution),
     })),
     recurringRules: ((recurring ?? []) as { id: string; name: string }[]).map((r) => ({
       id: r.id,
@@ -180,25 +171,6 @@ export async function fetchCurrentLoan(id: string) {
     remainingMonths: data.remaining_months as number | null,
     extraEmi: data.extra_emi == null ? null : Number(data.extra_emi),
     startDate: data.start_date as string,
-  };
-}
-
-export async function fetchCurrentGoal(id: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("goals")
-    .select("name, icon, target_amount, current_amount, deadline, priority, monthly_contribution")
-    .eq("id", id)
-    .single();
-  if (!data) return null;
-  return {
-    name: data.name as string,
-    icon: data.icon as string | null,
-    targetAmount: Number(data.target_amount),
-    currentAmount: Number(data.current_amount),
-    deadline: data.deadline as string | null,
-    priority: data.priority as string,
-    monthlyContribution: data.monthly_contribution == null ? null : Number(data.monthly_contribution),
   };
 }
 

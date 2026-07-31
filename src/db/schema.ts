@@ -343,18 +343,14 @@ export const goals = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     icon: text("icon"),
-    targetAmount: numeric("target_amount", { precision: 14, scale: 2 })
-      .notNull(),
-    currentAmount: numeric("current_amount", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    targetAmount: text("target_amount").notNull(),
+    currentAmount: text("current_amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     deadline: date("deadline"),
     priority: goalPriority("priority").notNull().default("medium"),
-    monthlyContribution: numeric("monthly_contribution", {
-      precision: 14,
-      scale: 2,
-    }),
+    monthlyContribution: text("monthly_contribution"),
     status: goalStatus("status").notNull().default("active"),
     ...audit,
   },

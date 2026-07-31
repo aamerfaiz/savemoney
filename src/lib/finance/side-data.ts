@@ -1,15 +1,16 @@
 "use server";
 
 /**
- * Thin client-callable wrappers around query functions that don't touch
- * encrypted data (goals/loans/investments/recurring/net-worth-snapshots
- * aren't in Phase 3.5.3's scope). Pages that compose them together with
- * now-client-side budgets/analytics (Dashboard, Net Worth, Reports,
- * Notifications) need them reachable from client code — no logic changes,
- * these just re-export the existing "server-only" functions as actions.
+ * Thin client-callable wrappers around query functions. loans/investments/
+ * recurring/net-worth-snapshots don't touch encrypted data yet — no logic
+ * changes, these just re-export the existing "server-only" functions as
+ * actions. goals is the exception as of Phase 3.5.4: `fetchGoalsRaw()`
+ * returns packed ciphertext now, so this wrapper can no longer compute
+ * `GoalsData` itself — see src/lib/finance/use-side-data.ts, which decrypts
+ * and calls src/lib/goals/compute.ts client-side instead.
  */
 
-import { getGoalsData } from "@/lib/goals/queries";
+import { fetchGoalsRaw } from "@/lib/goals/queries";
 import { getLoansData } from "@/lib/loans/queries";
 import { getInvestmentsData } from "@/lib/investments/queries";
 import { getRecurringData } from "@/lib/recurring/queries";
@@ -18,7 +19,7 @@ import { getBillCalendarData } from "@/lib/calendar/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export async function fetchGoalsDataAction() {
-  return getGoalsData();
+  return fetchGoalsRaw();
 }
 
 export async function fetchLoansDataAction() {

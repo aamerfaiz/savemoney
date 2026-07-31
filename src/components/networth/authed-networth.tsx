@@ -13,7 +13,7 @@ import type { CurrencyCode } from "@/lib/format";
 export function AuthedNetWorth({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const finance = useFinanceData(currency);
-  const side = useSideData();
+  const side = useSideData(currency);
 
   if (!dek) {
     return (
@@ -55,5 +55,5 @@ export function AuthedNetWorth({ currency }: { currency: CurrencyCode }) {
     currency,
   });
 
-  return <NetWorthView data={nw} />;
+  return <NetWorthView data={nw} goalsSavedTotal={side.data.goalsData.totalSaved} />;
 }

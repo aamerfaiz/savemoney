@@ -14,7 +14,7 @@
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { AnalyticsData } from "@/lib/analytics/types";
-import type { GoalsData } from "@/lib/goals/queries";
+import type { GoalsData } from "@/lib/goals/compute";
 import type { LoansData } from "@/lib/loans/queries";
 import type { InvestmentsData } from "@/lib/investments/queries";
 import type { NetWorthData } from "@/lib/networth/types";

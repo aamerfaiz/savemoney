@@ -17,13 +17,7 @@ import {
 import { loanInputSchema, paymentInputSchema, LOAN_TYPES } from "@/lib/loans/types";
 import { createLoan, recordPayment, updateLoan, deleteLoan } from "@/lib/loans/actions";
 
-import {
-  goalInputSchema,
-  contributionInputSchema as goalContributionSchema,
-  GOAL_PRIORITIES,
-  GOAL_ICONS,
-} from "@/lib/goals/types";
-import { createGoal, addContribution, updateGoal, deleteGoal } from "@/lib/goals/actions";
+import { deleteGoal } from "@/lib/goals/actions";
 
 import { deleteBudget } from "@/lib/budgets/actions";
 
@@ -40,7 +34,6 @@ import {
   toFormData,
   fetchCurrentInvestment,
   fetchCurrentLoan,
-  fetchCurrentGoal,
   fetchCurrentRecurring,
 } from "./shared";
 import {
@@ -59,20 +52,25 @@ const emptySchema = z.object({});
  * Every capability Smart Entry can propose. One entry per existing
  * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`.
  *
- * No `transaction.*` capabilities as of Phase 3.5.3, and no `budget.create`/
- * `budget.edit` as of Phase 3.5.4 (removed, not disabled): once a table's
- * `amount` is encrypted under the vault DEK, this file's `execute()` calls
- * — which run entirely server-side via /api/v1/ai/commit — have no DEK to
- * encrypt with. Properly supporting them would mean moving amount
+ * No `transaction.*` capabilities as of Phase 3.5.3; no `budget.create`/
+ * `budget.edit` as of Phase 3.5.4 (budgets.amount); and no `goal.create`/
+ * `goal.edit`/`goal.contribution` as of Phase 3.5.4 (goals.targetAmount/
+ * currentAmount/monthlyContribution) — all removed, not disabled: once a
+ * table's amount is encrypted under the vault DEK, this file's `execute()`
+ * calls — which run entirely server-side via /api/v1/ai/commit — have no
+ * DEK to encrypt with. Properly supporting them would mean moving amount
  * validation client-side (before encryption) while commit.ts's independent
  * re-validation (`def.schema.safeParse`, the "never trust fields"
  * defense-in-depth check) can no longer inspect a real numeric amount
  * post-encryption — a real redesign of that trust boundary, not done here.
- * Creating/editing a budget still works normally through the Budget page
- * itself (src/lib/budgets/client-actions.ts), which encrypts client-side
- * the same way. `budget.delete` is unaffected (no amount involved) and
- * stays. Only the natural-language Smart Entry shortcut is unavailable for
- * creating/editing transactions and budgets.
+ * `goal.contribution` has the added wrinkle that it would need the goal's
+ * *current* decrypted amount to compute a new running total, which the
+ * server can't read either (see the comment on `EncryptedContributionInput`
+ * in src/lib/goals/actions.ts). Creating/editing a budget or goal, and
+ * logging a goal contribution, all still work normally through their own
+ * pages (client-side encrypt path). `budget.delete`/`goal.delete` are
+ * unaffected (no amount involved) and stay. Only the natural-language
+ * Smart Entry shortcut is unavailable for these.
  */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
   {
@@ -395,134 +393,6 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
     },
     execute: (_fields, targetId) => deleteLoan(targetId!),
-  },
-
-  {
-    key: "goal.contribution",
-    module: "goal",
-    label: "Goal contribution",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "Money added toward an EXISTING savings goal. args: goalName (string, " +
-      "required — must refer to a goal the user already has), amount (number, " +
-      "required), date (YYYY-MM-DD, optional, defaults to today).",
-    schema: goalContributionSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.goalName);
-      const goal = matchByName(nameGuess, ref.goals);
-      const warnings: string[] = [];
-      if (!goal) {
-        warnings.push(
-          nameGuess ? `Couldn't match goal "${nameGuess}" — pick one below.` : "No goal specified — pick one below.",
-        );
-      }
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
-
-      const parsed = goalContributionSchema.safeParse({
-        amount,
-        contributedAt: normalizeDate(args.date) ?? todayISO(),
-        note: null,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return {
-        ok: true,
-        fields: parsed.data,
-        targetId: goal?.id,
-        targetLabel: goal?.name,
-        warnings,
-      };
-    },
-    execute: (fields, targetId) => addContribution(targetId!, undefined, toFormData(fields)),
-  },
-
-  {
-    key: "goal.create",
-    module: "goal",
-    label: "New goal",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A brand-new savings goal. args: name (string, required), targetAmount " +
-      "(number, required), currentAmount (number, optional, defaults to 0), " +
-      "deadline (YYYY-MM-DD, optional), priority (one of low/medium/high, " +
-      "optional), monthlyContribution (number, optional).",
-    schema: goalInputSchema,
-    async resolve(args) {
-      const name = asString(args.name);
-      const targetAmount = toNumber(args.targetAmount);
-      if (!name || targetAmount == null) {
-        return { ok: false, warnings: [], error: "Missing goal name or target amount." };
-      }
-      const priority = normalizeEnum(args.priority, GOAL_PRIORITIES);
-      const icon = normalizeEnum(args.icon, GOAL_ICONS);
-
-      const parsed = goalInputSchema.safeParse({
-        name,
-        icon: icon ?? null,
-        targetAmount,
-        currentAmount: toNumber(args.currentAmount) ?? 0,
-        deadline: normalizeDate(args.deadline),
-        priority: priority ?? undefined,
-        monthlyContribution: toNumber(args.monthlyContribution),
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings: [] };
-    },
-    execute: (fields) => createGoal(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "goal.edit",
-    module: "goal",
-    label: "Edit goal",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Save",
-    promptDescription:
-      "Change details of an EXISTING savings goal. args: goalName (string, " +
-      "required — must refer to a goal the user already has), plus ONLY the " +
-      "fields the user wants changed: name, targetAmount, currentAmount, " +
-      "deadline, priority, monthlyContribution.",
-    schema: goalInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.goalName);
-      const match = matchByName(nameGuess, ref.goals);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `Couldn't find a goal named "${nameGuess}".` : "Missing goal name.",
-        };
-      }
-      const current = await fetchCurrentGoal(match.id);
-      if (!current) return { ok: false, warnings: [], error: "That goal could not be found." };
-
-      const priority = normalizeEnum(args.priority, GOAL_PRIORITIES);
-      const icon = normalizeEnum(args.icon, GOAL_ICONS);
-      const parsed = goalInputSchema.safeParse({
-        name: asString(args.name) ?? current.name,
-        icon: icon ?? current.icon,
-        targetAmount: toNumber(args.targetAmount) ?? current.targetAmount,
-        currentAmount: toNumber(args.currentAmount) ?? current.currentAmount,
-        deadline: normalizeDate(args.deadline) ?? current.deadline,
-        priority: priority ?? current.priority,
-        monthlyContribution:
-          args.monthlyContribution !== undefined ? toNumber(args.monthlyContribution) : current.monthlyContribution,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
-    },
-    execute: (fields, targetId) => updateGoal(targetId!, undefined, toFormData(fields)),
   },
 
   {

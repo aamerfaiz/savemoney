@@ -13,7 +13,7 @@ import type { CurrencyCode } from "@/lib/format";
 export function AuthedReports({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const finance = useFinanceData(currency);
-  const side = useSideData();
+  const side = useSideData(currency);
 
   if (!dek) {
     return (

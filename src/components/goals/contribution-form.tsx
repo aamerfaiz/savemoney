@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { addContribution, type ActionResult } from "@/lib/goals/actions";
+import type { ActionResult } from "@/lib/goals/actions";
+import { encryptedAddContribution } from "@/lib/goals/client-actions";
 import { formatCurrency } from "@/lib/format";
 import type { GoalWithProgress } from "@/lib/goals/types";
 
@@ -15,12 +16,14 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function ContributionForm({
   goal,
   onSuccess,
+  dek,
 }: {
   goal: GoalWithProgress;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
-  const action = addContribution.bind(null, goal.id);
+  const action = encryptedAddContribution.bind(null, dek, goal);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData
