@@ -557,10 +557,10 @@ folded into generic "connect an agent" copy.
         the schema work is shared) — `drizzle/0007_worried_hitman.sql` +
         RLS/PostgREST-revokes in
         `drizzle/manual/0007_vault_and_mcp_tokens_rls.sql`, mirroring
-        `ai_provider_keys`. **Not yet applied to the live Supabase
-        project** — blocked on Supabase MCP authorization (`/mcp` in an
-        interactive session), same as noted in "what's needed before we
-        start."
+        `ai_provider_keys`. **Applied to the live Supabase project** —
+        both tables confirmed present with RLS enabled via the Supabase
+        MCP (`list_tables`), and `get_advisors` shows no new security
+        lints from either table.
   - [x] Server Actions/queries (`src/lib/vault/actions.ts`,
         `src/lib/vault/queries.ts`): `setupVault`, `rotateVaultSecret`,
         `getVaultBlob`, `getVaultSetupStatus` — every input/output is
@@ -584,10 +584,12 @@ folded into generic "connect an agent" copy.
         recovery-code generation) was exercised end-to-end in a real
         browser and screenshotted at 390px and desktop, via a throwaway
         preview route (not committed) since this sandbox has no Supabase
-        credentials to drive the real `/settings` page. The live
-        Supabase round-trip (`setupVault` actually persisting, then
-        unlocking with a real session) is **not yet verified** — pending
-        the same Supabase MCP authorization + migration apply.
+        *auth* credentials to log in and drive the real `/settings` page
+        end to end. The migration itself is applied and confirmed live
+        (see above); the full round-trip through a real authenticated
+        session (`setupVault` actually persisting, then unlocking on a
+        second load) is still unverified — needs a real login, which
+        this sandbox can't do.
 - [ ] **3.5.2 — Pilot: migrate `private.ai_provider_keys` to
       vault-wrapped storage.** Smallest table, already isolated, already
       has its own encrypt/decrypt helper to model the client-side version
@@ -670,7 +672,7 @@ folded into generic "connect an agent" copy.
         `wrappedDekByToken`, `tokenDekIv`, `tokenKekSalt`, `scope`,
         `expiresAt`, `lastUsedAt`, `revokedAt`, `...audit`) — built and
         migrated alongside `vault_keys` in 3.5.1, same RLS/PostgREST
-        treatment. Not yet applied live (blocked on Supabase MCP auth).
+        treatment. Applied to the live project.
   - [x] Settings → "Agent Access" card: mint a scoped (`read_summary` /
         `read_full`), named, expiring token (preset durations, hard-capped
         at `MCP_TOKEN_MAX_DURATION_DAYS`, shown once); list active tokens

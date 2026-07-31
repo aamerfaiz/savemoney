@@ -1,5 +1,5 @@
 -- Finance OS — Row Level Security + PostgREST lockdown for the vault
--- (Phase 3.5, E2EE "not even me"). Apply AFTER drizzle/0007_nosy_songbird.sql
+-- (Phase 3.5, E2EE "not even me"). Apply AFTER drizzle/0007_worried_hitman.sql
 -- (the generated schema migration that creates the mcp_token_scope enum,
 -- private.vault_keys, and private.mcp_agent_tokens).
 --
