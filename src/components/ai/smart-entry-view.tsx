@@ -47,7 +47,9 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
           ...d,
           fields: d.fields ?? {},
           warnings: d.warnings ?? [],
-          selected: d.ok,
+          // Destructive drafts (delete) are opt-in, never opt-out — a batch
+          // "confirm all" should never silently sweep up a delete.
+          selected: d.ok && !d.destructive,
           committing: false,
         }),
       );
@@ -102,7 +104,7 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
     }
 
     if (!data.ok || !data.results) {
-      const msg = data.error ?? "Couldn't add these — try again.";
+      const msg = data.error ?? "Couldn't apply these — try again.";
       setDrafts((ds) =>
         ds.map((d) => (targets.some((t) => t.id === d.id) ? { ...d, committing: false, commitError: msg } : d)),
       );
@@ -120,7 +122,7 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
         }
         const r = results[i++];
         if (r?.ok) continue; // committed — drop it from the list
-        next.push({ ...d, committing: false, commitError: r?.error ?? "Couldn't add this." });
+        next.push({ ...d, committing: false, commitError: r?.error ?? "Couldn't apply this." });
       }
       return next;
     });
@@ -128,22 +130,26 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
   }
 
   const primaryLabel =
-    selectedCount === 0 ? "Select at least one" : allSelected ? `Add all (${selectedCount})` : `Add selected (${selectedCount})`;
+    selectedCount === 0
+      ? "Select at least one"
+      : allSelected
+        ? `Confirm all (${selectedCount})`
+        : `Confirm selected (${selectedCount})`;
 
   return (
     <div className="space-y-5 pb-20">
       <Card className="space-y-3 p-5">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Sparkles className="size-4 text-brand" />
-          Add from a prompt
+          Add, edit, or delete from a prompt
         </div>
         <p className="text-xs text-muted-foreground">
-          Describe what happened in plain language — you&apos;ll review and confirm before anything is added.
+          Describe what happened, what changed, or what to remove — you&apos;ll review and confirm before anything is applied.
         </p>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Spent 45 on groceries yesterday, and put 200 into my Nifty50 SIP"
+          placeholder="e.g. Spent 45 on groceries yesterday, and change my Nifty50 SIP to 250"
           disabled={phase === "loading"}
         />
         <Button onClick={runExtract} disabled={phase === "loading" || !prompt.trim()}>
@@ -167,7 +173,8 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
 
       {phase === "empty" && (
         <p className="text-sm text-muted-foreground">
-          Didn&apos;t find anything to record in that — try being more specific about amounts and what they were for.
+          Didn&apos;t find anything to record, change, or remove in that — try being more specific about amounts,
+          dates, or names.
         </p>
       )}
 
@@ -213,7 +220,7 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
                   disabled={selectedCount === 0 || anyCommitting}
                   onClick={() => commitItems(okDrafts.filter((d) => d.selected))}
                 >
-                  {anyCommitting ? "Adding…" : primaryLabel}
+                  {anyCommitting ? "Confirming…" : primaryLabel}
                 </Button>
               </div>
             </div>

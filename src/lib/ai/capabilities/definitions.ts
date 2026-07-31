@@ -1,17 +1,24 @@
 import "server-only";
 
+import { z } from "zod";
+
 import { transactionInputSchema, INCOME_SOURCE_TYPES } from "@/lib/transactions/types";
-import { createTransaction } from "@/lib/transactions/actions";
+import { createTransaction, updateTransaction, deleteTransaction } from "@/lib/transactions/actions";
 
 import {
   investmentInputSchema,
   contributionInputSchema as investmentContributionSchema,
   INVESTMENT_TYPES,
 } from "@/lib/investments/types";
-import { createInvestment, recordContribution } from "@/lib/investments/actions";
+import {
+  createInvestment,
+  recordContribution,
+  updateInvestment,
+  deleteInvestment,
+} from "@/lib/investments/actions";
 
 import { loanInputSchema, paymentInputSchema, LOAN_TYPES } from "@/lib/loans/types";
-import { createLoan, recordPayment } from "@/lib/loans/actions";
+import { createLoan, recordPayment, updateLoan, deleteLoan } from "@/lib/loans/actions";
 
 import {
   goalInputSchema,
@@ -19,16 +26,29 @@ import {
   GOAL_PRIORITIES,
   GOAL_ICONS,
 } from "@/lib/goals/types";
-import { createGoal, addContribution } from "@/lib/goals/actions";
+import { createGoal, addContribution, updateGoal, deleteGoal } from "@/lib/goals/actions";
 
 import { budgetInputSchema, BUDGET_PERIODS } from "@/lib/budgets/types";
-import { createBudget } from "@/lib/budgets/actions";
+import { createBudget, updateBudget, deleteBudget } from "@/lib/budgets/actions";
 
 import { recurringInputSchema, RECURRING_FREQUENCIES } from "@/lib/recurring/types";
-import { createRecurringRule } from "@/lib/recurring/actions";
+import {
+  createRecurringRule,
+  updateRecurringRule,
+  deleteRecurringRule,
+} from "@/lib/recurring/actions";
 
 import type { AICapability } from "./types";
-import { matchByName, toFormData } from "./shared";
+import {
+  matchByName,
+  toFormData,
+  fetchCurrentInvestment,
+  fetchCurrentLoan,
+  fetchCurrentGoal,
+  fetchCurrentBudget,
+  fetchCurrentRecurring,
+  fetchCurrentTransaction,
+} from "./shared";
 import {
   asBool,
   asString,
@@ -38,21 +58,28 @@ import {
   toNumber,
 } from "./extract-utils";
 
+/** Trivial schema for delete capabilities — nothing to validate but the
+ * routing info a couple of them need (see transaction.delete). */
+const emptySchema = z.object({});
+const transactionKindSchema = z.object({ kind: z.enum(["income", "expense"]) });
+
 /** Every capability Smart Entry can propose. One entry per existing
- * create/log Server Action — see `docs/ai-smart-entry-plan.md`. */
+ * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`. */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
   {
     key: "transaction.expense",
     module: "transaction",
     label: "Expense",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       'A single expense already made. args: amount (number, required), date ' +
       "(YYYY-MM-DD, optional, defaults to today), categoryName (string, best " +
       "guess), accountName (string, optional), description (short string, " +
       "optional).",
     schema: transactionInputSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const amount = toNumber(args.amount);
       if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
 
@@ -92,13 +119,15 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     module: "transaction",
     label: "Income",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A single income already received. args: amount (number, required), date " +
       "(YYYY-MM-DD, optional, defaults to today), sourceType (one of salary/" +
       "freelance/rental/interest/business/dividend/other, optional), " +
       "accountName (string, optional), description (short string, optional).",
     schema: transactionInputSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const amount = toNumber(args.amount);
       if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
 
@@ -130,17 +159,128 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
+    key: "transaction.edit",
+    module: "transaction",
+    label: "Edit transaction",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change an EXISTING income or expense the user already recorded. args: " +
+      "transactionDescription (string, required — describe it well enough to " +
+      "find: what it was for, roughly how much, and/or roughly when), plus " +
+      "ONLY the fields the user wants changed: amount (number), date " +
+      "(YYYY-MM-DD), categoryName (string), accountName (string), description " +
+      "(string). Only searches the user's ~30 most recent transactions.",
+    schema: transactionInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.transactionDescription) ?? asString(args.description);
+      const match = matchByName(nameGuess, ref.transactions);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess
+            ? `Couldn't find a recent transaction matching "${nameGuess}" — try including the exact amount or date.`
+            : "Missing a description of which transaction to change.",
+        };
+      }
+      const current = await fetchCurrentTransaction(match.id, match.kind);
+      if (!current) return { ok: false, warnings: [], error: "That transaction could not be found." };
+
+      const categoryPool = match.kind === "income" ? ref.incomeCategories : ref.expenseCategories;
+      const categoryGuess = asString(args.categoryName);
+      const category = categoryGuess ? matchByName(categoryGuess, categoryPool) : undefined;
+      const warnings: string[] = [];
+      if (categoryGuess && !category) {
+        warnings.push(`Couldn't match category "${categoryGuess}" — left as-is.`);
+      }
+      const accountGuess = asString(args.accountName);
+      const account = accountGuess ? matchByName(accountGuess, ref.accounts) : undefined;
+      if (accountGuess && !account) {
+        warnings.push(`Couldn't match account "${accountGuess}" — left as-is.`);
+      }
+
+      const candidate: Record<string, unknown> = {
+        kind: match.kind,
+        amount: toNumber(args.amount) ?? current.amount,
+        date: normalizeDate(args.date) ?? current.date,
+        categoryId: category ? category.id : current.categoryId,
+        accountId: account ? account.id : current.accountId,
+        description: asString(args.description) ?? current.description,
+        isRecurring: false,
+        frequency: "one_time",
+      };
+      if (match.kind === "expense") candidate.note = current.note;
+      if (match.kind === "income") {
+        candidate.sourceType = normalizeEnum(args.sourceType, INCOME_SOURCE_TYPES) ?? current.sourceType;
+      }
+
+      const parsed = transactionInputSchema.safeParse(candidate);
+      if (!parsed.success) {
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings };
+    },
+    execute: (fields, targetId) =>
+      updateTransaction(
+        targetId!,
+        fields.kind as "income" | "expense",
+        undefined,
+        toFormData(fields),
+      ),
+  },
+
+  {
+    key: "transaction.delete",
+    module: "transaction",
+    label: "Delete transaction",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING income or expense the user already recorded. args: " +
+      "transactionDescription (string, required — describe it well enough to " +
+      "find: what it was for, roughly how much, and/or roughly when). Only " +
+      "searches the user's ~30 most recent transactions.",
+    schema: transactionKindSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.transactionDescription) ?? asString(args.description);
+      const match = matchByName(nameGuess, ref.transactions);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess
+            ? `Couldn't find a recent transaction matching "${nameGuess}" — try including the exact amount or date.`
+            : "Missing a description of which transaction to delete.",
+        };
+      }
+      return {
+        ok: true,
+        fields: { kind: match.kind },
+        targetId: match.id,
+        targetLabel: match.name,
+        warnings: [],
+      };
+    },
+    execute: (fields, targetId) => deleteTransaction(targetId!, fields.kind as "income" | "expense"),
+  },
+
+  {
     key: "investment.contribution",
     module: "investment",
     label: "Investment contribution",
     requiresTarget: true,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "Money added to an EXISTING investment holding (a SIP/top-up, not a new " +
       "holding). args: investmentName (string, required — must refer to a " +
       "holding the user already has), amount (number, required), date " +
       "(YYYY-MM-DD, optional, defaults to today).",
     schema: investmentContributionSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const nameGuess = asString(args.investmentName);
       const investment = matchByName(nameGuess, ref.investments);
       const warnings: string[] = [];
@@ -180,6 +320,8 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     module: "investment",
     label: "New investment",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A brand-new investment holding the user is starting. args: name " +
       "(string, required), type (one of stocks/mutual_fund/etf/bonds/crypto/" +
@@ -189,7 +331,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "expectedReturn (number, percent, optional), startDate (YYYY-MM-DD, " +
       "optional, defaults to today).",
     schema: investmentInputSchema,
-    resolve(args) {
+    async resolve(args) {
       const name = asString(args.name);
       const investedAmount = toNumber(args.investedAmount);
       if (!name || investedAmount == null) {
@@ -216,10 +358,84 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
+    key: "investment.edit",
+    module: "investment",
+    label: "Edit investment",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change details of an EXISTING investment holding. args: investmentName " +
+      "(string, required — must refer to a holding the user already has), " +
+      "plus ONLY the fields the user wants changed: name, type, " +
+      "investedAmount, currentValue, monthlyContribution, expectedReturn, " +
+      "startDate.",
+    schema: investmentInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.investmentName);
+      const match = matchByName(nameGuess, ref.investments);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find an investment named "${nameGuess}".` : "Missing investment name.",
+        };
+      }
+      const current = await fetchCurrentInvestment(match.id);
+      if (!current) return { ok: false, warnings: [], error: "That investment could not be found." };
+
+      const type = normalizeEnum(args.type, INVESTMENT_TYPES);
+      const parsed = investmentInputSchema.safeParse({
+        name: asString(args.name) ?? current.name,
+        type: type ?? current.type,
+        investedAmount: toNumber(args.investedAmount) ?? current.investedAmount,
+        currentValue: toNumber(args.currentValue) ?? current.currentValue,
+        monthlyContribution:
+          args.monthlyContribution !== undefined ? toNumber(args.monthlyContribution) : current.monthlyContribution,
+        expectedReturn: toNumber(args.expectedReturn) ?? current.expectedReturn,
+        startDate: normalizeDate(args.startDate) ?? current.startDate,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (fields, targetId) => updateInvestment(targetId!, undefined, toFormData(fields)),
+  },
+
+  {
+    key: "investment.delete",
+    module: "investment",
+    label: "Delete investment",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING investment holding entirely. args: investmentName " +
+      "(string, required — must refer to a holding the user already has).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.investmentName);
+      const match = matchByName(nameGuess, ref.investments);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find an investment named "${nameGuess}".` : "Missing investment name.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteInvestment(targetId!),
+  },
+
+  {
     key: "loan.payment",
     module: "loan",
     label: "Loan payment",
     requiresTarget: true,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A payment made toward an EXISTING loan (an EMI or extra principal " +
       "payment, not a new loan). args: loanName (string, required — must " +
@@ -228,7 +444,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "true only when the user says this is an extra/additional payment on " +
       "top of the regular EMI).",
     schema: paymentInputSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const nameGuess = asString(args.loanName);
       const loan = matchByName(nameGuess, ref.loans);
       const warnings: string[] = [];
@@ -264,6 +480,8 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     module: "loan",
     label: "New loan",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A brand-new loan the user has taken on. args: name (string, required), " +
       "type (one of home/car/personal/education/credit_card/other, optional), " +
@@ -272,7 +490,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "principal for a brand-new loan), startDate (YYYY-MM-DD, optional, " +
       "defaults to today).",
     schema: loanInputSchema,
-    resolve(args) {
+    async resolve(args) {
       const name = asString(args.name);
       const principal = toNumber(args.principal);
       const interestRate = toNumber(args.interestRate);
@@ -300,16 +518,90 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
+    key: "loan.edit",
+    module: "loan",
+    label: "Edit loan",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change details of an EXISTING loan. args: loanName (string, required — " +
+      "must refer to a loan the user already has), plus ONLY the fields the " +
+      "user wants changed: name, type, principal, interestRate, emi, " +
+      "remainingAmount, startDate.",
+    schema: loanInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.loanName);
+      const match = matchByName(nameGuess, ref.loans);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a loan named "${nameGuess}".` : "Missing loan name.",
+        };
+      }
+      const current = await fetchCurrentLoan(match.id);
+      if (!current) return { ok: false, warnings: [], error: "That loan could not be found." };
+
+      const type = normalizeEnum(args.type, LOAN_TYPES);
+      const parsed = loanInputSchema.safeParse({
+        name: asString(args.name) ?? current.name,
+        type: type ?? current.type,
+        principal: toNumber(args.principal) ?? current.principal,
+        interestRate: toNumber(args.interestRate) ?? current.interestRate,
+        emi: toNumber(args.emi) ?? current.emi,
+        remainingAmount: toNumber(args.remainingAmount) ?? current.remainingAmount,
+        remainingMonths: current.remainingMonths,
+        extraEmi: current.extraEmi,
+        startDate: normalizeDate(args.startDate) ?? current.startDate,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (fields, targetId) => updateLoan(targetId!, undefined, toFormData(fields)),
+  },
+
+  {
+    key: "loan.delete",
+    module: "loan",
+    label: "Delete loan",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING loan entirely. args: loanName (string, required — " +
+      "must refer to a loan the user already has).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.loanName);
+      const match = matchByName(nameGuess, ref.loans);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a loan named "${nameGuess}".` : "Missing loan name.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteLoan(targetId!),
+  },
+
+  {
     key: "goal.contribution",
     module: "goal",
     label: "Goal contribution",
     requiresTarget: true,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "Money added toward an EXISTING savings goal. args: goalName (string, " +
       "required — must refer to a goal the user already has), amount (number, " +
       "required), date (YYYY-MM-DD, optional, defaults to today).",
     schema: goalContributionSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const nameGuess = asString(args.goalName);
       const goal = matchByName(nameGuess, ref.goals);
       const warnings: string[] = [];
@@ -345,13 +637,15 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
     module: "goal",
     label: "New goal",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A brand-new savings goal. args: name (string, required), targetAmount " +
       "(number, required), currentAmount (number, optional, defaults to 0), " +
       "deadline (YYYY-MM-DD, optional), priority (one of low/medium/high, " +
       "optional), monthlyContribution (number, optional).",
     schema: goalInputSchema,
-    resolve(args) {
+    async resolve(args) {
       const name = asString(args.name);
       const targetAmount = toNumber(args.targetAmount);
       if (!name || targetAmount == null) {
@@ -378,17 +672,91 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
+    key: "goal.edit",
+    module: "goal",
+    label: "Edit goal",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change details of an EXISTING savings goal. args: goalName (string, " +
+      "required — must refer to a goal the user already has), plus ONLY the " +
+      "fields the user wants changed: name, targetAmount, currentAmount, " +
+      "deadline, priority, monthlyContribution.",
+    schema: goalInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.goalName);
+      const match = matchByName(nameGuess, ref.goals);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a goal named "${nameGuess}".` : "Missing goal name.",
+        };
+      }
+      const current = await fetchCurrentGoal(match.id);
+      if (!current) return { ok: false, warnings: [], error: "That goal could not be found." };
+
+      const priority = normalizeEnum(args.priority, GOAL_PRIORITIES);
+      const icon = normalizeEnum(args.icon, GOAL_ICONS);
+      const parsed = goalInputSchema.safeParse({
+        name: asString(args.name) ?? current.name,
+        icon: icon ?? current.icon,
+        targetAmount: toNumber(args.targetAmount) ?? current.targetAmount,
+        currentAmount: toNumber(args.currentAmount) ?? current.currentAmount,
+        deadline: normalizeDate(args.deadline) ?? current.deadline,
+        priority: priority ?? current.priority,
+        monthlyContribution:
+          args.monthlyContribution !== undefined ? toNumber(args.monthlyContribution) : current.monthlyContribution,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (fields, targetId) => updateGoal(targetId!, undefined, toFormData(fields)),
+  },
+
+  {
+    key: "goal.delete",
+    module: "goal",
+    label: "Delete goal",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING savings goal entirely. args: goalName (string, " +
+      "required — must refer to a goal the user already has).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.goalName);
+      const match = matchByName(nameGuess, ref.goals);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a goal named "${nameGuess}".` : "Missing goal name.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteGoal(targetId!),
+  },
+
+  {
     key: "budget.create",
     module: "budget",
     label: "New budget",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A new spending budget/limit. args: categoryName (string, optional — " +
       "omit for an overall/all-spending budget), period (one of weekly/" +
       "monthly/yearly, optional, defaults to monthly), amount (number, " +
       "required), startsOn (YYYY-MM-DD, optional, defaults to today).",
     schema: budgetInputSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const amount = toNumber(args.amount);
       if (amount == null) return { ok: false, warnings: [], error: "Missing or invalid amount." };
 
@@ -415,10 +783,86 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
+    key: "budget.edit",
+    module: "budget",
+    label: "Edit budget",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change an EXISTING budget's amount, period, or category. args: " +
+      "budgetName (string, required — describe it, e.g. the category name " +
+      "and/or period, matched against the user's own budgets), plus ONLY the " +
+      "fields the user wants changed: categoryName, period, amount, startsOn.",
+    schema: budgetInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.budgetName);
+      const match = matchByName(nameGuess, ref.budgets);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a budget matching "${nameGuess}".` : "Missing which budget to change.",
+        };
+      }
+      const current = await fetchCurrentBudget(match.id);
+      if (!current) return { ok: false, warnings: [], error: "That budget could not be found." };
+
+      const warnings: string[] = [];
+      const categoryGuess = asString(args.categoryName);
+      const category = categoryGuess ? matchByName(categoryGuess, ref.expenseCategories) : undefined;
+      if (categoryGuess && !category) {
+        warnings.push(`Couldn't match category "${categoryGuess}" — left as-is.`);
+      }
+      const period = normalizeEnum(args.period, BUDGET_PERIODS);
+
+      const parsed = budgetInputSchema.safeParse({
+        categoryId: category ? category.id : current.categoryId,
+        period: period ?? current.period,
+        amount: toNumber(args.amount) ?? current.amount,
+        startsOn: normalizeDate(args.startsOn) ?? current.startsOn,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings };
+    },
+    execute: (fields, targetId) => updateBudget(targetId!, undefined, toFormData(fields)),
+  },
+
+  {
+    key: "budget.delete",
+    module: "budget",
+    label: "Delete budget",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING budget entirely. args: budgetName (string, required " +
+      "— describe it, e.g. the category name and/or period).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.budgetName);
+      const match = matchByName(nameGuess, ref.budgets);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a budget matching "${nameGuess}".` : "Missing which budget to delete.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteBudget(targetId!),
+  },
+
+  {
     key: "recurring.create",
     module: "recurring",
     label: "New recurring rule",
     requiresTarget: false,
+    destructive: false,
+    actionLabel: "Add",
     promptDescription:
       "A new recurring income or expense rule (a subscription, rent, salary, " +
       "etc.). args: name (string, required), kind (income or expense, " +
@@ -427,7 +871,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "(one of daily/weekly/monthly/quarterly/yearly, optional, defaults to " +
       "monthly), startDate (YYYY-MM-DD, optional, defaults to today).",
     schema: recurringInputSchema,
-    resolve(args, ref) {
+    async resolve(args, ref) {
       const name = asString(args.name);
       const amount = toNumber(args.amount);
       if (!name || amount == null) {
@@ -467,5 +911,93 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       return { ok: true, fields: parsed.data, warnings };
     },
     execute: (fields) => createRecurringRule(undefined, toFormData(fields)),
+  },
+
+  {
+    key: "recurring.edit",
+    module: "recurring",
+    label: "Edit recurring rule",
+    requiresTarget: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change an EXISTING recurring income/expense rule. args: ruleName " +
+      "(string, required — must refer to a rule the user already has), plus " +
+      "ONLY the fields the user wants changed: name, categoryName, " +
+      "accountName, amount, frequency, startDate, endDate, note.",
+    schema: recurringInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.ruleName);
+      const match = matchByName(nameGuess, ref.recurringRules);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a recurring rule named "${nameGuess}".` : "Missing rule name.",
+        };
+      }
+      const current = await fetchCurrentRecurring(match.id);
+      if (!current) return { ok: false, warnings: [], error: "That recurring rule could not be found." };
+
+      const warnings: string[] = [];
+      const categoryPool = current.kind === "income" ? ref.incomeCategories : ref.expenseCategories;
+      const categoryGuess = asString(args.categoryName);
+      const category = categoryGuess ? matchByName(categoryGuess, categoryPool) : undefined;
+      if (categoryGuess && !category) {
+        warnings.push(`Couldn't match category "${categoryGuess}" — left as-is.`);
+      }
+      const accountGuess = asString(args.accountName);
+      const account = accountGuess ? matchByName(accountGuess, ref.accounts) : undefined;
+      if (accountGuess && !account) {
+        warnings.push(`Couldn't match account "${accountGuess}" — left as-is.`);
+      }
+      const frequency = normalizeEnum(args.frequency, RECURRING_FREQUENCIES);
+
+      const parsed = recurringInputSchema.safeParse({
+        name: asString(args.name) ?? current.name,
+        kind: current.kind,
+        categoryId: category ? category.id : current.categoryId,
+        accountId: account ? account.id : current.accountId,
+        amount: toNumber(args.amount) ?? current.amount,
+        frequency: frequency ?? current.frequency,
+        interval: current.interval,
+        startDate: normalizeDate(args.startDate) ?? current.startDate,
+        endDate: normalizeDate(args.endDate) ?? current.endDate,
+        isActive: current.isActive,
+        note: asString(args.note) ?? current.note,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings };
+    },
+    execute: (fields, targetId) => updateRecurringRule(targetId!, undefined, toFormData(fields)),
+  },
+
+  {
+    key: "recurring.delete",
+    module: "recurring",
+    label: "Delete recurring rule",
+    requiresTarget: true,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING recurring income/expense rule entirely. args: " +
+      "ruleName (string, required — must refer to a rule the user already " +
+      "has).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.ruleName);
+      const match = matchByName(nameGuess, ref.recurringRules);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess ? `Couldn't find a recurring rule named "${nameGuess}".` : "Missing rule name.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteRecurringRule(targetId!),
   },
 ];

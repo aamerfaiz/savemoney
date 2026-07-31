@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, Trash2, TriangleAlert, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,17 @@ import {
   CAPABILITY_ICON,
   FIELD_SPECS,
   TARGET_KIND,
+  transactionFieldSpecs,
   type DraftItemState,
   type SmartEntryReference,
+  type TargetKind,
 } from "./smart-entry-types";
+
+const COMMITTING_LABEL: Record<DraftItemState["actionLabel"], string> = {
+  Add: "Adding…",
+  Save: "Saving…",
+  Delete: "Deleting…",
+};
 
 export function DraftCard({
   draft,
@@ -59,8 +67,65 @@ export function DraftCard({
     );
   }
 
-  const fields = FIELD_SPECS[draft.capability] ?? [];
   const targetKind = TARGET_KIND[draft.capability];
+
+  if (draft.destructive) {
+    return (
+      <div className="space-y-3 rounded-lg border border-negative/30 bg-negative/5 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={draft.selected}
+              onChange={() => onToggleSelect(draft.id)}
+              className="size-4 accent-negative"
+            />
+            <span className="flex size-8 items-center justify-center rounded-full bg-negative/15 text-negative">
+              <Trash2 className="size-4" />
+            </span>
+            <Badge variant="negative">{draft.moduleLabel}</Badge>
+          </label>
+          <button
+            type="button"
+            onClick={() => onDiscard(draft.id)}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Discard"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {targetKind && (
+          <TargetPicker draft={draft} targetKind={targetKind} reference={reference} onTargetChange={onTargetChange} />
+        )}
+
+        {draft.warnings.map((w, i) => (
+          <p key={i} className="flex items-start gap-1.5 text-xs text-warning">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+            {w}
+          </p>
+        ))}
+        {draft.commitError && <p className="text-xs text-negative">{draft.commitError}</p>}
+
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={draft.committing || !draft.targetId}
+            onClick={() => onCommitOne(draft.id)}
+          >
+            {draft.committing ? COMMITTING_LABEL.Delete : "Delete"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const fields =
+    draft.capability === "transaction.edit"
+      ? transactionFieldSpecs(draft.fields.kind)
+      : (FIELD_SPECS[draft.capability] ?? []);
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-4">
@@ -88,24 +153,7 @@ export function DraftCard({
       </div>
 
       {targetKind && (
-        <div className="space-y-1.5">
-          <Label htmlFor={`${draft.id}-target`}>{targetLabelFor(targetKind)}</Label>
-          <Select
-            id={`${draft.id}-target`}
-            value={draft.targetId ?? ""}
-            onChange={(e) => {
-              const opt = reference[`${targetKind}s`].find((o) => o.id === e.target.value);
-              onTargetChange(draft.id, e.target.value, opt?.name);
-            }}
-          >
-            <option value="">Select…</option>
-            {reference[`${targetKind}s`].map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <TargetPicker draft={draft} targetKind={targetKind} reference={reference} onTargetChange={onTargetChange} />
       )}
 
       <div className="grid grid-cols-2 gap-3">
@@ -149,17 +197,62 @@ export function DraftCard({
           disabled={draft.committing || (!!targetKind && !draft.targetId)}
           onClick={() => onCommitOne(draft.id)}
         >
-          {draft.committing ? "Adding…" : "Add"}
+          {draft.committing ? COMMITTING_LABEL[draft.actionLabel] : draft.actionLabel}
         </Button>
       </div>
     </div>
   );
 }
 
-function targetLabelFor(kind: "investment" | "loan" | "goal"): string {
-  if (kind === "investment") return "Investment";
-  if (kind === "loan") return "Loan";
-  return "Goal";
+function TargetPicker({
+  draft,
+  targetKind,
+  reference,
+  onTargetChange,
+}: {
+  draft: DraftItemState;
+  targetKind: TargetKind;
+  reference: SmartEntryReference;
+  onTargetChange: (id: string, targetId: string, targetLabel: string | undefined) => void;
+}) {
+  const pool = reference[`${targetKind}s`];
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={`${draft.id}-target`}>{targetLabelFor(targetKind)}</Label>
+      <Select
+        id={`${draft.id}-target`}
+        value={draft.targetId ?? ""}
+        onChange={(e) => {
+          const opt = pool.find((o) => o.id === e.target.value);
+          onTargetChange(draft.id, e.target.value, opt?.name);
+        }}
+      >
+        <option value="">Select…</option>
+        {pool.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+function targetLabelFor(kind: TargetKind): string {
+  switch (kind) {
+    case "investment":
+      return "Investment";
+    case "loan":
+      return "Loan";
+    case "goal":
+      return "Goal";
+    case "budget":
+      return "Budget";
+    case "recurringRule":
+      return "Recurring rule";
+    case "transaction":
+      return "Transaction";
+  }
 }
 
 function FieldInput({

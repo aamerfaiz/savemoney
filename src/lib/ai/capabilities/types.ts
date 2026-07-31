@@ -35,20 +35,33 @@ export interface AICapability {
    * description of what this capability does and what fields it takes. */
   promptDescription: string;
   /** The module's real, imported Zod schema — never redefined here. Used
-   * both inside `resolve()` and again, independently, at commit time. */
+   * both inside `resolve()` and again, independently, at commit time.
+   * Delete capabilities use a trivial schema (just enough to carry any
+   * routing info, e.g. a transaction's income/expense kind) since there are
+   * no editable fields. */
   schema: z.ZodTypeAny;
-  /** True for "log against an existing row" capabilities (contribution/
-   * payment) — these need a resolved target id before they can execute. */
+  /** True for capabilities that act on an existing row — log-against
+   * (contribution/payment), edit, and delete all need a resolved target id
+   * before they can execute; plain creates don't. */
   requiresTarget: boolean;
+  /** Drives the confirm UI: default selection (destructive actions are
+   * opt-in, never opt-out) and the per-card action button's label/style. */
+  destructive: boolean;
+  actionLabel: "Add" | "Save" | "Delete";
   /**
-   * Turn the model's raw, name-based args into validated, id-based fields.
-   * Never invents an id: a name that doesn't match one of the user's own
-   * rows is left unresolved and reported in `warnings`, not guessed.
+   * Turn the model's raw, name-based args into validated, ready-to-submit
+   * fields. Never invents an id: a name that doesn't match one of the
+   * user's own rows is left unresolved and reported in `warnings` (for
+   * log-against capabilities, where the rest of the draft can still stand)
+   * or `error` (for edit/delete, which have nothing valid to show without a
+   * resolved target — see docs/ai-smart-entry-plan.md). Async because edit
+   * capabilities fetch the target's current row to merge unmentioned fields
+   * onto, rather than wiping them.
    */
   resolve: (
     args: Record<string, unknown>,
     ref: ReferenceData,
-  ) => ResolveOutcome & { targetId?: string; targetLabel?: string };
+  ) => Promise<ResolveOutcome & { targetId?: string; targetLabel?: string }>;
   /** Calls the real, unmodified Server Action. The only place a write
    * happens for this capability. */
   execute: (

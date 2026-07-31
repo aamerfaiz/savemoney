@@ -3,11 +3,13 @@
 Companion to `docs/phase-3-ai-assistant-plan.md`. That doc tracks the BYOK
 AI Assistant foundation (nav gating, key storage, provider abstraction, ask-a-
 question). This doc covers the next feature on top of it: **typing a plain-
-language prompt and having the AI propose transactions, investment
-contributions, loan payments, goal contributions, or new records — for the
-user to review and confirm, never auto-committed.**
+language prompt and having the AI propose creating, editing, or deleting
+transactions, investments, loans, goals, budgets, or recurring rules — for
+the user to review and confirm, never auto-committed.**
 
-Status: design agreed, not yet implemented. Branch: `claude/ai-smart-entry`.
+Status: the create/log half shipped in PR #14 (merged). This pass adds edit
+and delete. Branch: `claude/ai-smart-entry` (reused — see "Edit & delete"
+below for why a merged branch was restarted rather than reused as-is).
 
 ## Why this shape (incident research)
 
@@ -50,14 +52,26 @@ parallel write path:
 | key | wraps (existing action) | name→id resolution needed |
 |---|---|---|
 | `transaction.expense` / `transaction.income` | `createTransaction` | category, account |
+| `transaction.edit` | `updateTransaction` | recent transaction (~30), category, account |
+| `transaction.delete` | `deleteTransaction` | recent transaction (~30) |
 | `investment.create` | `createInvestment` | — |
 | `investment.contribution` | `recordContribution` | existing investment |
+| `investment.edit` | `updateInvestment` | existing investment |
+| `investment.delete` | `deleteInvestment` | existing investment |
 | `loan.create` | `createLoan` | — |
 | `loan.payment` | `recordPayment` | existing loan |
+| `loan.edit` | `updateLoan` | existing loan |
+| `loan.delete` | `deleteLoan` | existing loan |
 | `goal.create` | `createGoal` | — |
 | `goal.contribution` | `addContribution` | existing goal |
+| `goal.edit` | `updateGoal` | existing goal |
+| `goal.delete` | `deleteGoal` | existing goal |
 | `budget.create` | `createBudget` | category |
+| `budget.edit` | `updateBudget` | existing budget (synthetic label — see below) |
+| `budget.delete` | `deleteBudget` | existing budget |
 | `recurring.create` | `createRecurringRule` | category, account |
+| `recurring.edit` | `updateRecurringRule` | existing recurring rule |
+| `recurring.delete` | `deleteRecurringRule` | existing recurring rule |
 
 Each entry: `{ key, label, description, schema (the module's real Zod schema,
 imported — never redefined), execute(input) }`. `execute` builds a `FormData`
@@ -134,12 +148,75 @@ and Server Actions are bound to Next's RSC action-id protocol:
   mutations" — noted here and to be added to `AGENTS.md`/the financeos skill
   so it doesn't quietly generalize to other features.
 
+## Edit & delete (this pass)
+
+The branch's PR (#14) merged with create/log capabilities only. Per the
+branch-reuse convention, `claude/ai-smart-entry` was restarted from `main`
+(`git fetch origin main && git checkout -B claude/ai-smart-entry origin/main`)
+rather than stacked on the merged history, and this work opens a new PR.
+
+**Target-pool matching, generalized.** `matchByName()` is now generic over
+any `{id, name}`-shaped option, and `loadReferenceData()` grew three more
+pools beyond categories/accounts/investments/loans/goals:
+- `recurringRules` — matched by their real `name` column, same as
+  investments/loans/goals.
+- `budgets` — have no name column, so each row gets a synthesized label
+  (`"Groceries budget (monthly)"`) built from its category + period.
+- `transactions` — the hardest case: no name at all, many rows, and the
+  create-time capabilities (`transaction.expense`/`.income`) don't need to
+  search them. Capped at the **30 most recent** income+expense rows
+  combined, each labeled `"<description or category> · <amount> · <date>"`.
+  Editing or deleting something older than that window comes back as a
+  clear "couldn't find a match" error rather than silently searching further
+  back or guessing — a deliberate v1 limitation, not an oversight.
+
+**Why edit requires a resolved target before it can produce a draft at all
+— unlike contribution/payment.** Contribution/payment capabilities validate
+fine with an *unresolved* target (the schema doesn't need the target's
+current values), so those stayed "ok:true, picker shown" on a miss. Edit is
+different: `updateTransaction`/`updateInvestment`/etc. all expect a **full
+replacement** of the row's editable fields, same shape as create — there's
+no partial-patch action to call. So editing has to merge the user's
+requested changes onto the row's *current* values (never wiping a field the
+user didn't mention), which means the current row must be fetched first —
+and that requires knowing which row, i.e. a resolved target. If the model's
+description doesn't match anything, the edit/delete capability returns
+`ok:false` with a clear error ("couldn't find X — try including the exact
+amount or date") instead of a picker with blank, unprefilled fields, which
+would be a worse dead end. `src/lib/ai/capabilities/shared.ts` gained
+`fetchCurrent*` row-fetchers (one per module) purely to supply these
+defaults; `AICapability.resolve()` became `async` to support them.
+
+**Delete defaults to opt-in, not opt-out.** Every other draft starts
+checked (the batch button reads "Confirm all" by default); delete drafts
+start **unchecked**, so a "Confirm all" tap can never sweep up a deletion
+the user didn't deliberately select. Delete cards also render with a
+distinct red-tinted style, a trash icon, and a `destructive`-variant button
+— visually unmistakable from an add/edit card. This is the direct
+extension of the McDonald's/McHire guardrails to a genuinely higher-stakes
+action: the review step that was "nice to have" for an extra expense row is
+load-bearing for "don't delete the wrong loan."
+
+**Ownership re-check extended.** `commit.ts`'s `targetBelongsToUser()` now
+also checks the `budget`/`recurring`/`transaction` pools (previously only
+investment/loan/goal) — every edit/delete target is re-verified against a
+fresh, RLS-scoped load at commit time, not just trusted from the extract
+response, same as before.
+
+**Transaction routing.** `updateTransaction`/`deleteTransaction` need a
+`kind` ("income" or "expense") alongside the id, since income and expenses
+are separate tables. `transaction.edit`'s merged candidate always carries
+`kind` (it's part of the real schema); `transaction.delete` uses a small
+`{kind}`-only schema for the same reason, since it otherwise has no fields
+to validate.
+
 ## UI plan (agreed)
 
 **Entry point.** `/ai` gets a two-way segmented toggle at the top — **Ask /
-Add** — reusing the existing income/expense pill pattern from
+Manage** — reusing the existing income/expense pill pattern from
 `transaction-form.tsx` (no new Tabs dependency). "Ask" is today's existing
-card unchanged. "Add" is new.
+card unchanged. "Manage" (originally "Add", renamed once edit/delete landed
+so the label doesn't undersell what it does) is `SmartEntryView`.
 
 **Composer.** Same shell as the current Ask box: `Card` + `Textarea` +
 `Button`, submits to `POST /api/v1/ai/extract`. `Skeleton` while pending,
@@ -147,37 +224,48 @@ matching every other route's `loading.tsx` convention.
 
 **Draft list — selection model (mobile-first: one primary CTA, not three
 competing buttons).**
-- Every draft card starts **checked by default** (opt-out — these came from
-  the user's own prompt).
+- Every non-destructive draft card starts **checked by default** (opt-out —
+  these came from the user's own prompt); every delete draft starts
+  **unchecked** (opt-in — see "Edit & delete" above).
 - A header row above the list: "Select all · N of M selected."
 - A **sticky bottom action bar** whose single button's label tracks
-  selection state: `"Add all (8)"` when everything's checked → `"Add
-  selected (5)"` the moment something's unchecked → disabled `"Select at
-  least one"` at zero. "Confirm all" and "confirm selected" are the *same*
-  control, driven by checkbox state — not separate buttons.
+  selection state: `"Confirm all (8)"` when everything selected is checked
+  → `"Confirm selected (5)"` the moment something's unchecked → disabled
+  `"Select at least one"` at zero. Generic "Confirm" wording (not "Add") on
+  purpose, since one batch can mix adds, edits, and deletes.
   - Placement: the app's bottom tab bar is `fixed inset-x-0 bottom-0` (64px
     + safe-area) and page content reserves `pb-28` to clear it, so this bar
     docks at `fixed bottom-16` on mobile (same `bg-background/85
     backdrop-blur-lg` treatment as `BottomNav`, z-index just under it), and
     becomes an in-flow `sticky bottom-4` element on `lg+` where the sidebar
     replaces the tab bar.
-- Each card also has its own small **"Add"** button — commits that one item
-  immediately, independent of the checkboxes/batch bar (the **individual**
-  case). Optimistic removal from the list on success, same pattern
+- Each card also has its own small action button — labeled **"Add" /
+  "Save" / "Delete"** per the capability's `actionLabel` — that commits just
+  that one item immediately, independent of the checkboxes/batch bar.
+  Optimistic removal from the list on success, same pattern
   `transactions-view.tsx` uses for delete.
-- Each card also has a discard `x` to drop it from the list without adding.
+- Each card also has a discard `x` to drop it from the list without
+  applying it.
 
-**Card anatomy** (top → bottom): leading checkbox · module `Icon` + `Badge`
-(Expense/Income/Investment/Loan/Goal/Budget/Recurring) · amount/date row ·
-category/account `Select` · description `Input` · anomaly warning banner
-when the amount is flagged (soft, non-blocking) · "couldn't match — will
-save uncategorized" note when a name reference didn't resolve · discard `x`
-top-right · individual "Add" bottom-right.
+**Card anatomy varies by action type:**
+- **Add / edit** (top → bottom): leading checkbox · module `Icon` + `Badge`
+  · target picker (`Select`, edit/log-against capabilities only — generalized
+  to investment/loan/goal/budget/recurring-rule/transaction pools) · the
+  capability's editable fields (`FIELD_SPECS`; edit capabilities reuse their
+  create counterpart's field set — same schema, same shape) · anomaly/
+  unresolved-reference warnings · discard `x` top-right · "Add"/"Save"
+  bottom-right.
+- **Delete**: a compact, red-tinted card — checkbox, trash icon, `Badge`
+  (negative variant), target picker if unresolved, warnings, discard `x`,
+  and a `destructive`-variant "Delete" button. No editable fields (nothing
+  to edit on a delete).
 
 All of the above reuses existing primitives only (`Card`, `Badge`, `Input`,
-`Select`, `Textarea`, `Button`, `Skeleton`, `Icon`) — no new UI dependency.
-Finalize any remaining visual details (module color-coding, grouping order)
-during implementation review.
+`Select`, `Textarea`, `Button`, `Skeleton`, `Icon`) plus one new lucide icon
+(`Trash2`, imported directly in `draft-card.tsx` — not added to the shared
+category-icon resolver, since it's fixed UI chrome, not user-selectable
+data) — no new UI dependency. Finalize any remaining visual details (module
+color-coding, grouping order) during a future design pass.
 
 ## Sequencing
 
@@ -229,6 +317,39 @@ during implementation review.
 - [ ] Bearer-token auth for `/api/v1/ai/*`, once the query/action layer
       accepts an injected Supabase client instead of each instantiating its
       own cookie-bound one (Phase 5 prerequisite).
+
+### Edit & delete (this pass)
+
+- [x] Extended `ReferenceData`/`loadReferenceData()` with `recurringRules`,
+      `budgets` (synthetic label), and `transactions` (capped ~30 recent,
+      synthetic label) pools; `matchByName()` generalized to any
+      `{id,name}`-shaped option.
+- [x] Added `fetchCurrent*` row-fetchers (investment/loan/goal/budget/
+      recurring/transaction) so edit capabilities can merge requested
+      changes onto current values instead of requiring the model to
+      re-supply every field.
+- [x] `AICapability.resolve()` is now `async`; `resolveDraftItems()` uses
+      `Promise.all` instead of a plain `.map()`.
+- [x] Added 12 capabilities: `transaction.edit`/`.delete`,
+      `investment.edit`/`.delete`, `loan.edit`/`.delete`, `goal.edit`/
+      `.delete`, `budget.edit`/`.delete`, `recurring.edit`/`.delete` — 22
+      total. Each `destructive`/`actionLabel` flag drives UI defaults.
+- [x] `commit.ts`'s `targetBelongsToUser()` extended to the three new pools.
+- [x] Extraction prompt updated: capability manifest now includes edit/
+      delete descriptions marked "EXISTING", reference block lists recurring
+      rules/budgets/recent transactions, and an explicit instruction to
+      extract nothing rather than guess when an edit/delete target isn't in
+      the reference data.
+- [x] UI: `DraftCard` split into add/edit vs. delete rendering, generalized
+      target picker, `transactionFieldSpecs()` for the income/expense field
+      split, destructive-default-unselected in `SmartEntryView`, batch
+      button wording generalized to "Confirm all/selected", `AiShell`'s tab
+      renamed Ask/Manage.
+- [x] `npm run build` + `npm run lint` — both clean.
+- [ ] Visual verification of the edit/delete card states at 390px + desktop
+      (blocked the same way the first pass was — no logged-in session with
+      an active AI key in this sandbox; verify via the Vercel preview once
+      deployed).
 
 ## Out of scope for this pass
 

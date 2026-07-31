@@ -20,6 +20,9 @@ export interface SmartEntryReference {
   investments: OptionRef[];
   loans: OptionRef[];
   goals: OptionRef[];
+  recurringRules: OptionRef[];
+  budgets: OptionRef[];
+  transactions: OptionRef[];
 }
 
 /** What the client keeps for one draft — the server's `DraftResult` plus
@@ -35,6 +38,8 @@ export interface DraftItemState {
   warnings: string[];
   error?: string;
   sourceText?: string;
+  destructive: boolean;
+  actionLabel: "Add" | "Save" | "Delete";
   selected: boolean;
   committing: boolean;
   commitError?: string;
@@ -51,31 +56,56 @@ export interface FieldSpec {
   enumOptions?: readonly string[];
 }
 
-/** Capabilities that log against an existing row get a target picker
- * (investment/loan/goal) in addition to their own fields below. */
-export const TARGET_KIND: Record<string, "investment" | "loan" | "goal" | undefined> = {
+export type TargetKind = "investment" | "loan" | "goal" | "budget" | "recurringRule" | "transaction";
+
+/** Capabilities that act on an existing row — log-against (contribution/
+ * payment), edit, and delete — get a target picker in addition to (or,
+ * for delete, instead of) their own fields below. The value maps onto a
+ * `SmartEntryReference` key via `${value}s` (see DraftCard). */
+export const TARGET_KIND: Record<string, TargetKind | undefined> = {
+  "transaction.edit": "transaction",
+  "transaction.delete": "transaction",
   "investment.contribution": "investment",
+  "investment.edit": "investment",
+  "investment.delete": "investment",
   "loan.payment": "loan",
+  "loan.edit": "loan",
+  "loan.delete": "loan",
   "goal.contribution": "goal",
+  "goal.edit": "goal",
+  "goal.delete": "goal",
+  "budget.edit": "budget",
+  "budget.delete": "budget",
+  "recurring.edit": "recurringRule",
+  "recurring.delete": "recurringRule",
 };
 
 export const CAPABILITY_ICON: Record<string, string> = {
   "transaction.expense": "receipt",
   "transaction.income": "coins",
+  "transaction.edit": "receipt",
   "investment.contribution": "trending-up",
   "investment.create": "trending-up",
+  "investment.edit": "trending-up",
   "loan.payment": "landmark",
   "loan.create": "landmark",
+  "loan.edit": "landmark",
   "goal.contribution": "target",
   "goal.create": "target",
+  "goal.edit": "target",
   "budget.create": "wallet",
+  "budget.edit": "wallet",
   "recurring.create": "layers",
+  "recurring.edit": "layers",
 };
 
 /** One entry per capability — drives the editable fields on each draft
  * card. Every `key` here matches a field in that capability's real Zod
  * schema (see src/lib/ai/capabilities/definitions.ts); nothing is invented
- * here, this only decides how to *display* it. */
+ * here, this only decides how to *display* it. Delete capabilities have no
+ * entry — they render a dedicated confirm-only card (see DraftCard). Edit
+ * capabilities reuse their create counterpart's fields below, since the
+ * underlying schema (and therefore shape) is identical. */
 export const FIELD_SPECS: Record<string, FieldSpec[]> = {
   "transaction.expense": [
     { key: "amount", label: "Amount", kind: "amount" },
@@ -164,3 +194,15 @@ export const FIELD_SPECS: Record<string, FieldSpec[]> = {
     { key: "startDate", label: "Start date", kind: "date" },
   ],
 };
+
+FIELD_SPECS["investment.edit"] = FIELD_SPECS["investment.create"];
+FIELD_SPECS["loan.edit"] = FIELD_SPECS["loan.create"];
+FIELD_SPECS["goal.edit"] = FIELD_SPECS["goal.create"];
+FIELD_SPECS["budget.edit"] = FIELD_SPECS["budget.create"];
+FIELD_SPECS["recurring.edit"] = FIELD_SPECS["recurring.create"];
+
+/** transaction.edit's field set depends on which row matched (income vs
+ * expense have different shapes) — resolved at render time, see DraftCard. */
+export function transactionFieldSpecs(kind: unknown): FieldSpec[] {
+  return kind === "income" ? FIELD_SPECS["transaction.income"] : FIELD_SPECS["transaction.expense"];
+}
