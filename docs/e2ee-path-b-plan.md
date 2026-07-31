@@ -88,6 +88,20 @@ Before the cryptography: what a user actually experiences, end to end.
 - **Non-goal**: protecting against a compromised *client* (malware on the
   user's device, a browser extension, an XSS bug). E2EE protects the
   server-side trust boundary, not the endpoint.
+- **Decision (locked): mandatory per module, not an opt-in toggle.** There
+  is no setting to "use the app without encryption." Once a table
+  migrates (3.5.3 onward), its sensitive columns become ciphertext-only —
+  `numeric(14,2)`/plain `text` becomes `text` holding an AES-GCM blob, for
+  every row, for every user. There's no dual-mode where some users' rows
+  stay plaintext in the same table. Practically: touching a migrated
+  module (e.g. Transactions) with no vault set up is what triggers the
+  forced "set up your Vault" prompt from the walkthrough above — not a
+  choice offered alongside a "skip encryption" path. Existing users with
+  pre-migration plaintext rows don't get to opt out either; 3.5.7's
+  backfill re-encrypts their existing data the first time they touch the
+  now-migrated module. The only real "opt-out" is not using the app's
+  encrypted modules at all, the same way there's no way to use Finance OS
+  without RLS scoping your rows to your own account.
 
 ## Threat model this actually defends against
 
