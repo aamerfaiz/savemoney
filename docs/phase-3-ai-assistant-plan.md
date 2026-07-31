@@ -94,16 +94,33 @@ guest data for that module — don't add a route there without one.
 
 ## Phase 3.4 — Remaining AI features (placeholders, not yet built)
 
+- [ ] **AI Smart Entry** — prompt → structured draft (transaction, investment
+      contribution, loan payment, goal contribution, or a new record) →
+      human-confirmed → committed through the existing module actions. Design
+      in progress on `claude/ai-smart-entry` — see
+      `docs/ai-smart-entry-plan.md`. This is the shared plumbing (capability
+      registry, propose-then-confirm draft pattern, name→id resolution,
+      data-guard prompting) the next three items below are designed to reuse
+      rather than each building their own pipeline.
 - [ ] Monthly summary (`summarize()` over the month's transactions +
       analytics data).
-- [ ] Expense insights / anomaly callouts on the dashboard.
-- [ ] Receipt OCR → auto-filled transaction draft.
+- [ ] Expense insights / anomaly callouts on the dashboard — broader version
+      of Smart Entry's per-draft anomaly warning (patterns over time, not
+      just one entry).
+- [ ] Receipt OCR → auto-filled transaction draft — a new *extraction
+      source* feeding the same Smart Entry draft/confirm pipeline, not a
+      separate flow.
 - [ ] CSV import intelligence (smarter `detectMapping` suggestions from the
-      AI, layered on the existing pure `src/lib/import/pipeline.ts`).
-- [ ] Auto-categorization suggestions on uncategorized transactions.
+      AI, layered on the existing pure `src/lib/import/pipeline.ts`) — same
+      propose-then-confirm shape the CSV wizard already uses, which is what
+      Smart Entry's draft list was modeled on.
+- [ ] Auto-categorization suggestions on uncategorized transactions — reuses
+      Smart Entry's name→id category-resolution logic against existing rows
+      instead of freshly extracted ones.
 - [ ] What-if simulator ("can I afford a car?") — a dedicated finance engine
       in `src/lib/finance/`, AI narrates the pure-function output rather than
-      computing numbers itself.
+      computing numbers itself. Unrelated to Smart Entry (read-only
+      narration, not data entry).
 
 ## Out of scope for Phase 3 (later phases per the roadmap)
 
