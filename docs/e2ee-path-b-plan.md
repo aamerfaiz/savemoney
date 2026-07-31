@@ -541,31 +541,53 @@ folded into generic "connect an agent" copy.
         multi-device/revocation model decided.
   - [ ] Final gate: walk the "Open questions" list below to zero before
         3.5.1 starts.
-- [ ] **3.5.1 — Vault key infrastructure.**
-  - [ ] WebCrypto helpers: Argon2id KEK derivation (via a WASM lib),
-        AES-256-GCM wrap/unwrap for the DEK, AES-256-GCM encrypt/decrypt
-        for fields — client-side only, mirroring `src/lib/ai/crypto.ts`'s
-        payload shape but run in the browser.
-  - [ ] New table (private schema, alongside `ai_provider_keys`) for the
-        wrapped DEK: `userId`, `wrappedDekByPassword`, `passwordKekSalt`,
-        `kdfParams`, `wrappedDekByRecovery`, `recoveryKekSalt`,
-        `...audit`. RLS `user_id = auth.uid()`, PostgREST-role revoked
-        like `ai_provider_keys` — defense in depth even though the blobs
-        are useless without the user's secret.
-  - [ ] Server Actions: `setupVault` (first-time: generate DEK, wrap
-        twice, store), `rotateVaultSecret` (re-wrap DEK under a new KEK,
-        no data touched — used for a plain passphrase change), no
-        server-side "read plaintext" action ever exists for this table
-        by design.
-  - [ ] Settings → new "Vault & Encryption" card: set up, view
-        recovery-key status (shown-once acknowledgment, never
-        re-displayable), rotate passphrase.
-  - [ ] Unlock UI: prompt on session start for any encrypted route:
-        derive KEK, unwrap DEK, hold in memory.
-  - [ ] **Verify**: `npm run build` (type-check + prerender) passes;
-        screenshot the vault-setup flow and unlock prompt at 390px
-        (mobile) and a desktop width with the preinstalled Chromium, per
-        the skill's "Verifying changes" convention — this is new UI.
+- [x] **3.5.1 — Vault key infrastructure.** Landed, with two scope notes
+      below — not a full close-out.
+  - [x] WebCrypto helpers (`src/lib/vault/crypto.ts`): Argon2id KEK
+        derivation via `hash-wasm` (passphrase/PIN), native HKDF KEK
+        derivation (recovery key/MCP token — see the library pick above),
+        AES-256-GCM DEK wrap/unwrap and field encrypt/decrypt, Crockford
+        Base32 recovery-code/token encoding. Client-side only
+        (`import "client-only"`), mirroring `src/lib/ai/crypto.ts`'s
+        payload shape.
+  - [x] `private.vault_keys` (`userId`, `wrappedDekByPassword`,
+        `passwordKekSalt`, `passwordKdfParams`, `wrappedDekByRecovery`,
+        `recoveryKekSalt`, `recoveryAcknowledgedAt`, `...audit`) and
+        `private.mcp_agent_tokens` (the 3.5.9 table, built alongside since
+        the schema work is shared) — `drizzle/0007_worried_hitman.sql` +
+        RLS/PostgREST-revokes in
+        `drizzle/manual/0007_vault_and_mcp_tokens_rls.sql`, mirroring
+        `ai_provider_keys`. **Not yet applied to the live Supabase
+        project** — blocked on Supabase MCP authorization (`/mcp` in an
+        interactive session), same as noted in "what's needed before we
+        start."
+  - [x] Server Actions/queries (`src/lib/vault/actions.ts`,
+        `src/lib/vault/queries.ts`): `setupVault`, `rotateVaultSecret`,
+        `getVaultBlob`, `getVaultSetupStatus` — every input/output is
+        ciphertext, a salt, KDF params, or a token hash; no server-side
+        "read plaintext" path exists.
+  - [x] Settings → "Vault & Encryption" card: first-time setup (with the
+        mandatory shown-once recovery code + confirm checkbox) and
+        passphrase rotation. **Scope note**: doesn't yet show an ongoing
+        "recovery-key acknowledged" status indicator post-setup — small
+        polish item, not a functional gap.
+  - [x] Unlock UI + in-memory DEK store (`src/lib/vault/store.ts`, plain
+        zustand `create`, no `persist` middleware). **Scope note**: this
+        is the unlock flow embedded in the Settings card, not a global
+        prompt gating every route — deliberately deferred, since no page
+        actually has encrypted data yet (that's 3.5.3+); building a
+        global gate now would be gating nothing. Settings itself already
+        forces a real test of the flow, since minting an MCP token
+        requires an unwrapped DEK.
+  - [x] **Verify**: `npm run build` + `npm run lint` pass. The full
+        client-side crypto pipeline (Argon2id, HKDF, AES-GCM wrap,
+        recovery-code generation) was exercised end-to-end in a real
+        browser and screenshotted at 390px and desktop, via a throwaway
+        preview route (not committed) since this sandbox has no Supabase
+        credentials to drive the real `/settings` page. The live
+        Supabase round-trip (`setupVault` actually persisting, then
+        unlocking with a real session) is **not yet verified** — pending
+        the same Supabase MCP authorization + migration apply.
 - [ ] **3.5.2 — Pilot: migrate `private.ai_provider_keys` to
       vault-wrapped storage.** Smallest table, already isolated, already
       has its own encrypt/decrypt helper to model the client-side version
@@ -641,19 +663,25 @@ folded into generic "connect an agent" copy.
       relay pattern proven in 3.5.2; independent of 3.5.3–3.5.7 (can land
       before or after the rest of the finance-table rollout, but tools
       that read a given table obviously can't return real data for it
-      until that table's migrated).
-  - [ ] New private-schema table (e.g. `private.mcp_agent_tokens`):
-        `id`, `userId`, `label`, `tokenHash` (lookup only, never the raw
-        token), `wrappedDekByToken`, `scope`, `expiresAt`, `lastUsedAt`,
-        `revokedAt`, `...audit`. RLS `user_id = auth.uid()`, not exposed
-        via PostgREST, same as `ai_provider_keys`.
-  - [ ] Settings → "Agent Access" card: mint a scoped, named, expiring
-        token (shown once, same acknowledgment beat as the recovery
-        code); list + revoke existing tokens; show `lastUsedAt` per
-        token.
+      until that table's migrated). The token *infrastructure* below
+      landed early, alongside 3.5.1's schema work — the actual MCP
+      server/tool handlers did not, and are the remaining scope here.
+  - [x] `private.mcp_agent_tokens` (`id`, `userId`, `label`, `tokenHash`,
+        `wrappedDekByToken`, `tokenDekIv`, `tokenKekSalt`, `scope`,
+        `expiresAt`, `lastUsedAt`, `revokedAt`, `...audit`) — built and
+        migrated alongside `vault_keys` in 3.5.1, same RLS/PostgREST
+        treatment. Not yet applied live (blocked on Supabase MCP auth).
+  - [x] Settings → "Agent Access" card: mint a scoped (`read_summary` /
+        `read_full`), named, expiring token (preset durations, hard-capped
+        at `MCP_TOKEN_MAX_DURATION_DAYS`, shown once); list active tokens
+        with `lastUsedAt`; revoke. Wraps the DEK under an HKDF-derived
+        token KEK client-side (`src/lib/vault/crypto.ts`,
+        `src/components/settings/agent-access-settings.tsx`).
   - [ ] Metadata/computed-only MCP tools (headless, no token-DEK
         unwrapping needed) — ship first, independent of the rest of this
-        phase.
+        phase. **Not started** — this is the actual MCP server (tool
+        definitions, transport, `get_capabilities`), distinct from the
+        token infrastructure above.
   - [ ] Vault-gated MCP tools: the per-call transient unwrap Route
         Handler described above, scoped per token, rate-limited and
         audit-logged (who/when a token was used — content stays opaque,
