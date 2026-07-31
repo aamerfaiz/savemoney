@@ -94,10 +94,11 @@ guest data for that module — don't add a route there without one.
 
 ## Phase 3.4 — Remaining AI features (placeholders, not yet built)
 
-- [ ] **AI Smart Entry** — prompt → structured draft (transaction, investment
-      contribution, loan payment, goal contribution, or a new record) →
-      human-confirmed → committed through the existing module actions. Design
-      in progress on `claude/ai-smart-entry` — see
+- [x] **AI Smart Entry** — prompt → structured draft (create, edit, or
+      delete a transaction, investment, loan, goal, budget, or recurring
+      rule) → human-confirmed → committed through the existing module
+      actions. Create/log capabilities shipped in PR #14 (merged); edit and
+      delete capabilities followed on the same branch, new PR. See
       `docs/ai-smart-entry-plan.md`. This is the shared plumbing (capability
       registry, propose-then-confirm draft pattern, name→id resolution,
       data-guard prompting) the next three items below are designed to reuse

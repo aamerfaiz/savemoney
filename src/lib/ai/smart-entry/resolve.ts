@@ -22,52 +22,63 @@ export interface DraftResult {
   warnings: string[];
   error?: string;
   sourceText?: string;
+  /** Mirrors the capability's own flags — drives the confirm UI's default
+   * selection and per-card action label without it needing the registry. */
+  destructive: boolean;
+  actionLabel: "Add" | "Save" | "Delete";
 }
 
 /**
  * Deterministic, server-side pass over the model's raw proposal: resolve
  * every name reference against the user's own rows, run each item through
  * its capability's real Zod schema, and flag (never block) soft anomalies.
- * Nothing here writes to the database.
+ * Nothing here writes to the database. Async because edit capabilities fetch
+ * the target's current row to merge onto (see `AICapability.resolve`).
  */
 export async function resolveDraftItems(items: ExtractedItem[]): Promise<DraftResult[]> {
   const [ref, analytics] = await Promise.all([loadReferenceData(), safeAnalytics()]);
 
-  return items.map((item, index) => {
-    const id = `draft-${index}`;
-    const def = getCapability(item.capability);
-    if (!def) {
+  return Promise.all(
+    items.map(async (item, index) => {
+      const id = `draft-${index}`;
+      const def = getCapability(item.capability);
+      if (!def) {
+        return {
+          id,
+          capability: item.capability,
+          moduleLabel: "Unknown",
+          ok: false,
+          warnings: [],
+          error: `Unrecognized capability "${item.capability}".`,
+          sourceText: item.sourceText,
+          destructive: false,
+          actionLabel: "Add" as const,
+        };
+      }
+
+      const outcome = await def.resolve(item.args ?? {}, ref);
+      const warnings = [...outcome.warnings];
+      if (outcome.ok && outcome.fields) {
+        const anomaly = checkAnomaly(def.key, outcome.fields, outcome.targetLabel, ref, analytics);
+        if (anomaly) warnings.push(anomaly);
+      }
+
       return {
         id,
-        capability: item.capability,
-        moduleLabel: "Unknown",
-        ok: false,
-        warnings: [],
-        error: `Unrecognized capability "${item.capability}".`,
+        capability: def.key,
+        moduleLabel: def.label,
+        ok: outcome.ok,
+        fields: outcome.fields,
+        targetId: outcome.targetId,
+        targetLabel: outcome.targetLabel,
+        warnings,
+        error: outcome.error,
         sourceText: item.sourceText,
+        destructive: def.destructive,
+        actionLabel: def.actionLabel,
       };
-    }
-
-    const outcome = def.resolve(item.args ?? {}, ref);
-    const warnings = [...outcome.warnings];
-    if (outcome.ok && outcome.fields) {
-      const anomaly = checkAnomaly(def.key, outcome.fields, outcome.targetLabel, ref, analytics);
-      if (anomaly) warnings.push(anomaly);
-    }
-
-    return {
-      id,
-      capability: def.key,
-      moduleLabel: def.label,
-      ok: outcome.ok,
-      fields: outcome.fields,
-      targetId: outcome.targetId,
-      targetLabel: outcome.targetLabel,
-      warnings,
-      error: outcome.error,
-      sourceText: item.sourceText,
-    };
-  });
+    }),
+  );
 }
 
 async function safeAnalytics(): Promise<AnalyticsData | null> {

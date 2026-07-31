@@ -16,8 +16,8 @@ export default async function AiPage() {
           AI Assistant
         </h1>
         <p className="text-sm text-muted-foreground">
-          Bring your own key — ask questions or add entries, in plain
-          language.
+          Bring your own key — ask questions, or add, edit, and delete
+          entries, in plain language.
         </p>
       </div>
 

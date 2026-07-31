@@ -101,8 +101,15 @@ function buildSystemPrompt(ref: ReferenceData): string {
       "reference names above, still extract the entry using your best-guess " +
       "name string in args — the app resolves names to records itself, you " +
       "never need to supply an id.",
+    "Some capabilities EDIT or DELETE something that already exists (see " +
+      '"EXISTING" in their description below) rather than creating something ' +
+      "new — only extract one of those when the user is clearly referring to " +
+      "a real thing they already have (it should appear, or closely match " +
+      "something, in the reference data below). Never extract an edit or " +
+      "delete for something that isn't in the reference data — extract " +
+      "nothing for that part of the message instead of guessing.",
     `Extract at most ${MAX_ITEMS} items. If the message describes no ` +
-      'financial entry to record, return {"items":[]}.',
+      'financial entry to record, change, or remove, return {"items":[]}.',
   ].join("\n\n");
 }
 
@@ -119,6 +126,12 @@ function formatReferenceBlock(ref: ReferenceData): string {
     list("Investments", ref.investments.map((i) => i.name)),
     list("Loans", ref.loans.map((l) => l.name)),
     list("Goals", ref.goals.map((g) => g.name)),
+    list("Recurring rules", ref.recurringRules.map((r) => r.name)),
+    list("Budgets", ref.budgets.map((b) => b.name)),
+    list(
+      "Recent transactions (most recent ~30 only)",
+      ref.transactions.map((t) => t.name),
+    ),
   ].join("\n");
 }
 
