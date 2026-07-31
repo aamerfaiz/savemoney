@@ -1,5 +1,5 @@
 {
-  "id": "f5370070-07e0-45b6-bfc9-4c312c058f63",
+  "id": "5eb51026-9635-4353-8ec8-fed658b22a95",
   "prevId": "9c8e03b4-e161-4ffe-957e-66c79e52f048",
   "version": "7",
   "dialect": "postgresql",
@@ -1990,6 +1990,12 @@
         },
         "token_dek_iv": {
           "name": "token_dek_iv",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_kek_salt": {
+          "name": "token_kek_salt",
           "type": "text",
           "primaryKey": false,
           "notNull": true

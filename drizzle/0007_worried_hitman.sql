@@ -6,6 +6,7 @@ CREATE TABLE "private"."mcp_agent_tokens" (
 	"token_hash" text NOT NULL,
 	"wrapped_dek_by_token" text NOT NULL,
 	"token_dek_iv" text NOT NULL,
+	"token_kek_salt" text NOT NULL,
 	"scope" "private"."mcp_token_scope" DEFAULT 'read_summary' NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"last_used_at" timestamp with time zone,

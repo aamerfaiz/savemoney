@@ -737,6 +737,7 @@ export const mcpAgentTokens = privateSchema.table(
      * above for why no slow KDF is needed for a full-entropy secret. */
     wrappedDekByToken: text("wrapped_dek_by_token").notNull(),
     tokenDekIv: text("token_dek_iv").notNull(),
+    tokenKekSalt: text("token_kek_salt").notNull(),
     scope: mcpTokenScope("scope").notNull().default("read_summary"),
     /** Chosen by the user at creation (preset durations) but always capped
      * server-side — "no expiry" is never offered. */
