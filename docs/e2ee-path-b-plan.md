@@ -2,7 +2,7 @@
 
 **Roadmap position**: a sub-phase of **Phase 3** (AI Assistant / BYOK) in
 the financeos roadmap — see `docs/phase-3-ai-assistant-plan.md`, which
-points here. Internally numbered **3.5.0–3.5.8** below, following the same
+points here. Internally numbered **3.5.0–3.5.9** below, following the same
 `3.x` convention that doc uses for its own sub-phases. Also referred to as
 "Path B" earlier in the design discussion that produced this doc.
 
@@ -62,6 +62,16 @@ Before the cryptography: what a user actually experiences, end to end.
    asked, your key passes through server memory to make that one call,
    then it's gone. That's the single deliberate crack in an otherwise
    airtight system, and it's disclosed on purpose rather than hidden.
+8. **Connecting an agent (MCP).** In Settings → Agent Access you mint a
+   named token ("Claude Desktop," "budget-check automation") — shown
+   once, same beat as the recovery code. That token isn't just a login: it
+   opens its *own* copy of your vault, so an agent holding it can ask
+   real questions ("what's left in groceries this week?") without you
+   having the app open. That's a deliberate, disclosed trade — a lost or
+   stolen token is a lost or stolen key to your data, not just a login you
+   can shrug off, so it's scoped and revocable independently of your
+   password and recovery code, and you should treat minting one with the
+   same weight as writing down the recovery code.
 
 ## Goal / non-goal
 
@@ -95,6 +105,14 @@ Worth being explicit, since "not even me" is a strong claim:
   this is the fundamental trade E2EE makes.
 - ❌ Malicious/compromised client-side code shipped by you — E2EE assumes
   the JS you ship is trustworthy at the moment the user runs it.
+- ⚠️ **A leaked MCP agent token** — see "MCP agent access" below. Unlike
+  the vault passphrase (never transmitted) or the AI relay (transient,
+  once, per user-initiated request), an MCP token is a *standing* bearer
+  secret that lives in an agent's config on disk and transits the network
+  on every tool call. This is a deliberate, disclosed, user-opt-in
+  exception to "not even me" — not a gap in the design, but its blast
+  radius is real and worth naming here alongside the things this doc does
+  defend against.
 
 ## Key architecture — vault key pattern
 
@@ -361,6 +379,71 @@ consequences than just moving where ciphertext sits:
   for a test call, never a server-side `adapter.testKey()` holding a
   *stored* key.
 
+## Resolved: MCP agent access (a third, disclosed unlock path)
+
+MCP support (agents like Claude reading/acting on a user's finance data)
+runs into the exact same wall the AI Assistant hit: an MCP server is just
+another server-side caller, and under Path B the server holds no
+decryptable data. An MCP *auth* token alone doesn't fix this — a bearer
+token proves "this caller may act as user X," it doesn't hand back
+plaintext. Two shapes were on the table:
+
+- **Metadata/computed-only MCP** — tools never touch encrypted columns
+  (dates, kinds, currency, counts, category names if left plaintext).
+  Works headless, survives 3.5 unchanged, no new crypto. Ships now,
+  independent of everything below.
+- **Vault-gated relay MCP** — same shape as the AI relay: tool calls only
+  work while the calling context shares the user's already-unlocked
+  vault. Honors "not even me" fully, but the agent goes dark the moment
+  the user's device locks — no headless "check my budget at 2am."
+
+**Decision (locked): go further than either — the MCP token itself is a
+third unlock path for the DEK**, so agents get real financial data without
+needing a live, unlocked browser session at call time. Mechanically this
+is the *same primitive* the recovery key already uses (wrap the same DEK
+under one more independently-derived KEK), not a new kind of secret:
+
+- At token creation (Settings → Agent Access), the client generates a
+  random 256-bit token client-side, derives a KEK from it via HKDF (no
+  Argon2id needed here — unlike the vault passphrase or a PIN, the token
+  is already full-entropy, so a slow human-secret KDF buys nothing), and
+  wraps the **current DEK** under that KEK. The wrapped blob is stored
+  server-side in a new private-schema table, alongside a *hash* of the
+  token for lookup — never the raw token.
+- The raw token is shown to the user **once**, to copy into the agent's
+  config (e.g., Claude Desktop's MCP config) — the same "shown once,
+  acknowledge you saved it" beat as the recovery code.
+- On each MCP tool call, the Route Handler receives the token, hashes it
+  to look up the row, derives the KEK from the *raw* token (sent on every
+  call, per how bearer auth works — this is the standing exposure named
+  in the Threat model section above), unwraps the DEK **in server memory
+  for that request only**, decrypts whatever the tool needs, and forgets
+  the key when the request ends. Same "transient, never persisted"
+  discipline as the AI relay, applied to a token that itself is
+  standing rather than transient.
+- **Independent revocation.** Deleting a token's row invalidates that
+  unlock path immediately without touching the password- or
+  recovery-wrapped DEK, and without a full vault rotation — unlike device
+  revocation (which re-encrypts everything because a device may have
+  cached raw key material), a revoked MCP token was never anything but a
+  wrapped blob the server can simply stop honoring.
+- **Scoping.** Each token gets an explicit scope at creation (e.g.
+  read-only summary data vs. full transaction detail vs. read+write) —
+  no all-or-nothing default. A budget-check automation and a
+  full-access assistant should not be able to mint the same token.
+- **Expiry.** Tokens are not eternal bearer secrets by default — a
+  max lifetime (with re-mint, not silent renewal) narrows the standing-risk
+  window that makes this path weaker than the transient AI relay.
+
+**What this does and doesn't buy.** It closes the "agent needs the browser
+open" gap the vault-gated relay can't, at the honest cost of a standing
+secret that, if stolen from wherever the agent stores it, decrypts
+everything that token is scoped to until revoked — a materially different
+risk shape than the vault passphrase or the transient AI-key relay, and it
+must be disclosed to the user in exactly those terms at token-creation
+time (mirroring the AI relay's Settings-UI disclosure decision above), not
+folded into generic "connect an agent" copy.
+
 ## Alternatives considered (and rejected)
 
 - **Customer-managed KMS key** — the enterprise SaaS pattern (Snowflake-,
@@ -386,6 +469,22 @@ consequences than just moving where ciphertext sits:
   *primary* mechanism (kept as an optional future optimization) because
   it depends on unverified, vendor-specific CORS support — see "Resolved:
   the AI Assistant conflict."
+- **MCP token as auth-only, no decryption capability** — the token proves
+  identity, tools only ever return metadata/computed summaries the client
+  already decrypted and chose to expose. Cleanest fit with "not even me,"
+  ships fastest, no new crypto — but agents can't answer real financial
+  questions unless the user's browser is open and forwarding data, which
+  defeats the point of a headless agent integration. Rejected as the
+  *only* tier; kept as the always-available fallback tier alongside the
+  vault-gated token (see "Resolved: MCP agent access" above).
+- **Vault-gated relay only, no third DEK wrap** — agents can only act
+  while the user's vault happens to be unlocked at that moment (matches
+  the AI relay's transient model exactly). Strongest security bar of the
+  three, but functionally close to useless for the "check my budget
+  overnight" use case that motivates wanting an agent at all. Rejected as
+  insufficient for the stated MCP goal, though its transient-only
+  discipline is exactly what the AI relay keeps for vendor keys, where
+  headless access was never a requirement.
 
 ## Build phases
 
@@ -493,6 +592,31 @@ consequences than just moving where ciphertext sits:
   - [ ] Mark Phase 3.5 in `docs/phase-3-ai-assistant-plan.md`.
   - [ ] Update the financeos skill's roadmap section (Phase 3 entry) to
         note E2EE is live.
+- [ ] **3.5.9 — MCP agent access.** Depends on 3.5.1 (vault infra) and the
+      relay pattern proven in 3.5.2; independent of 3.5.3–3.5.7 (can land
+      before or after the rest of the finance-table rollout, but tools
+      that read a given table obviously can't return real data for it
+      until that table's migrated).
+  - [ ] New private-schema table (e.g. `private.mcp_agent_tokens`):
+        `id`, `userId`, `label`, `tokenHash` (lookup only, never the raw
+        token), `wrappedDekByToken`, `scope`, `expiresAt`, `lastUsedAt`,
+        `revokedAt`, `...audit`. RLS `user_id = auth.uid()`, not exposed
+        via PostgREST, same as `ai_provider_keys`.
+  - [ ] Settings → "Agent Access" card: mint a scoped, named, expiring
+        token (shown once, same acknowledgment beat as the recovery
+        code); list + revoke existing tokens; show `lastUsedAt` per
+        token.
+  - [ ] Metadata/computed-only MCP tools (headless, no token-DEK
+        unwrapping needed) — ship first, independent of the rest of this
+        phase.
+  - [ ] Vault-gated MCP tools: the per-call transient unwrap Route
+        Handler described above, scoped per token, rate-limited and
+        audit-logged (who/when a token was used — content stays opaque,
+        but usage isn't).
+  - [ ] **Verify**: `npm run build` passes. Manual test: mint a token,
+        call a scoped tool end to end, confirm a revoked token is refused
+        immediately, confirm the stored row is unreadable ciphertext with
+        no server secret able to open it absent a valid token.
 
 ## Open questions (need a decision, not defaulted)
 
@@ -511,6 +635,18 @@ consequences than just moving where ciphertext sits:
 - Per-provider CORS support (DeepSeek now, OpenAI/Gemini/Claude later) —
   no longer blocking (the relay doesn't need it), but worth checking
   later purely as an optimization; see 3.5.2.
+- **MCP token max lifetime** — a hard expiry narrows the standing-risk
+  window but adds re-mint friction for a long-lived automation. Needs a
+  default (e.g. 90 days) confirmed before 3.5.9 ships, not left implicit.
+- **MCP scope granularity** — per-module (transactions vs. budget vs.
+  net-worth vs. everything) is the current assumption; whether read+write
+  scopes are offered at all in v1, or read-only only until the pattern's
+  proven, needs a decision.
+- **MCP token storage on the agent side** is outside this app's control
+  (e.g. Claude Desktop's own config file) — worth confirming whether the
+  target agent client supports OS-keychain-backed storage for the token
+  rather than a plaintext config file, since that materially changes the
+  standing-exposure risk named in the Threat model section.
 
 ## Explicitly out of scope for Phase 3.5
 
