@@ -134,15 +134,50 @@ and Server Actions are bound to Next's RSC action-id protocol:
   mutations" — noted here and to be added to `AGENTS.md`/the financeos skill
   so it doesn't quietly generalize to other features.
 
-## UI plan — draft, pending design input
+## UI plan (agreed)
 
-See conversation / commit history for the agreed component inventory and
-structure. High level: a mode toggle on `/ai` alongside the existing "Ask"
-box adds an "Add" mode; a prompt composer submits to `/api/v1/ai/extract`;
-results render as a capped, editable draft list (reusing the app's existing
-card/badge/form primitives — no new UI dependencies); "Add all" commits via
-`/api/v1/ai/commit`. Finalize field-level layout once design direction is
-confirmed.
+**Entry point.** `/ai` gets a two-way segmented toggle at the top — **Ask /
+Add** — reusing the existing income/expense pill pattern from
+`transaction-form.tsx` (no new Tabs dependency). "Ask" is today's existing
+card unchanged. "Add" is new.
+
+**Composer.** Same shell as the current Ask box: `Card` + `Textarea` +
+`Button`, submits to `POST /api/v1/ai/extract`. `Skeleton` while pending,
+matching every other route's `loading.tsx` convention.
+
+**Draft list — selection model (mobile-first: one primary CTA, not three
+competing buttons).**
+- Every draft card starts **checked by default** (opt-out — these came from
+  the user's own prompt).
+- A header row above the list: "Select all · N of M selected."
+- A **sticky bottom action bar** whose single button's label tracks
+  selection state: `"Add all (8)"` when everything's checked → `"Add
+  selected (5)"` the moment something's unchecked → disabled `"Select at
+  least one"` at zero. "Confirm all" and "confirm selected" are the *same*
+  control, driven by checkbox state — not separate buttons.
+  - Placement: the app's bottom tab bar is `fixed inset-x-0 bottom-0` (64px
+    + safe-area) and page content reserves `pb-28` to clear it, so this bar
+    docks at `fixed bottom-16` on mobile (same `bg-background/85
+    backdrop-blur-lg` treatment as `BottomNav`, z-index just under it), and
+    becomes an in-flow `sticky bottom-4` element on `lg+` where the sidebar
+    replaces the tab bar.
+- Each card also has its own small **"Add"** button — commits that one item
+  immediately, independent of the checkboxes/batch bar (the **individual**
+  case). Optimistic removal from the list on success, same pattern
+  `transactions-view.tsx` uses for delete.
+- Each card also has a discard `x` to drop it from the list without adding.
+
+**Card anatomy** (top → bottom): leading checkbox · module `Icon` + `Badge`
+(Expense/Income/Investment/Loan/Goal/Budget/Recurring) · amount/date row ·
+category/account `Select` · description `Input` · anomaly warning banner
+when the amount is flagged (soft, non-blocking) · "couldn't match — will
+save uncategorized" note when a name reference didn't resolve · discard `x`
+top-right · individual "Add" bottom-right.
+
+All of the above reuses existing primitives only (`Card`, `Badge`, `Input`,
+`Select`, `Textarea`, `Button`, `Skeleton`, `Icon`) — no new UI dependency.
+Finalize any remaining visual details (module color-coding, grouping order)
+during implementation review.
 
 ## Sequencing (not yet started)
 
