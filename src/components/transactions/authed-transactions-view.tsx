@@ -4,6 +4,7 @@ import { ShieldAlert } from "lucide-react";
 
 import { TransactionsView } from "./transactions-view";
 import { RowsSkeleton, StatTilesSkeleton, PageHeaderSkeleton } from "@/components/skeletons";
+import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { summarize } from "@/lib/transactions/compute";
 import {
@@ -34,15 +35,7 @@ export function AuthedTransactionsView({
   const { data, isLoading, isError, error } = useFinanceData(currency);
 
   if (!dek) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-          <ShieldAlert className="size-4 shrink-0" />
-          Unlock your vault in Settings → Vault & Encryption to see your
-          transactions.
-        </p>
-      </div>
-    );
+    return <VaultLockedPrompt module="your transactions" />;
   }
 
   if (isLoading) {

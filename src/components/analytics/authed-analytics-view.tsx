@@ -8,6 +8,6 @@ import type { CurrencyCode } from "@/lib/format";
 export function AuthedAnalyticsView({ currency }: { currency: CurrencyCode }) {
   const query = useFinanceData(currency);
   return (
-    <VaultGate query={query}>{(data) => <AnalyticsView data={data.analytics} />}</VaultGate>
+    <VaultGate query={query} module="your analytics">{(data) => <AnalyticsView data={data.analytics} />}</VaultGate>
   );
 }

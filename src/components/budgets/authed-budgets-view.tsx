@@ -17,7 +17,7 @@ export function AuthedBudgetsView({
   const dek = useVaultStore((s) => s.dek);
   const query = useFinanceData(currency);
   return (
-    <VaultGate query={query}>
+    <VaultGate query={query} module="your budgets">
       {(data) =>
         dek && (
           <BudgetsView

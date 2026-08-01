@@ -1,10 +1,10 @@
 "use client";
 
-import { ShieldAlert } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { BillCalendarView } from "./bill-calendar-view";
 import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { fetchBillCalendarAction } from "@/lib/finance/side-data";
 import { useSideData } from "@/lib/finance/use-side-data";
 import { useVaultStore } from "@/lib/vault/store";
@@ -25,15 +25,7 @@ export function AuthedCalendarView({ currency }: { currency: CurrencyCode }) {
   });
 
   if (!dek) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-          <ShieldAlert className="size-4 shrink-0" />
-          Unlock your vault in Settings → Vault & Encryption to see your
-          bill calendar.
-        </p>
-      </div>
-    );
+    return <VaultLockedPrompt module="your bill calendar" />;
   }
 
   if (side.isLoading || calendar.isLoading) {

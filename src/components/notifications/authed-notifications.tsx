@@ -1,10 +1,10 @@
 "use client";
 
-import { ShieldAlert } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { NotificationsView } from "./notifications-view";
 import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import {
   fetchBillCalendarAction,
@@ -51,15 +51,7 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
   });
 
   if (!dek) {
-    return (
-      <div className="mx-auto max-w-2xl">
-        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-          <ShieldAlert className="size-4 shrink-0" />
-          Unlock your vault in Settings → Vault & Encryption to see your
-          notifications.
-        </p>
-      </div>
-    );
+    return <VaultLockedPrompt module="your notifications" maxWidth="max-w-2xl" />;
   }
 
   if (finance.isLoading || extras.isLoading) {

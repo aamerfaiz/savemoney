@@ -1212,19 +1212,147 @@ folded into generic "connect an agent" copy.
         passes; confirm `loading.tsx` skeletons still cover the
         client-side fetch+decrypt+compute window without a layout flash;
         screenshot each newly-migrated page at 390px and desktop.
-- [ ] **3.5.6 — Recovery key UX, OAuth vault passphrase, quick-unlock &
-      multi-device.**
-  - [ ] Recovery-key display/confirm flow at vault setup.
-  - [ ] "Set up your Vault Passphrase" prompt for OAuth-only accounts on
-        first touch of an encrypted module.
-  - [ ] Device-local quick-unlock (PIN, or WebAuthn where available),
-        stored only in that device's local `IndexedDB`, never synced.
-  - [ ] "Rotate vault" flow for device revocation: new DEK, re-wrap for
-        password/recovery/remaining trusted devices, re-encrypt every
-        row.
-  - [ ] **Verify**: screenshot the unlock and quick-unlock UI; manually
-        test the revocation flow end-to-end (simulate a second device,
-        rotate, confirm its cached unlock no longer works).
+- [x] **3.5.6 — Recovery key UX, OAuth vault passphrase, quick-unlock &
+      multi-device.** Done, all four sub-items.
+  - [x] Recovery-key display/confirm flow at vault setup — **turned out
+        to already exist**, built as part of 3.5.1
+        (`vault-settings.tsx`'s `handleBeginSetup`/`showRecovery` mode +
+        the confirm dialog with the "I've saved this" checkbox) ahead of
+        this checklist catching up to it. What was actually missing, and
+        what this sub-item built, is the other half: **recovery-code
+        *unlock*** — until now the locked-state UI said "coming in 3.5.6"
+        with no way to actually use the code. Added a `decodeRecoveryCode`
+        (`vault/crypto.ts`, inverse of the existing `base32Encode`,
+        tolerant of the dashes `groupCode` inserts and the classic
+        Crockford O↔0/I,L↔1 transcription confusions) and a "Forgot your
+        passphrase? Use your recovery code" link on the locked screen that
+        opens a combined recover-and-reset-passphrase form: recovery code
+        + new passphrase in one step (`handleRecoverUnlock` in
+        `vault-settings.tsx`), since arriving here already implies the old
+        passphrase is gone — unwraps the DEK via the recovery path, then
+        immediately re-wraps it under the new passphrase via the same
+        `rotateVaultSecret` call `handleRotatePassphrase` uses.
+  - [x] "Set up your Vault Passphrase" prompt for OAuth-only accounts on
+        first touch of an encrypted module — done, and used it as the
+        occasion to fix a bigger gap: every encrypted-module page (16
+        files: 9 `Authed*View` components with their own copy-pasted
+        `if (!dek)` block, plus the shared `VaultGate` used by
+        budgets/analytics/score) only ever checked "is there a DEK in
+        memory," so a brand new user with no vault at all saw the same
+        "Unlock your vault in Settings" copy as someone who'd simply
+        locked it — no path to *setting one up* short of guessing to
+        visit Settings unprompted. `getVaultSetupStatus` (`vault/
+        queries.ts`) now also returns `isOAuthOnly` (`!user.identities
+        .some(i => i.provider === "email")` — Google-only accounts have
+        never typed a password into this app, so the copy is framed as
+        "this is your first one," not "another password"), exposed
+        client-side via a new `fetchVaultStatus` action +
+        `useVaultStatus()` query hook. All 16 gate sites now render one
+        new shared `<VaultLockedPrompt module="…" />` component
+        (`components/finance/vault-locked-prompt.tsx`) that branches on
+        `hasVault`: sets up (deep-links to `/settings#vault` with tailored
+        copy) vs. locked (the original unlock prompt, now also a link).
+        `VaultGate` gained an optional `module` prop threaded through its
+        three call sites for better copy. Every removed inline block's
+        `ShieldAlert` import was cleaned up except `authed-transactions-
+        view.tsx`, which still uses it for its own decrypt-failure banner.
+  - [x] Device-local quick-unlock — **PIN only, per the doc's locked
+        decision above** (WebAuthn explicitly deferred, not attempted).
+        New `vault/local-store.ts`: a small hand-written `indexedDB`
+        wrapper (no new dependency), one record per `userId` — `{wrap,
+        salt, kdfParams, failedAttempts}` — so a second account signing
+        into the same browser can never see the first account's cached
+        wrap. `PIN_MAX_ATTEMPTS = 8` (`vault/constants.ts`); a wrong PIN
+        increments a local counter and past the limit wipes the local
+        record, forcing a fallback to passphrase or recovery — exactly the
+        "attempt-throttled" design already locked in the doc. New opt-in
+        `<QuickUnlockSettings>` in the unlocked Settings panel (wraps the
+        already-in-memory DEK under a PIN-derived `PIN_KDF_PARAMS` key,
+        `savePinWrap`s it) and a `<QuickUnlockPin>` sub-component embedded
+        directly in `VaultLockedPrompt` — checks this device's IndexedDB
+        for a wrap and, if one exists, offers a PIN field right there
+        instead of a trip to Settings. Both are silent no-ops on a device
+        that never opted in.
+  - [x] "Rotate vault" flow for device revocation — the biggest sub-item.
+        New DEK, every row across every vault-DEK-encrypted table
+        re-encrypted, re-wrapped for password + a **freshly issued**
+        recovery code. **Two design calls made while building this, not
+        fully pinned down by the doc's prose:**
+        - *Which tables count as "every row."* The doc's own scope table
+          lists intended columns, but several were deliberately left
+          plaintext during 3.5.4 (contribution/payment/snapshot/recurring
+          `.note` fields, all `name` fields — confirmed by grepping
+          `finance/decrypt.ts`, the authoritative "what's actually
+          packed-ciphertext" source, not the aspirational doc table).
+          Rotation re-encrypts exactly what's actually encrypted today:
+          `income`, `expenses`, `budgets`, `goals`, `goal_contributions`,
+          `loans`, `loan_payments`, `investments`,
+          `investment_contributions`, `net_worth_snapshots`,
+          `recurring_rules`, `notifications.body`, and
+          `private.ai_provider_keys.encryptedKey` — the last one is easy
+          to miss since it predates the packed single-column format
+          (still two columns, `encryptedKey`+`keyIv`) and was migrated to
+          DEK-wrapping back in 3.5.2, not 3.5.4. `loan_payments` and
+          `notifications.body` have no read/decrypt path anywhere in the
+          app (write-once audit trails), but still get re-encrypted for
+          consistency — "re-encrypt every row" means every row, including
+          ones nothing currently reads back. Soft-deleted rows are
+          included too (no `deletedAt` filter in `rotation-queries.ts`) so
+          nothing is left orphaned under the old DEK.
+        - *What "remaining trusted devices" means when quick-unlock wraps
+          are local-only and MCP tokens wrap via a secret this server
+          never had.* Neither can be re-wrapped server-side — there's
+          nothing to re-derive their KEK from without the PIN or the raw
+          token, which this server never stored. Resolved as: this
+          device's own quick-unlock (if enabled) is simply cleared
+          (`clearPinWrap`) rather than carried forward, and the user
+          re-enables it via the same `QuickUnlockSettings` UI right there
+          post-rotation (forced to re-derive since we don't have the PIN
+          cached either); every MCP agent token is revoked
+          (`revokedAt = now()` — its wrap wasn't reusable, so there's no
+          "leave it alone" option, and an orphaned token silently failing
+          to decrypt fresh data is worse than an explicit revocation the
+          user can see in Agent Access and re-mint from). Any other
+          *device* that only had quick-unlock enabled just stops working
+          next time it tries to decrypt — its cached PIN-unwrap still
+          "succeeds" (it's unwrapping the *old* DEK correctly), but that
+          DEK no longer decrypts anything, which the existing
+          fault-tolerant per-row decrypt already surfaces as the ordinary
+          "N couldn't be read" banner rather than a crash. That device
+          falls back to the passphrase or new recovery code, same as a
+          brand new device.
+        New files: `vault/rotation-queries.ts` (server-only bulk raw
+        fetch, one query per table, direct Postgres client since
+        `aiProviderKeys` lives outside PostgREST's exposed schemas),
+        `vault/rotation-actions.ts` (`applyVaultRotation` — one
+        `db.transaction()` looping per-row updates across all 13 tables
+        plus the `vault_keys` rewrap plus the MCP-token revoke; every
+        `WHERE` scoped by both `id` *and* `userId`, not `id` alone — an
+        early draft filtered by `id` only, which would have let any
+        authenticated caller overwrite arbitrary rows by ID; caught and
+        fixed before this ever ran against the live DB), `vault/
+        reencrypt.ts` (pure client-side decrypt-under-old/encrypt-under-
+        new for every field, no UI/network), and
+        `components/settings/rotate-vault-settings.tsx` (the flow:
+        confirm → re-enter current passphrase, verified via an
+        encrypt/decrypt round-trip probe against the already-unlocked DEK
+        rather than exporting raw key bytes → fetch + re-encrypt +
+        generate new recovery code → confirm saved → submit). The
+        passphrase itself doesn't change (kept, just re-wrapped under a
+        fresh salt) — rotation's job is invalidating a *device's cached
+        DEK copy*, not the passphrase, which "Change passphrase" already
+        covers.
+  - [x] **Verify**: `npm run build`/`npm run lint` clean after every
+        sub-item. **Not verified**: a real browser session — this sandbox
+        has no Supabase auth credentials, same limitation as every phase
+        so far, so the unlock/quick-unlock/rotation UI and the
+        end-to-end "simulate a second device, rotate, confirm its cached
+        unlock no longer works" scenario are unexercised. The
+        re-encryption logic's correctness rests on `reencrypt.ts` being a
+        straight decrypt-then-encrypt of the same `decryptPacked`/
+        `encryptPacked`/`decryptField`/`encryptField` primitives already
+        proven correct by every prior phase's round-trip, not on any new
+        crypto — but that's a code-review argument, not a tested one.
 - [ ] **3.5.7 — Backfill & cleanup.**
   - [ ] Backfill tooling for any pre-existing plaintext rows, including
         today's `AI_KEYS_ENCRYPTION_KEY`-wrapped provider keys (users

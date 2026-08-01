@@ -1,8 +1,7 @@
 "use client";
 
-import { ShieldAlert } from "lucide-react";
-
 import { PageHeaderSkeleton, StatTilesSkeleton } from "@/components/skeletons";
+import { VaultLockedPrompt } from "./vault-locked-prompt";
 import { useVaultStore } from "@/lib/vault/store";
 import type { UseQueryResult } from "@tanstack/react-query";
 
@@ -14,22 +13,16 @@ import type { UseQueryResult } from "@tanstack/react-query";
 export function VaultGate<T>({
   query,
   children,
+  module = "this page",
 }: {
   query: UseQueryResult<T>;
   children: (data: T) => React.ReactNode;
+  module?: string;
 }) {
   const dek = useVaultStore((s) => s.dek);
 
   if (!dek) {
-    return (
-      <div className="mx-auto max-w-3xl">
-        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-          <ShieldAlert className="size-4 shrink-0" />
-          Unlock your vault in Settings → Vault & Encryption to see this
-          page.
-        </p>
-      </div>
-    );
+    return <VaultLockedPrompt module={module} />;
   }
 
   if (query.isLoading) {

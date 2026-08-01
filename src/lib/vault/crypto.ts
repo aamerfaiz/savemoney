@@ -239,6 +239,38 @@ function groupCode(code: string, groupSize = 5): string {
   return groups.join("-");
 }
 
+/** Inverse of `base32Encode`, tolerant of the dashes `groupCode` inserts,
+ * surrounding whitespace, and the classic Crockford transcription
+ * confusions (O↔0, I/L↔1) — exactly why those letters were excluded from
+ * the alphabet in the first place. Stops once `byteLength` bytes are
+ * decoded; a wrong/mistyped code just produces the wrong bytes, which
+ * `unwrapDek` will reject with a normal decrypt failure, not a crash. */
+function base32Decode(input: string, byteLength: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(byteLength);
+  let bits = 0;
+  let value = 0;
+  let index = 0;
+  for (const raw of input.toUpperCase()) {
+    const ch = raw === "O" ? "0" : raw === "I" || raw === "L" ? "1" : raw;
+    const v = CROCKFORD_ALPHABET.indexOf(ch);
+    if (v === -1) continue; // skip dashes, whitespace, anything else
+    value = (value << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      if (index < byteLength) bytes[index++] = (value >>> bits) & 0xff;
+    }
+  }
+  return bytes;
+}
+
+/** Decodes a recovery code the user typed back into the raw bytes
+ * `generateRecoveryCode` produced, so its KEK can be re-derived via
+ * `deriveKekFromHighEntropySecret`. */
+export function decodeRecoveryCode(display: string): Uint8Array<ArrayBuffer> {
+  return base32Decode(display, 32);
+}
+
 /** Generates a one-time, shown-once recovery code: 256 bits of entropy,
  * human-typeable. Returns both the raw bytes (to derive the recovery KEK
  * immediately) and the formatted display string (to show the user once). */

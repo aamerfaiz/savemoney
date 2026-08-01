@@ -9,7 +9,7 @@ import type { CurrencyCode } from "@/lib/format";
 export function AuthedScore({ currency }: { currency: CurrencyCode }) {
   const query = useFinanceData(currency);
   return (
-    <VaultGate query={query}>
+    <VaultGate query={query} module="your financial score">
       {(data) => <FinancialScoreView data={computeScoreData(data.analytics)} />}
     </VaultGate>
   );

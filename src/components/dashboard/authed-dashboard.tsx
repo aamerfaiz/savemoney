@@ -1,9 +1,8 @@
 "use client";
 
-import { ShieldAlert } from "lucide-react";
-
 import { DashboardView } from "./dashboard-view";
 import { PageHeaderSkeleton, StatTilesSkeleton, CardGridSkeleton } from "@/components/skeletons";
+import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { useSideData } from "@/lib/finance/use-side-data";
 import { useVaultStore } from "@/lib/vault/store";
@@ -22,15 +21,7 @@ export function AuthedDashboard({
   const side = useSideData(currency);
 
   if (!dek) {
-    return (
-      <div className="mx-auto max-w-6xl">
-        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-          <ShieldAlert className="size-4 shrink-0" />
-          Unlock your vault in Settings → Vault & Encryption to see your
-          dashboard.
-        </p>
-      </div>
-    );
+    return <VaultLockedPrompt module="your dashboard" maxWidth="max-w-6xl" />;
   }
 
   if (finance.isLoading || side.isLoading) {

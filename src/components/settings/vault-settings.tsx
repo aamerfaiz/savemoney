@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, KeyRound, Lock, LockOpen, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog } from "@/components/ui/dialog";
 import {
+  decodeRecoveryCode,
   deriveKekFromHighEntropySecret,
   deriveKekFromSecret,
   fromBase64,
@@ -23,11 +25,14 @@ import {
 } from "@/lib/vault/crypto";
 import { getVaultBlob, setupVault, rotateVaultSecret } from "@/lib/vault/actions";
 import { useVaultStore } from "@/lib/vault/store";
+import { QuickUnlockSettings } from "./quick-unlock-settings";
+import { RotateVaultSettings } from "./rotate-vault-settings";
 
-type Mode = "loading" | "setup" | "showRecovery" | "locked" | "unlocked";
+type Mode = "loading" | "setup" | "showRecovery" | "locked" | "recover" | "unlocked";
 
 export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const dek = useVaultStore((s) => s.dek);
   const unlock = useVaultStore((s) => s.unlock);
   const lock = useVaultStore((s) => s.lock);
@@ -41,6 +46,10 @@ export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean
   const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
   const [showRotate, setShowRotate] = useState(false);
   const [newPassphrase, setNewPassphrase] = useState("");
+  const [recoveryCodeInput, setRecoveryCodeInput] = useState("");
+  const [recoverNewPassphrase, setRecoverNewPassphrase] = useState("");
+  const [recoverConfirmPassphrase, setRecoverConfirmPassphrase] = useState("");
+  const [deviceStateKey, setDeviceStateKey] = useState(0);
 
   // Held only across the setup flow (between generating the keys and the
   // user confirming they saved the recovery code) — never persisted.
@@ -116,6 +125,7 @@ export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean
       setPassphrase("");
       setConfirmPassphrase("");
       setMode("unlocked");
+      queryClient.invalidateQueries({ queryKey: ["vault-status"] });
       router.refresh();
     } catch {
       setError("Something went wrong saving the vault.");
@@ -149,6 +159,73 @@ export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean
       router.refresh();
     } catch {
       setError("Incorrect passphrase.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Recovery-code unlock, for when the passphrase itself is forgotten
+   * (Phase 3.5.6). Since the user got here by not knowing their passphrase,
+   * this single form also sets a new one in the same step rather than
+   * unlocking and leaving them stuck with a passphrase they can't use —
+   * the old passphrase wrap is simply overwritten via `rotateVaultSecret`,
+   * same call `handleRotatePassphrase` makes, just chained right after the
+   * recovery unwrap instead of requiring a separate visit. */
+  async function handleRecoverUnlock() {
+    setError(null);
+    if (recoverNewPassphrase.length < 10) {
+      setError("Use at least 10 characters for your new passphrase.");
+      return;
+    }
+    if (recoverNewPassphrase !== recoverConfirmPassphrase) {
+      setError("Passphrases don't match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const blob = await getVaultBlob();
+      if ("error" in blob) {
+        setError(blob.error ?? "Something went wrong.");
+        return;
+      }
+      if (!blob.hasVault) {
+        setMode("setup");
+        return;
+      }
+      const recoveryBytes = decodeRecoveryCode(recoveryCodeInput);
+      const recoveryKek = await deriveKekFromHighEntropySecret(
+        recoveryBytes,
+        fromBase64(blob.recoverySalt),
+        "vault-recovery-kek",
+      );
+      const recoveredDek = await unwrapDek(blob.recoveryWrap, recoveryKek);
+
+      const passwordSalt = randomBytes(16);
+      const passwordKek = await deriveKekFromSecret(
+        recoverNewPassphrase,
+        passwordSalt,
+        PASSPHRASE_KDF_PARAMS,
+      );
+      const passwordWrap = await wrapDek(recoveredDek, passwordKek);
+      const result = await rotateVaultSecret({
+        path: "password",
+        wrap: passwordWrap,
+        salt: toBase64(passwordSalt),
+        kdfParams: PASSPHRASE_KDF_PARAMS,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't save your new passphrase.");
+        return;
+      }
+
+      unlock(recoveredDek);
+      setRecoveryCodeInput("");
+      setRecoverNewPassphrase("");
+      setRecoverConfirmPassphrase("");
+      setMode("unlocked");
+      router.refresh();
+    } catch {
+      setError("That recovery code didn't work — double-check it and try again.");
     } finally {
       setBusy(false);
     }
@@ -232,6 +309,17 @@ export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean
           </div>
         )}
 
+        <QuickUnlockSettings key={deviceStateKey} dek={dek} />
+
+        <RotateVaultSettings
+          dek={dek}
+          onRotated={(newDek) => {
+            unlock(newDek);
+            setDeviceStateKey((k) => k + 1);
+            router.refresh();
+          }}
+        />
+
         {error && <p className="text-sm text-negative">{error}</p>}
       </div>
     );
@@ -257,9 +345,86 @@ export function VaultSettings({ hasVault: initialHasVault }: { hasVault: boolean
         <Button type="button" onClick={handleUnlock} disabled={busy || !passphrase}>
           {busy ? "Unlocking…" : "Unlock"}
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setError(null);
+            setMode("recover");
+          }}
+        >
+          Forgot your passphrase? Use your recovery code
+        </Button>
+      </div>
+    );
+  }
+
+  if (mode === "recover") {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <KeyRound className="size-4" />
+          Recover with your code
+        </div>
         <p className="text-xs text-muted-foreground">
-          Lost your passphrase? Recovery-code unlock is coming in the next
-          increment (3.5.6) — for now, this is the only unlock path.
+          Enter the recovery code you saved when you set up your vault.
+          You&apos;ll set a new passphrase in the same step.
+        </p>
+        <div className="space-y-1.5">
+          <Label htmlFor="recoveryCode">Recovery code</Label>
+          <Input
+            id="recoveryCode"
+            value={recoveryCodeInput}
+            onChange={(e) => setRecoveryCodeInput(e.target.value)}
+            autoComplete="off"
+            className="font-mono"
+            placeholder="XXXXX-XXXXX-XXXXX-…"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="recoverNewPassphrase">New passphrase</Label>
+          <Input
+            id="recoverNewPassphrase"
+            type="password"
+            value={recoverNewPassphrase}
+            onChange={(e) => setRecoverNewPassphrase(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="recoverConfirmPassphrase">Confirm new passphrase</Label>
+          <Input
+            id="recoverConfirmPassphrase"
+            type="password"
+            value={recoverConfirmPassphrase}
+            onChange={(e) => setRecoverConfirmPassphrase(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        {error && <p className="text-sm text-negative">{error}</p>}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            onClick={handleRecoverUnlock}
+            disabled={busy || !recoveryCodeInput || !recoverNewPassphrase}
+          >
+            {busy ? "Recovering…" : "Recover & set new passphrase"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setError(null);
+              setMode("locked");
+            }}
+          >
+            Back
+          </Button>
+        </div>
+        <p className="text-xs text-negative">
+          This only works with your recovery code — if you&apos;ve lost both
+          your passphrase and this code, your data is permanently unreadable.
         </p>
       </div>
     );

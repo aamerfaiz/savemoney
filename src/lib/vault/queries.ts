@@ -5,38 +5,47 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 
-async function currentUserId(): Promise<string | null> {
+async function currentUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  return user;
 }
 
 /**
- * Whether this account has a vault set up yet, and whether the recovery
- * code was acknowledged — metadata only, never the wrapped keys
+ * Whether this account has a vault set up yet, whether the recovery code
+ * was acknowledged, and whether the account has no email/password identity
+ * at all (Google-only sign-in) — metadata only, never the wrapped keys
  * themselves. Reads through the direct Postgres client (`db`) since the
  * private schema is intentionally invisible to the Supabase/PostgREST
- * client used everywhere else in the app.
+ * client used everywhere else in the app. `isOAuthOnly` drives the 3.5.6
+ * first-touch "Set up your Vault Passphrase" prompt copy — OAuth-only
+ * accounts have never typed a password into this app before, so the vault
+ * passphrase needs framing as their first one, not "another password."
  */
 export async function getVaultSetupStatus(): Promise<{
   hasVault: boolean;
   recoveryAcknowledged: boolean;
+  isOAuthOnly: boolean;
 }> {
-  if (!db) return { hasVault: false, recoveryAcknowledged: false };
-  const userId = await currentUserId();
-  if (!userId) return { hasVault: false, recoveryAcknowledged: false };
+  const user = await currentUser();
+  if (!user) return { hasVault: false, recoveryAcknowledged: false, isOAuthOnly: false };
+
+  const isOAuthOnly = !(user.identities ?? []).some((i) => i.provider === "email");
+
+  if (!db) return { hasVault: false, recoveryAcknowledged: false, isOAuthOnly };
 
   const [row] = await db
     .select({ recoveryAcknowledgedAt: schema.vaultKeys.recoveryAcknowledgedAt })
     .from(schema.vaultKeys)
-    .where(eq(schema.vaultKeys.userId, userId))
+    .where(eq(schema.vaultKeys.userId, user.id))
     .limit(1);
 
   return {
     hasVault: Boolean(row),
     recoveryAcknowledged: Boolean(row?.recoveryAcknowledgedAt),
+    isOAuthOnly,
   };
 }
 
@@ -53,7 +62,7 @@ export interface McpTokenMeta {
 /** Non-secret metadata only — never the token, its hash, or its wrap. */
 export async function listMcpTokens(): Promise<McpTokenMeta[]> {
   if (!db) return [];
-  const userId = await currentUserId();
+  const userId = (await currentUser())?.id;
   if (!userId) return [];
 
   const rows = await db

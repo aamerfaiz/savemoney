@@ -16,6 +16,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 import { MCP_TOKEN_MAX_DURATION_DAYS } from "./constants";
+import { getVaultSetupStatus } from "./queries";
 
 export interface ActionResult {
   ok: boolean;
@@ -31,17 +32,25 @@ async function requireUser() {
   return { userId: user.id } as const;
 }
 
-const wrappedPayloadSchema = z.object({
+export const wrappedPayloadSchema = z.object({
   ciphertext: z.string().min(1),
   iv: z.string().min(1),
 });
 
-const kdfParamsSchema = z.object({
+export const kdfParamsSchema = z.object({
   iterations: z.number().int().positive(),
   parallelism: z.number().int().positive(),
   memorySize: z.number().int().positive(),
   hashLength: z.number().int().positive(),
 });
+
+/** Client-callable wrapper around `getVaultSetupStatus` (Phase 3.5.6) — the
+ * gate every encrypted-module page uses to tell "no vault yet, show setup"
+ * apart from "vault exists, just locked this session" apart from "OAuth-only
+ * account, tailor the copy." Metadata only, same as the query it wraps. */
+export async function fetchVaultStatus() {
+  return getVaultSetupStatus();
+}
 
 /* ----------------------------------------------------------------------- */
 /* Vault setup & rotation                                                   */
