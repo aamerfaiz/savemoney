@@ -14,8 +14,7 @@ import {
   deleteInvestment,
 } from "@/lib/investments/actions";
 
-import { loanInputSchema, paymentInputSchema, LOAN_TYPES } from "@/lib/loans/types";
-import { createLoan, recordPayment, updateLoan, deleteLoan } from "@/lib/loans/actions";
+import { deleteLoan } from "@/lib/loans/actions";
 
 import { deleteGoal } from "@/lib/goals/actions";
 
@@ -33,11 +32,9 @@ import {
   matchByName,
   toFormData,
   fetchCurrentInvestment,
-  fetchCurrentLoan,
   fetchCurrentRecurring,
 } from "./shared";
 import {
-  asBool,
   asString,
   normalizeDate,
   normalizeEnum,
@@ -53,24 +50,29 @@ const emptySchema = z.object({});
  * create/log/update/delete Server Action — see `docs/ai-smart-entry-plan.md`.
  *
  * No `transaction.*` capabilities as of Phase 3.5.3; no `budget.create`/
- * `budget.edit` as of Phase 3.5.4 (budgets.amount); and no `goal.create`/
+ * `budget.edit` as of Phase 3.5.4 (budgets.amount); no `goal.create`/
  * `goal.edit`/`goal.contribution` as of Phase 3.5.4 (goals.targetAmount/
- * currentAmount/monthlyContribution) — all removed, not disabled: once a
- * table's amount is encrypted under the vault DEK, this file's `execute()`
- * calls — which run entirely server-side via /api/v1/ai/commit — have no
- * DEK to encrypt with. Properly supporting them would mean moving amount
- * validation client-side (before encryption) while commit.ts's independent
+ * currentAmount/monthlyContribution); and no `loan.create`/`loan.edit`/
+ * `loan.payment` as of Phase 3.5.4 (loans.principal/emi/remainingAmount/
+ * extraEmi) — all removed, not disabled: once a table's amount is
+ * encrypted under the vault DEK, this file's `execute()` calls — which run
+ * entirely server-side via /api/v1/ai/commit — have no DEK to encrypt
+ * with. Properly supporting them would mean moving amount validation
+ * client-side (before encryption) while commit.ts's independent
  * re-validation (`def.schema.safeParse`, the "never trust fields"
  * defense-in-depth check) can no longer inspect a real numeric amount
  * post-encryption — a real redesign of that trust boundary, not done here.
- * `goal.contribution` has the added wrinkle that it would need the goal's
- * *current* decrypted amount to compute a new running total, which the
- * server can't read either (see the comment on `EncryptedContributionInput`
- * in src/lib/goals/actions.ts). Creating/editing a budget or goal, and
- * logging a goal contribution, all still work normally through their own
- * pages (client-side encrypt path). `budget.delete`/`goal.delete` are
- * unaffected (no amount involved) and stay. Only the natural-language
- * Smart Entry shortcut is unavailable for these.
+ * `goal.contribution`/`loan.payment` have the added wrinkle that they'd
+ * need the goal/loan's *current* decrypted amount to compute a new running
+ * total or interest/principal split, which the server can't read either
+ * (see the comments on `EncryptedContributionInput` in
+ * src/lib/goals/actions.ts and `EncryptedPaymentInput` in
+ * src/lib/loans/actions.ts). Creating/editing a budget, goal, or loan, and
+ * logging a goal contribution or loan payment, all still work normally
+ * through their own pages (client-side encrypt path).
+ * `budget.delete`/`goal.delete`/`loan.delete` are unaffected (no amount
+ * involved) and stay. Only the natural-language Smart Entry shortcut is
+ * unavailable for these.
  */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
   {
@@ -233,140 +235,6 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
     },
     execute: (_fields, targetId) => deleteInvestment(targetId!),
-  },
-
-  {
-    key: "loan.payment",
-    module: "loan",
-    label: "Loan payment",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A payment made toward an EXISTING loan (an EMI or extra principal " +
-      "payment, not a new loan). args: loanName (string, required — must " +
-      "refer to a loan the user already has), amount (number, required), date " +
-      "(YYYY-MM-DD, optional, defaults to today), isExtra (boolean, optional — " +
-      "true only when the user says this is an extra/additional payment on " +
-      "top of the regular EMI).",
-    schema: paymentInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.loanName);
-      const loan = matchByName(nameGuess, ref.loans);
-      const warnings: string[] = [];
-      if (!loan) {
-        warnings.push(
-          nameGuess ? `Couldn't match loan "${nameGuess}" — pick one below.` : "No loan specified — pick one below.",
-        );
-      }
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
-
-      const parsed = paymentInputSchema.safeParse({
-        amount,
-        paidOn: normalizeDate(args.date) ?? todayISO(),
-        isExtra: asBool(args.isExtra) ?? false,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return {
-        ok: true,
-        fields: parsed.data,
-        targetId: loan?.id,
-        targetLabel: loan?.name,
-        warnings,
-      };
-    },
-    execute: (fields, targetId) => recordPayment(targetId!, undefined, toFormData(fields)),
-  },
-
-  {
-    key: "loan.create",
-    module: "loan",
-    label: "New loan",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A brand-new loan the user has taken on. args: name (string, required), " +
-      "type (one of home/car/personal/education/credit_card/other, optional), " +
-      "principal (number, required), interestRate (number, percent, required), " +
-      "emi (number, required), remainingAmount (number, optional — defaults to " +
-      "principal for a brand-new loan), startDate (YYYY-MM-DD, optional, " +
-      "defaults to today).",
-    schema: loanInputSchema,
-    async resolve(args) {
-      const name = asString(args.name);
-      const principal = toNumber(args.principal);
-      const interestRate = toNumber(args.interestRate);
-      const emi = toNumber(args.emi);
-      if (!name || principal == null || interestRate == null || emi == null) {
-        return { ok: false, warnings: [], error: "Missing loan name, principal, interest rate, or EMI." };
-      }
-      const type = normalizeEnum(args.type, LOAN_TYPES);
-
-      const parsed = loanInputSchema.safeParse({
-        name,
-        type: type ?? undefined,
-        principal,
-        interestRate,
-        emi,
-        remainingAmount: toNumber(args.remainingAmount) ?? principal,
-        startDate: normalizeDate(args.startDate) ?? todayISO(),
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings: [] };
-    },
-    execute: (fields) => createLoan(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "loan.edit",
-    module: "loan",
-    label: "Edit loan",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Save",
-    promptDescription:
-      "Change details of an EXISTING loan. args: loanName (string, required — " +
-      "must refer to a loan the user already has), plus ONLY the fields the " +
-      "user wants changed: name, type, principal, interestRate, emi, " +
-      "remainingAmount, startDate.",
-    schema: loanInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.loanName);
-      const match = matchByName(nameGuess, ref.loans);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `Couldn't find a loan named "${nameGuess}".` : "Missing loan name.",
-        };
-      }
-      const current = await fetchCurrentLoan(match.id);
-      if (!current) return { ok: false, warnings: [], error: "That loan could not be found." };
-
-      const type = normalizeEnum(args.type, LOAN_TYPES);
-      const parsed = loanInputSchema.safeParse({
-        name: asString(args.name) ?? current.name,
-        type: type ?? current.type,
-        principal: toNumber(args.principal) ?? current.principal,
-        interestRate: toNumber(args.interestRate) ?? current.interestRate,
-        emi: toNumber(args.emi) ?? current.emi,
-        remainingAmount: toNumber(args.remainingAmount) ?? current.remainingAmount,
-        remainingMonths: current.remainingMonths,
-        extraEmi: current.extraEmi,
-        startDate: normalizeDate(args.startDate) ?? current.startDate,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
-    },
-    execute: (fields, targetId) => updateLoan(targetId!, undefined, toFormData(fields)),
   },
 
   {

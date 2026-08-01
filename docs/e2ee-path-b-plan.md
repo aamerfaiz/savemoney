@@ -906,7 +906,63 @@ folded into generic "connect an agent" copy.
         `npm run lint` clean; migration applied via Supabase MCP,
         `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `loans.principal`/`emi`/`remainingAmount`/`extraEmi`
+  - [x] `loans.principal`/`emi`/`remainingAmount`/`extraEmi` — done. Wider
+        blast radius than goals: loans fed the Loans page (server
+        component, same pre-conversion shape goals had), a second raw feed
+        in `raw-data.ts` for safe-to-spend/health score, *and* the bill
+        calendar — `calendar/queries.ts`'s `getBillCalendarData()` and the
+        dead `getUpcomingBills()` (deleted, zero callers — confirmed before
+        touching it) both called `getLoansData()` directly server-side to
+        build EMI occurrences. `interestRate`/`remainingMonths` stay
+        plaintext per the locked scope; migration
+        `encrypt_loans_amount_columns` applied live (`numeric` → `text` ×
+        4, `USING <col>::text`).
+        **Read path**: `loans/queries.ts`'s `fetchLoansRaw()` returns
+        ciphertext only — the old DB-level `ORDER BY remaining_amount` is
+        gone too (a ciphertext column sorts meaninglessly), moved to a
+        client-side sort in the new `loans/compute.ts`'s
+        `computeLoansData()`. New `decryptLoanRows()`/`decryptLoanAmounts()`
+        in `finance/decrypt.ts` (the latter narrow, for the
+        `raw-data.ts`/safe-to-spend/health-score path, mirroring
+        `decryptActiveGoals`). `use-side-data.ts` decrypts+computes loans
+        alongside goals now, exposing `failedLoanCount`.
+        **Calendar page converted** the same way Goals was: new
+        `authed-calendar-view.tsx` sources decrypted loans from
+        `useSideData()`, then calls `fetchBillCalendarAction(loans)` — that
+        action (and `getBillCalendarData()` underneath it) now takes
+        already-decrypted loans as a parameter instead of fetching them
+        itself. `authed-notifications.tsx`'s own separate loans fetch
+        (same pattern as its goals fetch last sub-item) updated the same
+        way, and reordered so calendar fetches after loans are decrypted.
+        **Write path**: `loan-form.tsx`/`payment-form.tsx` now require a
+        `dek: CryptoKey` prop (threaded from a new `authed-loans-view.tsx`,
+        replacing the server-component `loans/page.tsx`); new
+        `src/lib/loans/client-actions.ts` mirrors `goals/client-actions.ts`.
+        **Hardest piece, same shape as goals' `addContribution`**:
+        `recordPayment`'s server-side read-modify-write (read
+        `remaining_amount`, split into interest/principal against it using
+        `interest_rate`, write back the new balance) is impossible once
+        `remaining_amount` is ciphertext the server can't read. Moved to
+        `payment-form.tsx`'s client wrapper, which already has the loan's
+        decrypted `remainingAmount`/`interestRate` on screen — computes the
+        split and new balance exactly as the old server code did, just
+        client-side now, encrypts the new balance, and sends everything as
+        a trusted write. `loan_payments.*` itself stays plaintext (own
+        future turn in this list). Same documented concurrency tradeoff as
+        goals applies here too.
+        `net_worth/actions.ts`'s `captureSnapshot()` now also takes
+        `loansRemainingTotal` as a parameter (previously fixed for goals
+        last sub-item; loans needed the identical fix).
+        **Scope cut**: removed `loan.create`/`loan.edit`/`loan.payment`
+        Smart Entry capabilities (and the now-dead `fetchCurrentLoan`
+        helper, and the `emi`-based `typicalAmount` in
+        `loadReferenceData()`'s loans reference) — same reasoning as goals,
+        with `loan.payment` additionally blocked by needing the loan's
+        current decrypted balance server-side to compute the split.
+        `loan.delete` is untouched. **Verified**: `npm run build`/
+        `npm run lint` clean; migration applied via Supabase MCP,
+        `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `investments.investedAmount`/`currentValue`/`monthlyContribution`
   - [ ] `net_worth_snapshots.*`
   - [ ] `goal_contributions.amount`

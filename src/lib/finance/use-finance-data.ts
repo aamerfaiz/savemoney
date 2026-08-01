@@ -19,6 +19,7 @@ import {
   decryptBudgetRows,
   decryptExpenseRows,
   decryptIncomeRows,
+  decryptLoanAmounts,
 } from "./decrypt";
 import { computeBudgetsData, type BudgetsData } from "@/lib/budgets/compute";
 import { computeAnalyticsData } from "@/lib/analytics/compute";
@@ -55,18 +56,21 @@ export function useFinanceData(currency: CurrencyCode) {
       const raw = await fetchFinanceRawData();
       if ("error" in raw) throw new Error(raw.error);
 
-      const [incomeResult, expenseResult, budgetResult, activeGoalsResult] = await Promise.all([
-        decryptIncomeRows(raw.income, dek),
-        decryptExpenseRows(raw.expenses, dek),
-        decryptBudgetRows(raw.budgets, dek),
-        decryptActiveGoals(raw.activeGoals, dek),
-      ]);
+      const [incomeResult, expenseResult, budgetResult, activeGoalsResult, loanAmountsResult] =
+        await Promise.all([
+          decryptIncomeRows(raw.income, dek),
+          decryptExpenseRows(raw.expenses, dek),
+          decryptBudgetRows(raw.budgets, dek),
+          decryptActiveGoals(raw.activeGoals, dek),
+          decryptLoanAmounts(raw.loans, dek),
+        ]);
 
       const budgets = computeBudgetsData(
         expenseResult.rows,
         incomeResult.rows,
         budgetResult.rows,
         activeGoalsResult.rows,
+        loanAmountsResult.rows,
         raw,
         currency,
       );
@@ -74,6 +78,7 @@ export function useFinanceData(currency: CurrencyCode) {
         incomeResult.rows,
         expenseResult.rows,
         activeGoalsResult.rows,
+        loanAmountsResult.rows,
         raw,
         currency,
       );

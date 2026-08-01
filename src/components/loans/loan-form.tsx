@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { createLoan, updateLoan, type ActionResult } from "@/lib/loans/actions";
+import type { ActionResult } from "@/lib/loans/actions";
+import { encryptedCreateLoan, encryptedUpdateLoan } from "@/lib/loans/client-actions";
 import { LOAN_TYPES, type LoanWithProjection } from "@/lib/loans/types";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -15,12 +16,16 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function LoanForm({
   existing,
   onSuccess,
+  dek,
 }: {
   existing?: LoanWithProjection;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
-  const action = existing ? updateLoan.bind(null, existing.id) : createLoan;
+  const action = existing
+    ? encryptedUpdateLoan.bind(null, dek, existing.id)
+    : encryptedCreateLoan.bind(null, dek);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

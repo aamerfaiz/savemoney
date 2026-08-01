@@ -14,6 +14,7 @@ import type {
   DecryptedBudgetRow,
   DecryptedExpenseRow,
   DecryptedIncomeRow,
+  DecryptedLoanAmounts,
 } from "@/lib/finance/decrypt";
 import type { FinanceRawData } from "@/lib/finance/raw-data";
 import { budgetStatus, type BudgetPeriod, type BudgetWithProgress } from "./types";
@@ -30,7 +31,8 @@ export function computeBudgetsData(
   income: DecryptedIncomeRow[],
   decryptedBudgets: DecryptedBudgetRow[],
   decryptedActiveGoals: DecryptedActiveGoal[],
-  raw: Pick<FinanceRawData, "loans" | "investmentMonthlyContributions">,
+  decryptedLoans: DecryptedLoanAmounts[],
+  raw: Pick<FinanceRawData, "investmentMonthlyContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): BudgetsData {
@@ -72,7 +74,7 @@ export function computeBudgetsData(
     (s, g) => s + (g.monthlyContribution ?? 0),
     0,
   );
-  const loanPayments = raw.loans
+  const loanPayments = decryptedLoans
     .filter((l) => l.remainingAmount > 0)
     .reduce((s, l) => s + l.emi + l.extraEmi, 0);
   const investments = raw.investmentMonthlyContributions.reduce((s, v) => s + v, 0);

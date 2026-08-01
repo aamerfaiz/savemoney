@@ -391,15 +391,16 @@ export const loans = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     type: loanType("type").notNull().default("personal"),
-    principal: numeric("principal", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2). interestRate/remainingMonths stay plaintext.
+    principal: text("principal").notNull(),
     interestRate: numeric("interest_rate", { precision: 6, scale: 3 })
       .notNull()
       .default("0"),
-    emi: numeric("emi", { precision: 14, scale: 2 }).notNull().default("0"),
-    remainingAmount: numeric("remaining_amount", { precision: 14, scale: 2 })
-      .notNull(),
+    emi: text("emi").notNull(),
+    remainingAmount: text("remaining_amount").notNull(),
     remainingMonths: integer("remaining_months"),
-    extraEmi: numeric("extra_emi", { precision: 14, scale: 2 }),
+    extraEmi: text("extra_emi"),
     currency: text("currency").notNull().default("USD"),
     startDate: date("start_date").notNull(),
     ...audit,

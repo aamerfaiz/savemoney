@@ -10,7 +10,7 @@ import type { AnalyticsData } from "@/lib/analytics/types";
 import type { HealthResult } from "@/lib/finance/health-score";
 import type { CategorySlice, MonthPoint } from "@/lib/analytics/types";
 import type { GoalsData } from "@/lib/goals/compute";
-import type { LoansData } from "@/lib/loans/queries";
+import type { LoansData } from "@/lib/loans/compute";
 import type { InvestmentsData } from "@/lib/investments/queries";
 import type { SnapshotSummary } from "@/lib/networth/types";
 

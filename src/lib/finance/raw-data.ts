@@ -79,6 +79,17 @@ export interface RawActiveGoalRow {
   deadline: string | null;
 }
 
+/** Just the loan fields the safe-to-spend/health-score path needs — a
+ * narrower, parallel fetch from the same `loans` table as
+ * src/lib/loans/queries.ts's `fetchLoansRaw()` (full list, for the Loans
+ * page). Packed ciphertext (Phase 3.5.4) — decrypt via decryptLoanAmounts()
+ * in finance/decrypt.ts. */
+export interface RawLoanAmountRow {
+  emi: string;
+  extraEmi: string | null;
+  remainingAmount: string;
+}
+
 /** None of the rest of this is encrypted this pass — bundled in alongside
  * the ciphertext rows purely because computeBudgetsData/computeAnalyticsData
  * must now run client-side, so everything they need has to be fetchable
@@ -91,7 +102,7 @@ export interface FinanceRawData {
   /** Active goals only — feeds both the safe-to-spend monthly-contribution
    * sum and the health score's on-track share. */
   activeGoals: RawActiveGoalRow[];
-  loans: { emi: number; extraEmi: number; remainingAmount: number }[];
+  loans: RawLoanAmountRow[];
   investmentMonthlyContributions: number[];
   investmentContributions: { amount: number; contributedAt: string }[];
 }
@@ -282,16 +293,16 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
     deadline: g.deadline,
   }));
 
-  const loans = (
+  const loans: RawLoanAmountRow[] = (
     (loanRows ?? []) as {
-      emi: string | number;
-      extra_emi: string | number | null;
-      remaining_amount: string | number;
+      emi: string;
+      extra_emi: string | null;
+      remaining_amount: string;
     }[]
   ).map((l) => ({
-    emi: Number(l.emi),
-    extraEmi: Number(l.extra_emi ?? 0),
-    remainingAmount: Number(l.remaining_amount),
+    emi: l.emi,
+    extraEmi: l.extra_emi,
+    remainingAmount: l.remaining_amount,
   }));
 
   const investmentMonthlyContributions = (

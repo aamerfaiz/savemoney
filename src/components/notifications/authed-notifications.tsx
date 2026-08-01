@@ -7,10 +7,11 @@ import { NotificationsView } from "./notifications-view";
 import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { fetchBillCalendarAction, fetchGoalsDataAction, fetchLoansDataAction } from "@/lib/finance/side-data";
-import { decryptGoalRows } from "@/lib/finance/decrypt";
+import { decryptGoalRows, decryptLoanRows } from "@/lib/finance/decrypt";
 import { fetchNotificationStateAction } from "@/lib/notifications/actions";
 import { computeNotificationsData } from "@/lib/notifications/compute";
 import { computeGoalsData } from "@/lib/goals/compute";
+import { computeLoansData } from "@/lib/loans/compute";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@/lib/format";
 
@@ -24,14 +25,18 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
     queryFn: async () => {
       if (!dek) throw new Error("Vault is locked.");
 
-      const [calendar, rawGoals, loans, state] = await Promise.all([
-        fetchBillCalendarAction(),
+      const [rawGoals, rawLoans, state] = await Promise.all([
         fetchGoalsDataAction(),
         fetchLoansDataAction(),
         fetchNotificationStateAction(),
       ]);
-      const goalRowsResult = await decryptGoalRows(rawGoals, dek);
+      const [goalRowsResult, loanRowsResult] = await Promise.all([
+        decryptGoalRows(rawGoals, dek),
+        decryptLoanRows(rawLoans, dek),
+      ]);
       const goals = computeGoalsData(goalRowsResult.rows, currency);
+      const loans = computeLoansData(loanRowsResult.rows, currency);
+      const calendar = await fetchBillCalendarAction(loans.loans);
       return { calendar, goals, loans, state };
     },
   });

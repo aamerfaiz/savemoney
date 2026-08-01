@@ -12,6 +12,7 @@ import type {
   DecryptedActiveGoal,
   DecryptedExpenseRow,
   DecryptedIncomeRow,
+  DecryptedLoanAmounts,
 } from "@/lib/finance/decrypt";
 import type { FinanceRawData } from "@/lib/finance/raw-data";
 import { CATEGORY_PALETTE, type AnalyticsData, type CategorySlice, type MonthPoint } from "./types";
@@ -22,7 +23,8 @@ export function computeAnalyticsData(
   income: DecryptedIncomeRow[],
   expenses: DecryptedExpenseRow[],
   decryptedActiveGoals: DecryptedActiveGoal[],
-  raw: Pick<FinanceRawData, "contributions" | "loans" | "investmentContributions">,
+  decryptedLoans: DecryptedLoanAmounts[],
+  raw: Pick<FinanceRawData, "contributions" | "investmentContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): AnalyticsData {
@@ -49,7 +51,7 @@ export function computeAnalyticsData(
   const byCategory = aggregateByCategory(expenses);
 
   const totals = totalsFrom(months);
-  const totalEmi = raw.loans
+  const totalEmi = decryptedLoans
     .filter((l) => l.remainingAmount > 0)
     .reduce((s, l) => s + l.emi + l.extraEmi, 0);
 

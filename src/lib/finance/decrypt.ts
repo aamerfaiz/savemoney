@@ -10,8 +10,16 @@
  */
 
 import { decryptPacked } from "@/lib/vault/crypto";
-import type { RawIncomeRow, RawExpenseRow, RawBudgetRow, RawActiveGoalRow } from "./raw-data";
+import type {
+  RawIncomeRow,
+  RawExpenseRow,
+  RawBudgetRow,
+  RawActiveGoalRow,
+  RawLoanAmountRow,
+} from "./raw-data";
 import type { RawGoalRow } from "@/lib/goals/queries";
+import type { RawLoanRow } from "@/lib/loans/queries";
+import type { LoanType } from "@/lib/loans/types";
 
 export interface DecryptedIncomeRow {
   id: string;
@@ -78,6 +86,29 @@ export interface DecryptedActiveGoal {
   currentAmount: number;
   monthlyContribution: number | null;
   deadline: string | null;
+}
+
+export interface DecryptedLoanRow {
+  id: string;
+  name: string;
+  type: LoanType;
+  principal: number;
+  interestRate: number;
+  emi: number;
+  remainingAmount: number;
+  remainingMonths: number | null;
+  extraEmi: number | null;
+  currency: string;
+  startDate: string;
+}
+
+/** Just the fields `computeBudgetsData`/`computeAnalyticsData` need from
+ * loans — a narrower shape than the full `DecryptedLoanRow` used by the
+ * Loans page itself, mirroring `RawActiveGoalRow`/`DecryptedActiveGoal`. */
+export interface DecryptedLoanAmounts {
+  emi: number;
+  extraEmi: number;
+  remainingAmount: number;
 }
 
 export interface DecryptResult<T> {
@@ -160,6 +191,36 @@ export async function decryptActiveGoals(
         ? Number(await decryptPacked(r.monthlyContribution, dek))
         : null,
       deadline: r.deadline,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptLoanRows(
+  rows: RawLoanRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedLoanRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedLoanRow> => ({
+      ...r,
+      principal: Number(await decryptPacked(r.principal, dek)),
+      emi: Number(await decryptPacked(r.emi, dek)),
+      remainingAmount: Number(await decryptPacked(r.remainingAmount, dek)),
+      extraEmi: r.extraEmi ? Number(await decryptPacked(r.extraEmi, dek)) : null,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptLoanAmounts(
+  rows: RawLoanAmountRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedLoanAmounts>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedLoanAmounts> => ({
+      emi: Number(await decryptPacked(r.emi, dek)),
+      extraEmi: r.extraEmi ? Number(await decryptPacked(r.extraEmi, dek)) : 0,
+      remainingAmount: Number(await decryptPacked(r.remainingAmount, dek)),
     })),
   );
   return splitSettled(settled);

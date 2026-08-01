@@ -1,16 +1,61 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { loanInputSchema, paymentInputSchema } from "./types";
+import { LOAN_TYPES } from "./types";
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
 }
+
+/**
+ * What the server actually validates now (Phase 3.5.4): shape only, for the
+ * fields that stay plaintext. `principal`/`emi`/`remainingAmount`/
+ * `extraEmi` arrive as already-packed ciphertext — the client validated the
+ * real values *before* encrypting, via the same `loanInputSchema` it always
+ * used. `interestRate`/`remainingMonths` stay plaintext and are still
+ * server-validated. See src/lib/loans/client-actions.ts, which builds this
+ * input.
+ */
+const encryptedLoanInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  type: z.enum(LOAN_TYPES),
+  principal: z.string().min(1),
+  interestRate: z.coerce.number().min(0).max(100),
+  emi: z.string().min(1),
+  remainingAmount: z.string().min(1),
+  remainingMonths: z.coerce.number().int().min(0).optional().nullable(),
+  extraEmi: z.string().min(1).optional().nullable(),
+  currency: z.string().length(3),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date"),
+});
+
+export type EncryptedLoanInput = z.infer<typeof encryptedLoanInputSchema>;
+
+/** `loan_payments.*` isn't encrypted this pass — only the running
+ * `loans.remaining_amount` balance (and `remaining_months`) it feeds is.
+ * Because that balance is ciphertext now, the server can no longer
+ * read-modify-write it or split it into interest/principal components: the
+ * client computes all of that from its own already-decrypted
+ * `remainingAmount`/`interestRate` and sends the encrypted result directly.
+ * Same accepted single-user concurrency tradeoff as goals' `addContribution`
+ * — see docs/e2ee-path-b-plan.md 3.5.4. */
+const encryptedPaymentInputSchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  isExtra: z.coerce.boolean().default(false),
+  principalComponent: z.coerce.number().min(0),
+  interestComponent: z.coerce.number().min(0),
+  newRemainingAmount: z.string().min(1),
+  newRemainingMonths: z.coerce.number().int().min(0).optional().nullable(),
+});
+
+export type EncryptedPaymentInput = z.infer<typeof encryptedPaymentInputSchema>;
 
 async function requireUser() {
   const supabase = await createClient();
@@ -21,26 +66,8 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-function parseLoan(formData: FormData) {
-  return loanInputSchema.safeParse({
-    name: formData.get("name"),
-    type: formData.get("type") || "personal",
-    principal: formData.get("principal"),
-    interestRate: formData.get("interestRate"),
-    emi: formData.get("emi"),
-    remainingAmount: formData.get("remainingAmount"),
-    remainingMonths: emptyToNull(formData.get("remainingMonths")),
-    extraEmi: emptyToNull(formData.get("extraEmi")),
-    currency: formData.get("currency") || "USD",
-    startDate: formData.get("startDate") || new Date().toISOString().slice(0, 10),
-  });
-}
-
-export async function createLoan(
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = parseLoan(formData);
+export async function createLoan(input: EncryptedLoanInput): Promise<ActionResult> {
+  const parsed = encryptedLoanInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -69,12 +96,8 @@ export async function createLoan(
   return { ok: true };
 }
 
-export async function updateLoan(
-  id: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = parseLoan(formData);
+export async function updateLoan(id: string, input: EncryptedLoanInput): Promise<ActionResult> {
+  const parsed = encryptedLoanInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -120,20 +143,14 @@ export async function deleteLoan(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-/**
- * Record a payment: split into interest + principal (unless flagged as an extra
- * principal-only payment), log it, and reduce the outstanding balance.
- */
+/** Record a payment: the interest/principal split and new balance arrive
+ * pre-computed and pre-encrypted (see the schema comment above) — this just
+ * persists both writes. */
 export async function recordPayment(
   loanId: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedPaymentInput,
 ): Promise<ActionResult> {
-  const parsed = paymentInputSchema.safeParse({
-    amount: formData.get("amount"),
-    paidOn: formData.get("paidOn") || new Date().toISOString().slice(0, 10),
-    isExtra: formData.get("isExtra") === "on" || formData.get("isExtra") === "true",
-  });
+  const parsed = encryptedPaymentInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -141,40 +158,23 @@ export async function recordPayment(
   const { supabase, userId } = auth;
   const v = parsed.data;
 
-  const { data: loan, error: readErr } = await supabase
-    .from("loans")
-    .select("remaining_amount, interest_rate, remaining_months")
-    .eq("id", loanId)
-    .single();
-  if (readErr || !loan) {
-    return { ok: false, error: readErr?.message ?? "Loan not found." };
-  }
-
-  const balance = Number(loan.remaining_amount);
-  const monthlyRate = Number(loan.interest_rate) / 100 / 12;
-  const interestComponent = v.isExtra ? 0 : Math.min(v.amount, balance * monthlyRate);
-  const principalComponent = Math.min(balance, v.amount - interestComponent);
-
   const { error: insErr } = await supabase.from("loan_payments").insert({
     loan_id: loanId,
     user_id: userId,
     amount: v.amount,
-    principal_component: principalComponent,
-    interest_component: interestComponent,
+    principal_component: v.principalComponent,
+    interest_component: v.interestComponent,
     paid_on: v.paidOn,
     is_extra: v.isExtra,
   });
   if (insErr) return { ok: false, error: insErr.message };
 
-  const newBalance = Math.max(0, balance - principalComponent);
-  const newMonths =
-    !v.isExtra && loan.remaining_months != null
-      ? Math.max(0, loan.remaining_months - 1)
-      : loan.remaining_months;
-
   const { error: updErr } = await supabase
     .from("loans")
-    .update({ remaining_amount: newBalance, remaining_months: newMonths })
+    .update({
+      remaining_amount: v.newRemainingAmount,
+      remaining_months: v.newRemainingMonths ?? null,
+    })
     .eq("id", loanId);
   if (updErr) return { ok: false, error: updErr.message };
 
@@ -183,12 +183,7 @@ export async function recordPayment(
   return { ok: true };
 }
 
-function emptyToNull(v: FormDataEntryValue | null): string | null {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s === "" ? null : s;
-}
-
-function fieldErrors(err: import("zod").ZodError): ActionResult {
+function fieldErrors(err: z.ZodError): ActionResult {
   const fieldErrors: Record<string, string> = {};
   for (const issue of err.issues) {
     const key = issue.path[0];

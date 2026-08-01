@@ -67,9 +67,9 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       .from("investments")
       .select("id, name, monthly_contribution")
       .is("deleted_at", null),
-    supabase.from("loans").select("id, name, emi").is("deleted_at", null),
-    // No `monthly_contribution` here — encrypted since Phase 3.5.4, same as
-    // budgets never had a plaintext amount to build a typicalAmount from.
+    // No `emi` here — encrypted since Phase 3.5.4, same as budgets never
+    // had a plaintext amount to build a typicalAmount from.
+    supabase.from("loans").select("id, name").is("deleted_at", null),
     supabase.from("goals").select("id, name").is("deleted_at", null),
     supabase
       .from("recurring_rules")
@@ -107,9 +107,10 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       typicalAmount:
         i.monthly_contribution == null ? undefined : Number(i.monthly_contribution),
     })),
-    loans: (
-      (loans ?? []) as { id: string; name: string; emi: string | number }[]
-    ).map((l) => ({ id: l.id, name: l.name, typicalAmount: Number(l.emi) })),
+    loans: ((loans ?? []) as { id: string; name: string }[]).map((l) => ({
+      id: l.id,
+      name: l.name,
+    })),
     goals: ((goals ?? []) as { id: string; name: string }[]).map((g) => ({
       id: g.id,
       name: g.name,
@@ -149,27 +150,6 @@ export async function fetchCurrentInvestment(id: string) {
     currentValue: Number(data.current_value),
     monthlyContribution: data.monthly_contribution == null ? null : Number(data.monthly_contribution),
     expectedReturn: Number(data.expected_return),
-    startDate: data.start_date as string,
-  };
-}
-
-export async function fetchCurrentLoan(id: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("loans")
-    .select("name, type, principal, interest_rate, emi, remaining_amount, remaining_months, extra_emi, start_date")
-    .eq("id", id)
-    .single();
-  if (!data) return null;
-  return {
-    name: data.name as string,
-    type: data.type as string,
-    principal: Number(data.principal),
-    interestRate: Number(data.interest_rate),
-    emi: Number(data.emi),
-    remainingAmount: Number(data.remaining_amount),
-    remainingMonths: data.remaining_months as number | null,
-    extraEmi: data.extra_emi == null ? null : Number(data.extra_emi),
     startDate: data.start_date as string,
   };
 }

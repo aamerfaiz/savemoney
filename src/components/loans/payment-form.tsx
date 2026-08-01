@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { recordPayment, type ActionResult } from "@/lib/loans/actions";
+import type { ActionResult } from "@/lib/loans/actions";
+import { encryptedRecordPayment } from "@/lib/loans/client-actions";
 import { formatCurrency } from "@/lib/format";
 import type { LoanWithProjection } from "@/lib/loans/types";
 
@@ -15,13 +16,15 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function PaymentForm({
   loan,
   onSuccess,
+  dek,
 }: {
   loan: LoanWithProjection;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
   const [isExtra, setIsExtra] = useState(false);
-  const action = recordPayment.bind(null, loan.id);
+  const action = encryptedRecordPayment.bind(null, dek, loan);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

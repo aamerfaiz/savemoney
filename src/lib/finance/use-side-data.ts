@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Loans/investments/recurring/net-worth-snapshots aren't encrypted yet, but
+ * Investments/recurring/net-worth-snapshots aren't encrypted yet, but
  * Dashboard, Net Worth, Reports, and Notifications all compose them together
  * with the now-client-side budgets/analytics, so they have to be fetchable
- * from the same client context. goals is the exception as of Phase 3.5.4:
- * `fetchGoalsDataAction()` now returns packed ciphertext, decrypted here and
- * run through `computeGoalsData()` — mirroring how useFinanceData handles
+ * from the same client context. goals and loans are the exceptions as of
+ * Phase 3.5.4: `fetchGoalsDataAction()`/`fetchLoansDataAction()` now return
+ * packed ciphertext, decrypted here and run through `computeGoalsData()`/
+ * `computeLoansData()` — mirroring how useFinanceData handles
  * income/expenses/budgets. Cached by TanStack Query like useFinanceData.
  */
 
@@ -19,8 +20,9 @@ import {
   fetchNetWorthSnapshotsAction,
   fetchRecurringDataAction,
 } from "./side-data";
-import { decryptGoalRows } from "./decrypt";
+import { decryptGoalRows, decryptLoanRows } from "./decrypt";
 import { computeGoalsData } from "@/lib/goals/compute";
+import { computeLoansData } from "@/lib/loans/compute";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@/lib/format";
 
@@ -34,7 +36,7 @@ export function useSideData(currency: CurrencyCode) {
     queryFn: async () => {
       if (!dek) throw new Error("Vault is locked.");
 
-      const [rawGoals, loansData, investmentsData, recurringData, snapshots] =
+      const [rawGoals, rawLoans, investmentsData, recurringData, snapshots] =
         await Promise.all([
           fetchGoalsDataAction(),
           fetchLoansDataAction(),
@@ -43,8 +45,12 @@ export function useSideData(currency: CurrencyCode) {
           fetchNetWorthSnapshotsAction(),
         ]);
 
-      const goalRowsResult = await decryptGoalRows(rawGoals, dek);
+      const [goalRowsResult, loanRowsResult] = await Promise.all([
+        decryptGoalRows(rawGoals, dek),
+        decryptLoanRows(rawLoans, dek),
+      ]);
       const goalsData = computeGoalsData(goalRowsResult.rows, currency);
+      const loansData = computeLoansData(loanRowsResult.rows, currency);
 
       return {
         goalsData,
@@ -53,6 +59,7 @@ export function useSideData(currency: CurrencyCode) {
         recurringData,
         snapshots,
         failedGoalCount: goalRowsResult.failedCount,
+        failedLoanCount: loanRowsResult.failedCount,
       };
     },
   });

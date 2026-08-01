@@ -9,7 +9,7 @@ import type { NotificationItem } from "./types";
 import type { CurrencyCode } from "@/lib/format";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { GoalsData } from "@/lib/goals/compute";
-import type { LoansData } from "@/lib/loans/queries";
+import type { LoansData } from "@/lib/loans/compute";
 import type { BillCalendarData } from "@/lib/calendar/queries";
 
 export interface NotificationsData {

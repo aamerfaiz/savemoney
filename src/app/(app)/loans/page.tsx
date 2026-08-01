@@ -1,10 +1,10 @@
-import { LoansView } from "@/components/loans/loans-view";
-import { getLoansData } from "@/lib/loans/queries";
+import { AuthedLoansView } from "@/components/loans/authed-loans-view";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Loans · Finance OS" };
 
 export default async function LoansPage() {
-  const data = await getLoansData();
+  const currency = await getDisplayCurrency();
 
-  return <LoansView data={data} />;
+  return <AuthedLoansView currency={currency} />;
 }
