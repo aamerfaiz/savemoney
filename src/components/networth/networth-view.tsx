@@ -14,23 +14,16 @@ import {
   formatDateShort,
   type CurrencyCode,
 } from "@/lib/format";
-import { captureSnapshot } from "@/lib/networth/actions";
+import { encryptedCaptureSnapshot } from "@/lib/networth/client-actions";
 import type { NetWorthData } from "@/lib/networth/types";
 import type { NetWorthComponent } from "@/lib/finance/net-worth";
 
 export function NetWorthView({
   data,
-  investmentsTotalValue,
-  goalsSavedTotal,
-  loansRemainingTotal,
+  dek,
 }: {
   data: NetWorthData;
-  /** Already-decrypted totals, passed through to captureSnapshot() since it
-   * can no longer read investments.current_value/goals.current_amount/
-   * loans.remaining_amount server-side (Phase 3.5.4). */
-  investmentsTotalValue: number;
-  goalsSavedTotal: number;
-  loansRemainingTotal: number;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -42,11 +35,7 @@ export function NetWorthView({
   const onCapture = () => {
     setError(null);
     startTransition(async () => {
-      const res = await captureSnapshot(
-        investmentsTotalValue,
-        goalsSavedTotal,
-        loansRemainingTotal,
-      );
+      const res = await encryptedCaptureSnapshot(dek, result);
       if (!res.ok) setError(res.error ?? "Couldn't capture snapshot.");
       else router.refresh();
     });

@@ -22,6 +22,7 @@ import type { RawLoanRow } from "@/lib/loans/queries";
 import type { LoanType } from "@/lib/loans/types";
 import type { RawInvestmentRow } from "@/lib/investments/queries";
 import type { InvestmentType } from "@/lib/investments/types";
+import type { RawSnapshotRow } from "@/lib/networth/queries";
 
 export interface DecryptedIncomeRow {
   id: string;
@@ -123,6 +124,15 @@ export interface DecryptedInvestmentRow {
   expectedReturn: number;
   currency: string;
   startDate: string;
+}
+
+export interface DecryptedSnapshotRow {
+  id: string;
+  capturedAt: string;
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+  note: string | null;
 }
 
 export interface DecryptResult<T> {
@@ -266,6 +276,21 @@ export async function decryptInvestmentMonthlyContributions(
 ): Promise<DecryptResult<number>> {
   const settled = await Promise.allSettled(
     rows.map(async (r) => (r ? Number(await decryptPacked(r, dek)) : 0)),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptSnapshotRows(
+  rows: RawSnapshotRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedSnapshotRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedSnapshotRow> => ({
+      ...r,
+      totalAssets: Number(await decryptPacked(r.totalAssets, dek)),
+      totalLiabilities: Number(await decryptPacked(r.totalLiabilities, dek)),
+      netWorth: Number(await decryptPacked(r.netWorth, dek)),
+    })),
   );
   return splitSettled(settled);
 }

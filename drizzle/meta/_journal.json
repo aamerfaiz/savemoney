@@ -92,6 +92,13 @@
       "when": 1785619281733,
       "tag": "0012_free_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785619899726,
+      "tag": "0013_fixed_gargoyle",
+      "breakpoints": true
     }
   ]
 }

@@ -604,10 +604,11 @@ export const netWorthSnapshots = pgTable(
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
     capturedAt: date("captured_at").notNull(),
-    totalAssets: numeric("total_assets", { precision: 14, scale: 2 }).notNull(),
-    totalLiabilities: numeric("total_liabilities", { precision: 14, scale: 2 })
-      .notNull(),
-    netWorth: numeric("net_worth", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    totalAssets: text("total_assets").notNull(),
+    totalLiabilities: text("total_liabilities").notNull(),
+    netWorth: text("net_worth").notNull(),
     currency: text("currency").notNull().default("USD"),
     note: text("note"),
     ...audit,

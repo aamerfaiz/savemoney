@@ -55,12 +55,5 @@ export function AuthedNetWorth({ currency }: { currency: CurrencyCode }) {
     currency,
   });
 
-  return (
-    <NetWorthView
-      data={nw}
-      investmentsTotalValue={side.data.investmentsData.totalValue}
-      goalsSavedTotal={side.data.goalsData.totalSaved}
-      loansRemainingTotal={side.data.loansData.totalRemaining}
-    />
-  );
+  return <NetWorthView data={nw} dek={dek} />;
 }

@@ -1009,7 +1009,41 @@ folded into generic "connect an agent" copy.
         `npm run build`/`npm run lint` clean; migration applied via Supabase
         MCP, `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `net_worth_snapshots.*`
+  - [x] `net_worth_snapshots.*` — done. The smallest and most contained
+        sub-item so far — only three files touched the table
+        (`networth/queries.ts`, `networth/actions.ts`, `db/schema.ts`), no
+        Smart Entry capability existed for it, and there was no
+        read-modify-write to redesign. `total_assets`/`total_liabilities`/
+        `net_worth` encrypted; `captured_at`/`currency`/`note` stay
+        plaintext. Migration `encrypt_net_worth_snapshots_columns` applied
+        live (`numeric` → `text` × 3, `USING <col>::text`).
+        **Read path**: `networth/queries.ts`'s `fetchNetWorthSnapshotsRaw()`
+        (renamed from `fetchNetWorthSnapshots`) returns ciphertext only. New
+        `decryptSnapshotRows()` in `finance/decrypt.ts`; `use-side-data.ts`
+        decrypts alongside goals/loans/investments, exposing
+        `failedSnapshotCount` (not surfaced in the UI — a failed-to-decrypt
+        snapshot just drops out of the trend reconstruction silently,
+        same fault-tolerant behavior as everywhere else, but there's no
+        dedicated snapshot list in the UI to hang a banner off like
+        budgets/goals/loans/investments have).
+        **Write path — actually simpler than before**: `captureSnapshot()`
+        used to *recompute* `total_assets`/`total_liabilities`/`net_worth`
+        itself from three raw component totals (a workaround from the
+        goals/loans/investments sub-items, added one at a time as each
+        table's total became unreadable server-side). Since the client
+        already builds the full `NetWorthResult` via `buildNetWorth()` to
+        render the page — the same numbers a snapshot would capture —
+        `captureSnapshot()` now just persists three pre-encrypted numbers
+        instead of recomputing anything, and `networth-view.tsx`'s
+        `onCapture` encrypts `data.result` directly via a new
+        `src/lib/networth/client-actions.ts`. Net simplification:
+        `NetWorthView`/`AuthedNetWorth` shed the three
+        `investmentsTotalValue`/`goalsSavedTotal`/`loansRemainingTotal`
+        props they'd accumulated over the last three sub-items, replaced
+        with a single `dek` prop. **Verified**: `npm run build`/
+        `npm run lint` clean; migration applied via Supabase MCP,
+        `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `goal_contributions.amount`
   - [ ] `investment_contributions.amount`
   - [ ] `loan_payments.*`
