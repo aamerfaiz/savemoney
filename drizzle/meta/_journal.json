@@ -113,6 +113,13 @@
       "when": 1785620591050,
       "tag": "0015_awesome_tusk",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785620911747,
+      "tag": "0016_wise_talisman",
+      "breakpoints": true
     }
   ]
 }

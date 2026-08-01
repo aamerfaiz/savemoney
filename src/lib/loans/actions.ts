@@ -37,20 +37,21 @@ const encryptedLoanInputSchema = z.object({
 
 export type EncryptedLoanInput = z.infer<typeof encryptedLoanInputSchema>;
 
-/** `loan_payments.*` isn't encrypted this pass — only the running
- * `loans.remaining_amount` balance (and `remaining_months`) it feeds is.
- * Because that balance is ciphertext now, the server can no longer
+/** `loan_payments.*` is encrypted as of Phase 3.5.4, same as the running
+ * `loans.remaining_amount` balance (and `remaining_months`) it feeds.
+ * Because that balance is ciphertext, the server can no longer
  * read-modify-write it or split it into interest/principal components: the
  * client computes all of that from its own already-decrypted
- * `remainingAmount`/`interestRate` and sends the encrypted result directly.
- * Same accepted single-user concurrency tradeoff as goals' `addContribution`
- * — see docs/e2ee-path-b-plan.md 3.5.4. */
+ * `remainingAmount`/`interestRate`, encrypts the payment amount and both
+ * components, and sends the encrypted result directly. Same accepted
+ * single-user concurrency tradeoff as goals' `addContribution` — see
+ * docs/e2ee-path-b-plan.md 3.5.4. */
 const encryptedPaymentInputSchema = z.object({
-  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  amount: z.string().min(1),
   paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   isExtra: z.coerce.boolean().default(false),
-  principalComponent: z.coerce.number().min(0),
-  interestComponent: z.coerce.number().min(0),
+  principalComponent: z.string().min(1),
+  interestComponent: z.string().min(1),
   newRemainingAmount: z.string().min(1),
   newRemainingMonths: z.coerce.number().int().min(0).optional().nullable(),
 });

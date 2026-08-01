@@ -125,19 +125,24 @@ export async function encryptedRecordPayment(
 
   const balance = loan.remainingAmount;
   const monthlyRate = loan.interestRate / 100 / 12;
-  const interestComponent = v.isExtra ? 0 : Math.min(v.amount, balance * monthlyRate);
-  const principalComponent = Math.min(balance, v.amount - interestComponent);
+  const interestComponentValue = v.isExtra ? 0 : Math.min(v.amount, balance * monthlyRate);
+  const principalComponentValue = Math.min(balance, v.amount - interestComponentValue);
 
-  const newBalance = Math.max(0, balance - principalComponent);
+  const newBalance = Math.max(0, balance - principalComponentValue);
   const newRemainingMonths =
     !v.isExtra && loan.remainingMonths != null
       ? Math.max(0, loan.remainingMonths - 1)
       : loan.remainingMonths;
 
-  const newRemainingAmount = await encryptPacked(String(newBalance), dek);
+  const [amount, principalComponent, interestComponent, newRemainingAmount] = await Promise.all([
+    encryptPacked(String(v.amount), dek),
+    encryptPacked(String(principalComponentValue), dek),
+    encryptPacked(String(interestComponentValue), dek),
+    encryptPacked(String(newBalance), dek),
+  ]);
 
   const input: EncryptedPaymentInput = {
-    amount: v.amount,
+    amount,
     paidOn: v.paidOn,
     isExtra: v.isExtra,
     principalComponent,

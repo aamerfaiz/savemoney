@@ -1100,7 +1100,27 @@ folded into generic "connect an agent" copy.
         `npm run lint` clean; migration applied via Supabase MCP,
         `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `loan_payments.*`
+  - [x] `loan_payments.*` — done. Smallest sub-item so far: this table
+        has no read consumer anywhere in the app (unlike goal/investment
+        contributions, which at least feed an aggregate) — purely a
+        write-once audit log from `recordPayment`. Three amount columns
+        this time (`amount`, `principal_component`, `interest_component`,
+        the `*` in the doc's list) vs. the single-column contribution
+        tables; `paid_on`/`is_extra` stay plaintext. Migration
+        `encrypt_loan_payments_columns` applied live (`numeric` → `text`
+        × 3, `USING <col>::text`).
+        No read-path changes at all — nothing in `raw-data.ts`,
+        `finance/decrypt.ts`, or any compute function touches this table.
+        **Write path**: `recordPayment`'s interest/principal split was
+        already computed client-side in `payment-form.tsx`'s wrapper since
+        the `loans.*` sub-item (it needed the loan's decrypted balance to
+        do the split at all) — this sub-item just adds encryption on top
+        of numbers that were already being calculated there, alongside the
+        already-ciphertext `newRemainingAmount`. **Verified**:
+        `npm run build`/`npm run lint` clean; migration applied via
+        Supabase MCP, `get_advisors` shows no new findings. **Not
+        verified**: a real browser session, same sandbox limitation as
+        every phase so far.
   - [ ] `recurring_rules.amount`
   - [ ] **Verify**: build + screenshot per module as it lands, same as
         3.5.3.

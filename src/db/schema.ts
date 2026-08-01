@@ -420,15 +420,11 @@ export const loanPayments = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-    principalComponent: numeric("principal_component", {
-      precision: 14,
-      scale: 2,
-    }),
-    interestComponent: numeric("interest_component", {
-      precision: 14,
-      scale: 2,
-    }),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
+    principalComponent: text("principal_component"),
+    interestComponent: text("interest_component"),
     paidOn: date("paid_on").notNull(),
     isExtra: boolean("is_extra").notNull().default(false),
     ...audit,
