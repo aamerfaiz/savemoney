@@ -107,7 +107,9 @@ export interface FinanceRawData {
    * decrypt via decryptInvestmentMonthlyContributions() in
    * finance/decrypt.ts. */
   investmentMonthlyContributions: (string | null)[];
-  investmentContributions: { amount: number; contributedAt: string }[];
+  /** Packed ciphertext (Phase 3.5.4) — decrypt via
+   * decryptInvestmentContributionRows() in finance/decrypt.ts. */
+  investmentContributions: { amount: string; contributedAt: string }[];
 }
 
 // Covers analytics' trailing-6-month window and budgets' "since Jan 1"
@@ -313,8 +315,8 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
   ).map((i) => i.monthly_contribution);
 
   const investmentContributions = (
-    (investmentContribRows ?? []) as { amount: string | number; contributed_at: string }[]
-  ).map((r) => ({ amount: Number(r.amount), contributedAt: r.contributed_at }));
+    (investmentContribRows ?? []) as { amount: string; contributed_at: string }[]
+  ).map((r) => ({ amount: r.amount, contributedAt: r.contributed_at }));
 
   return {
     income,

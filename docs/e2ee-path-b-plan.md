@@ -1073,7 +1073,33 @@ folded into generic "connect an agent" copy.
         `npm run lint` clean; migration applied via Supabase MCP,
         `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `investment_contributions.amount`
+  - [x] `investment_contributions.amount` — done. Same shape and same
+        size as `goal_contributions.amount`, one difference: this table
+        doesn't feed a visible list anywhere (unlike goal contributions,
+        which show as Transactions "transfer" rows) — its only consumer is
+        `analytics/compute.ts`'s `investmentRate` aggregate (health-score
+        input), via `raw-data.ts`'s `investmentContributions` field.
+        `contributed_at`/`note` stay plaintext; migration
+        `encrypt_investment_contributions_amount` applied live (`numeric`
+        → `text`, `USING amount::text`).
+        **Read path**: new `decryptInvestmentContributionRows()` in
+        `finance/decrypt.ts`. `computeAnalyticsData` now takes an explicit
+        `decryptedInvestmentContributions` param instead of reading
+        `raw.investmentContributions` itself — dropped its last
+        `FinanceRawData` passthrough entirely, same cleanup
+        `computeBudgetsData` got in the `investments.*` sub-item. No
+        dedicated decrypt-failure banner added (same call as
+        `net_worth_snapshots`: no list UI to hang one on, a failed row
+        just drops silently out of the aggregate).
+        **Write path**: `recordContribution`'s `amount` field now travels
+        as ciphertext alongside the already-ciphertext
+        `newInvestedAmount`/`newCurrentValue` (encrypted since the
+        `investments.*` sub-item) — same "one more field on an
+        already-encrypting call" shape as goal contributions, no new
+        read-modify-write problem. **Verified**: `npm run build`/
+        `npm run lint` clean; migration applied via Supabase MCP,
+        `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `loan_payments.*`
   - [ ] `recurring_rules.amount`
   - [ ] **Verify**: build + screenshot per module as it lands, same as

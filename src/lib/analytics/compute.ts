@@ -13,9 +13,9 @@ import type {
   DecryptedContributionRow,
   DecryptedExpenseRow,
   DecryptedIncomeRow,
+  DecryptedInvestmentContribution,
   DecryptedLoanAmounts,
 } from "@/lib/finance/decrypt";
-import type { FinanceRawData } from "@/lib/finance/raw-data";
 import { CATEGORY_PALETTE, type AnalyticsData, type CategorySlice, type MonthPoint } from "./types";
 
 const RANGE_MONTHS = 6;
@@ -26,7 +26,7 @@ export function computeAnalyticsData(
   decryptedActiveGoals: DecryptedActiveGoal[],
   decryptedLoans: DecryptedLoanAmounts[],
   decryptedContributions: DecryptedContributionRow[],
-  raw: Pick<FinanceRawData, "investmentContributions">,
+  decryptedInvestmentContributions: DecryptedInvestmentContribution[],
   currency: CurrencyCode,
   now = new Date(),
 ): AnalyticsData {
@@ -58,7 +58,7 @@ export function computeAnalyticsData(
     .reduce((s, l) => s + l.emi + l.extraEmi, 0);
 
   const goalCompletion = goalCompletionShare(decryptedActiveGoals);
-  const investedThisWindow = raw.investmentContributions.reduce((s, r) => s + r.amount, 0);
+  const investedThisWindow = decryptedInvestmentContributions.reduce((s, r) => s + r.amount, 0);
   const investmentRate = totals.income > 0 ? investedThisWindow / totals.income : 0;
   const health = deriveHealth(months, totals, totalEmi, goalCompletion, investmentRate);
 

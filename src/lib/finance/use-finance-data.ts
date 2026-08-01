@@ -20,6 +20,7 @@ import {
   decryptContributionRows,
   decryptExpenseRows,
   decryptIncomeRows,
+  decryptInvestmentContributionRows,
   decryptInvestmentMonthlyContributions,
   decryptLoanAmounts,
 } from "./decrypt";
@@ -65,8 +66,9 @@ export function useFinanceData(currency: CurrencyCode) {
         budgetResult,
         activeGoalsResult,
         loanAmountsResult,
-        investmentContributionsResult,
+        investmentMonthlyContributionsResult,
         contributionsResult,
+        investmentContributionsResult,
       ] = await Promise.all([
         decryptIncomeRows(raw.income, dek),
         decryptExpenseRows(raw.expenses, dek),
@@ -75,6 +77,7 @@ export function useFinanceData(currency: CurrencyCode) {
         decryptLoanAmounts(raw.loans, dek),
         decryptInvestmentMonthlyContributions(raw.investmentMonthlyContributions, dek),
         decryptContributionRows(raw.contributions, dek),
+        decryptInvestmentContributionRows(raw.investmentContributions, dek),
       ]);
 
       const budgets = computeBudgetsData(
@@ -83,7 +86,7 @@ export function useFinanceData(currency: CurrencyCode) {
         budgetResult.rows,
         activeGoalsResult.rows,
         loanAmountsResult.rows,
-        investmentContributionsResult.rows,
+        investmentMonthlyContributionsResult.rows,
         currency,
       );
       const analytics = computeAnalyticsData(
@@ -92,7 +95,7 @@ export function useFinanceData(currency: CurrencyCode) {
         activeGoalsResult.rows,
         loanAmountsResult.rows,
         contributionsResult.rows,
-        raw,
+        investmentContributionsResult.rows,
         currency,
       );
       const transactions = computeTransactionsList(

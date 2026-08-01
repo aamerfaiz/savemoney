@@ -488,7 +488,9 @@ export const investmentContributions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     contributedAt: date("contributed_at").notNull(),
     note: text("note"),
     ...audit,

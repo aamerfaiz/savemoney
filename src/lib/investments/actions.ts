@@ -35,17 +35,17 @@ const encryptedInvestmentInputSchema = z.object({
 
 export type EncryptedInvestmentInput = z.infer<typeof encryptedInvestmentInputSchema>;
 
-/** `investment_contributions.amount` isn't encrypted this pass — only the
- * running `invested_amount`/`current_value` balances it feeds are. Because
- * those balances are ciphertext now, the server can no longer read-modify-
- * write them (add this contribution to whatever's currently stored): the
- * client computes the new totals from its own already-decrypted
- * `investedAmount`/`currentValue` and sends the encrypted results directly.
- * Same accepted single-user concurrency tradeoff as goals'
- * `addContribution`/loans' `recordPayment` — see
- * docs/e2ee-path-b-plan.md 3.5.4. */
+/** `investment_contributions.amount` is encrypted as of Phase 3.5.4, same
+ * as the running `invested_amount`/`current_value` balances it feeds.
+ * Because those balances are ciphertext, the server can no longer
+ * read-modify-write them (add this contribution to whatever's currently
+ * stored): the client computes the new totals from its own already-
+ * decrypted `investedAmount`/`currentValue`, encrypts the contribution
+ * amount and both new totals, and sends everything directly. Same accepted
+ * single-user concurrency tradeoff as goals' `addContribution`/loans'
+ * `recordPayment` — see docs/e2ee-path-b-plan.md 3.5.4. */
 const encryptedContributionInputSchema = z.object({
-  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  amount: z.string().min(1),
   addToValue: z.coerce.boolean().default(true),
   contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   newInvestedAmount: z.string().min(1),

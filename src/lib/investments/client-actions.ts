@@ -125,13 +125,14 @@ export async function encryptedRecordContribution(
   const newInvested = investment.investedAmount + v.amount;
   const newValue = investment.currentValue + (v.addToValue ? v.amount : 0);
 
-  const [newInvestedAmount, newCurrentValue] = await Promise.all([
+  const [amount, newInvestedAmount, newCurrentValue] = await Promise.all([
+    encryptPacked(String(v.amount), dek),
     encryptPacked(String(newInvested), dek),
     encryptPacked(String(newValue), dek),
   ]);
 
   const input: EncryptedContributionInput = {
-    amount: v.amount,
+    amount,
     addToValue: v.addToValue,
     contributedAt: v.contributedAt,
     newInvestedAmount,

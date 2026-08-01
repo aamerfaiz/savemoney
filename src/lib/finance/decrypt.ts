@@ -137,6 +137,11 @@ export interface DecryptedContributionRow {
   goalDeletedAt: string | null;
 }
 
+export interface DecryptedInvestmentContribution {
+  amount: number;
+  contributedAt: string;
+}
+
 export interface DecryptedSnapshotRow {
   id: string;
   capturedAt: string;
@@ -299,6 +304,19 @@ export async function decryptContributionRows(
     rows.map(async (r): Promise<DecryptedContributionRow> => ({
       ...r,
       amount: Number(await decryptPacked(r.amount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptInvestmentContributionRows(
+  rows: { amount: string; contributedAt: string }[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedInvestmentContribution>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedInvestmentContribution> => ({
+      amount: Number(await decryptPacked(r.amount, dek)),
+      contributedAt: r.contributedAt,
     })),
   );
   return splitSettled(settled);
