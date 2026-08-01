@@ -126,29 +126,6 @@ export async function loadReferenceData(): Promise<ReferenceData> {
  * of what's already there (edit capabilities never wipe fields the user
  * didn't mention). RLS scopes every read to the caller.
  */
-export async function fetchCurrentRecurring(id: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("recurring_rules")
-    .select("name, kind, category_id, account_id, amount, frequency, interval, start_date, end_date, is_active, note")
-    .eq("id", id)
-    .single();
-  if (!data) return null;
-  return {
-    name: data.name as string,
-    kind: data.kind as string,
-    categoryId: data.category_id as string | null,
-    accountId: data.account_id as string | null,
-    amount: Number(data.amount),
-    frequency: data.frequency as string,
-    interval: data.interval as number,
-    startDate: data.start_date as string,
-    endDate: data.end_date as string | null,
-    isActive: data.is_active as boolean,
-    note: data.note as string | null,
-  };
-}
-
 export async function fetchCurrentTransaction(id: string, kind: "income" | "expense") {
   const supabase = await createClient();
   if (kind === "expense") {

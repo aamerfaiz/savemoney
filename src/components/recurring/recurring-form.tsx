@@ -9,11 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import type { ActionResult } from "@/lib/recurring/actions";
 import {
-  createRecurringRule,
-  updateRecurringRule,
-  type ActionResult,
-} from "@/lib/recurring/actions";
+  encryptedCreateRecurringRule,
+  encryptedUpdateRecurringRule,
+} from "@/lib/recurring/client-actions";
 import {
   RECURRING_FREQUENCIES,
   FREQUENCY_LABEL,
@@ -32,18 +32,20 @@ export function RecurringForm({
   accounts,
   existing,
   onSuccess,
+  dek,
 }: {
   categories: CategoryOption[];
   accounts: AccountOption[];
   existing?: RecurringRuleWithSchedule;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<RecurringKind>(existing?.kind ?? "expense");
 
   const action = existing
-    ? updateRecurringRule.bind(null, existing.id)
-    : createRecurringRule;
+    ? encryptedUpdateRecurringRule.bind(null, dek, existing.id)
+    : encryptedCreateRecurringRule.bind(null, dek);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

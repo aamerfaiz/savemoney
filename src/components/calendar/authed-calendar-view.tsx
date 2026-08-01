@@ -17,10 +17,11 @@ export function AuthedCalendarView({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const side = useSideData(currency);
   const calendar = useQuery({
-    queryKey: ["bill-calendar", side.data?.loansData.loans],
+    queryKey: ["bill-calendar", side.data?.loansData.loans, side.data?.recurringData.rules],
     enabled: !!side.data,
     retry: false,
-    queryFn: () => fetchBillCalendarAction(side.data!.loansData.loans),
+    queryFn: () =>
+      fetchBillCalendarAction(side.data!.loansData.loans, side.data!.recurringData.rules),
   });
 
   if (!dek) {

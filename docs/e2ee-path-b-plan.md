@@ -1121,7 +1121,79 @@ folded into generic "connect an agent" copy.
         Supabase MCP, `get_advisors` shows no new findings. **Not
         verified**: a real browser session, same sandbox limitation as
         every phase so far.
-  - [ ] `recurring_rules.amount`
+  - [x] `recurring_rules.amount` — done, the last table in this checklist.
+        `frequency`/`interval`/`startDate`/`endDate`/`isActive`/`note` stay
+        plaintext (same "no-name/no-note" precedent as every prior
+        contribution/payment/snapshot table). Migration
+        `recurring_rules_amount_to_text` applied live (`numeric` → `text`,
+        `USING amount::text`).
+        **Read path**: new `fetchRecurringRulesRaw()` (`recurring/
+        queries.ts`, replacing the old server-side `getRecurringData()`)
+        returns ciphertext rows with no DB-level sort; new
+        `decryptRecurringRows()` in `finance/decrypt.ts`; new pure
+        `computeRecurringData()` (`recurring/compute.ts`) now owns the
+        `nextOccurrence`/`monthlyAmount` calc and the `is_active`/
+        `start_date` sort client-side, and exports `RecurringData`
+        (superseding the old export from `queries.ts`). The Recurring page
+        converts to the same client-driven `Authed*View` shape as goals/
+        loans/investments (`authed-recurring-view.tsx`, page reduced to a
+        thin server shell), with a `ShieldAlert` decrypt-failure banner
+        since it has a real list UI. `getBillCalendarData()` (`calendar/
+        queries.ts`) — which already took decrypted `loans` as a param
+        since the `loans.*` sub-item — now also takes decrypted `rules` as
+        a second param instead of calling `getRecurringData()` itself;
+        both call sites (`authed-calendar-view.tsx`,
+        `authed-notifications.tsx`) updated to decrypt+compute recurring
+        rules before calling it. `use-side-data.ts` gained
+        `decryptRecurringRows`/`computeRecurringData` in its parallel
+        pipeline and a `failedRecurringCount` field.
+        **Write path**: plain overwrite, no prior read — simpler than the
+        contribution/payment tables. New `recurring/client-actions.ts`
+        (`encryptedCreateRecurringRule`/`encryptedUpdateRecurringRule`)
+        mirrors `budgets/client-actions.ts`; `recurring/actions.ts`'s
+        `createRecurringRule`/`updateRecurringRule` now take a typed
+        `EncryptedRecurringInput` object instead of `FormData`.
+        `recurring.create`/`recurring.edit` Smart Entry capabilities
+        removed (see the phase-wide note below) —
+        `fetchCurrentRecurring()` (its only caller) deleted from
+        `capabilities/shared.ts`. **Verified**: `npm run build`/
+        `npm run lint` clean (after trimming 5 now-dead imports in
+        `capabilities/definitions.ts` that lint flagged post-removal);
+        migration applied via Supabase MCP, `get_advisors` shows only the
+        pre-existing `auth_leaked_password_protection` WARN. **Not
+        verified**: a real browser session, same sandbox limitation as
+        every phase so far.
+
+  - [x] **Scope cut, phase-wide, not a bug — flagging prominently rather
+        than burying it in the table-by-table notes above.** Every
+        create/edit/contribution/payment Smart Entry capability has now
+        been removed, one table at a time, across this entire 3.5.4 pass
+        (`transaction.*` was already removed in 3.5.3). After the
+        `recurring_rules.amount` sub-item, `capabilities/definitions.ts`'s
+        `CAPABILITY_DEFINITIONS` contains exactly five entries:
+        `investment.delete`, `loan.delete`, `goal.delete`, `budget.delete`,
+        `recurring.delete` — every single one a delete capability. The
+        reason is structural, not an oversight per table: every
+        `execute()` in this file runs server-side via `/api/v1/ai/commit`,
+        which has no DEK, so it can never encrypt a field it writes — and
+        the contribution/payment capabilities had the added problem of
+        needing a decrypted *current* value server-side to compute a
+        running total or split. Net effect: Smart Entry's natural-language
+        quick-add/quick-edit is gone for every financial amount in the
+        app. What remains is "delete something by name" only. Creating or
+        editing any budget/goal/loan/investment/recurring rule, or logging
+        a contribution/payment, still works normally through each
+        module's own page (client-side encrypt path) — this only affects
+        the AI chat shortcut. Left the now-fully-dead utility exports
+        (`todayISO`/`toNumber`/`normalizeDate`/`normalizeEnum` in
+        `capabilities/extract-utils.ts`) in place rather than pruning them
+        — same call as the harmless dead entries left in
+        `smart-entry-types.ts`/`anomaly.ts` from earlier phases; a
+        proper redesign of Smart Entry (e.g. client-side amount validation
+        before the commit round-trip) is a 3.5.6+/product decision, not
+        something to improvise here.
+
+  - [x] **Phase 3.5.4 checklist complete** — all nine tables above done.
   - [ ] **Verify**: build + screenshot per module as it lands, same as
         3.5.3.
 - [x] **3.5.5 — mostly absorbed into 3.5.3.** Transactions, Dashboard,

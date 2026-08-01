@@ -2,7 +2,7 @@
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, Play, Pause } from "lucide-react";
+import { Plus, Pencil, Trash2, Play, Pause, ShieldAlert } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   deleteRecurringRule,
   toggleRecurringRule,
 } from "@/lib/recurring/actions";
-import type { RecurringData } from "@/lib/recurring/queries";
+import type { RecurringData } from "@/lib/recurring/compute";
 import {
   cadenceLabel,
   type RecurringRuleWithSchedule,
@@ -28,10 +28,16 @@ export function RecurringView({
   data,
   categories,
   accounts,
+  dek,
+  failedCount = 0,
 }: {
   data: RecurringData;
   categories: CategoryOption[];
   accounts: AccountOption[];
+  dek: CryptoKey;
+  /** Rules that existed but couldn't be decrypted with the current DEK —
+   * e.g. pre-3.5.4 rows saved before encryption was enabled. */
+  failedCount?: number;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -107,6 +113,15 @@ export function RecurringView({
         </Button>
       </div>
 
+      {failedCount > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          {failedCount} {failedCount === 1 ? "rule" : "rules"} couldn&apos;t
+          be read — saved before encryption was enabled and can&apos;t be
+          recovered. Re-enter if you still need them.
+        </p>
+      )}
+
       <div className="grid grid-cols-3 gap-3">
         <SummaryTile
           label="Monthly in"
@@ -173,6 +188,7 @@ export function RecurringView({
           categories={categories}
           accounts={accounts}
           onSuccess={() => setAdding(false)}
+          dek={dek}
         />
       </Dialog>
 
@@ -187,6 +203,7 @@ export function RecurringView({
             accounts={accounts}
             existing={editing}
             onSuccess={() => setEditing(null)}
+            dek={dek}
           />
         )}
       </Dialog>

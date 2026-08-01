@@ -13,7 +13,7 @@ import type { Transaction as TxnRow } from "@/lib/transactions/types";
 import type { GoalsData } from "@/lib/goals/compute";
 import type { LoansData } from "@/lib/loans/compute";
 import type { InvestmentsData } from "@/lib/investments/compute";
-import type { RecurringData } from "@/lib/recurring/queries";
+import type { RecurringData } from "@/lib/recurring/compute";
 import type { SnapshotSummary } from "@/lib/networth/types";
 import type {
   DashboardData,

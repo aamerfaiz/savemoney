@@ -1,31 +1,41 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { getDisplayCurrency } from "@/lib/profile/queries";
-import {
-  monthlyAmount,
-  nextOccurrence,
-  type RecurringFrequency,
-} from "@/lib/finance/recurring";
-import type { CurrencyCode } from "@/lib/format";
-import type { RecurringKind, RecurringRuleWithSchedule } from "./types";
+import type { RecurringKind } from "./types";
 
-export interface RecurringData {
-  rules: RecurringRuleWithSchedule[];
-  /** Active expense outflow normalized to a month — feeds safe-to-spend. */
-  monthlyExpense: number;
-  /** Active income normalized to a month. */
-  monthlyIncome: number;
-  currency: CurrencyCode;
+/**
+ * Packed-ciphertext row straight off the `recurring_rules` table (Phase
+ * 3.5.4, see docs/e2ee-path-b-plan.md) — `amount` needs the vault DEK to
+ * read, so no computation (`nextOccurrence`/`monthlyAmount`/totals) happens
+ * here anymore. See src/lib/recurring/compute.ts, which takes over once
+ * the client has decrypted these via src/lib/finance/decrypt.ts's
+ * `decryptRecurringRows`.
+ */
+export interface RawRecurringRow {
+  id: string;
+  name: string;
+  kind: RecurringKind;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  accountId: string | null;
+  amount: string;
+  currency: string;
+  frequency: string;
+  interval: number;
+  startDate: string;
+  endDate: string | null;
+  isActive: boolean;
+  note: string | null;
 }
 
-interface RecurringRow {
+interface RecurringSel {
   id: string;
   name: string;
   kind: string;
   category_id: string | null;
   account_id: string | null;
-  amount: string | number;
+  amount: string;
   currency: string;
   frequency: string;
   interval: number;
@@ -36,48 +46,16 @@ interface RecurringRow {
   categories: { name: string | null; icon: string | null } | null;
 }
 
-/** Recurring rules with their next occurrence + monthly-normalized amounts. */
-export async function getRecurringData(): Promise<RecurringData> {
-  const currency = await getDisplayCurrency();
-  const raw = await fetchRules();
-  const rules = raw.map((r) => ({ ...r, currency }));
-
-  const active = rules.filter((r) => r.isActive && r.nextDate);
-  const monthlyExpense = active
-    .filter((r) => r.kind === "expense")
-    .reduce((s, r) => s + r.monthlyAmount, 0);
-  const monthlyIncome = active
-    .filter((r) => r.kind === "income")
-    .reduce((s, r) => s + r.monthlyAmount, 0);
-
-  return { rules, monthlyExpense, monthlyIncome, currency };
-}
-
-async function fetchRules(): Promise<RecurringRuleWithSchedule[]> {
+export async function fetchRecurringRulesRaw(): Promise<RawRecurringRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("recurring_rules")
     .select(
       "id, name, kind, category_id, account_id, amount, currency, frequency, interval, start_date, end_date, is_active, note, categories(name, icon)",
     )
-    .is("deleted_at", null)
-    .order("is_active", { ascending: false })
-    .order("start_date", { ascending: true });
+    .is("deleted_at", null);
 
-  return ((data ?? []) as unknown as RecurringRow[]).map(mapRow);
-}
-
-function mapRow(r: RecurringRow): RecurringRuleWithSchedule {
-  const amount = Number(r.amount);
-  const frequency = r.frequency as RecurringFrequency;
-  const interval = r.interval ?? 1;
-  const rule = {
-    startDate: r.start_date,
-    frequency,
-    interval,
-    endDate: r.end_date,
-  };
-  return {
+  return ((data ?? []) as unknown as RecurringSel[]).map((r) => ({
     id: r.id,
     name: r.name,
     kind: r.kind as RecurringKind,
@@ -85,15 +63,13 @@ function mapRow(r: RecurringRow): RecurringRuleWithSchedule {
     categoryName: r.categories?.name ?? null,
     categoryIcon: r.categories?.icon ?? null,
     accountId: r.account_id,
-    amount,
-    currency: (r.currency as CurrencyCode) ?? "USD",
-    frequency,
-    interval,
+    amount: r.amount,
+    currency: r.currency,
+    frequency: r.frequency,
+    interval: r.interval ?? 1,
     startDate: r.start_date,
     endDate: r.end_date,
     isActive: r.is_active,
     note: r.note,
-    nextDate: r.is_active ? nextOccurrence(rule) : null,
-    monthlyAmount: monthlyAmount(amount, rule),
-  };
+  }));
 }

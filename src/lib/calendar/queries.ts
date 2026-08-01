@@ -1,11 +1,11 @@
 import "server-only";
 
-import { getRecurringData } from "@/lib/recurring/queries";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import type { CurrencyCode } from "@/lib/format";
 import { expandOccurrences } from "./build";
 import type { BillOccurrence } from "./types";
 import type { LoanWithProjection } from "@/lib/loans/types";
+import type { RecurringRuleWithSchedule } from "@/lib/recurring/types";
 
 export interface BillCalendarData {
   occurrences: BillOccurrence[];
@@ -21,22 +21,20 @@ export interface BillCalendarData {
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Occurrences for the current month + the upcoming ~2 months, with totals.
- * `loans` arrives already-decrypted from the caller (Phase 3.5.4) — this
- * can no longer fetch+decrypt loans itself server-side. */
+ * `loans`/`rules` arrive already-decrypted from the caller (Phase 3.5.4) —
+ * this can no longer fetch+decrypt either itself server-side. */
 export async function getBillCalendarData(
   loans: LoanWithProjection[],
+  rules: RecurringRuleWithSchedule[],
   now = new Date(),
 ): Promise<BillCalendarData> {
-  const [recurring, currency] = await Promise.all([
-    getRecurringData(),
-    getDisplayCurrency(),
-  ]);
+  const currency = await getDisplayCurrency();
 
   const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
   const to = new Date(now.getFullYear(), now.getMonth() + 3, 0);
 
   const occurrences = expandOccurrences({
-    rules: recurring.rules,
+    rules,
     loans,
     from: monthStartDate,
     to,

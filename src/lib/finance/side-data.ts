@@ -1,29 +1,30 @@
 "use server";
 
 /**
- * Thin client-callable wrappers around query functions. recurring doesn't
- * touch encrypted data yet — no logic changes, this one just re-exports the
- * existing "server-only" function as an action. goals, loans, investments,
- * and net-worth-snapshots are the exceptions as of Phase 3.5.4:
- * `fetchGoalsRaw()`/`fetchLoansRaw()`/`fetchInvestmentsRaw()`/
- * `fetchNetWorthSnapshotsRaw()` return packed ciphertext now, so these
- * wrappers can no longer compute `GoalsData`/`LoansData`/`InvestmentsData`/
- * `SnapshotSummary[]` themselves — see src/lib/finance/use-side-data.ts,
- * which decrypts and calls src/lib/goals/compute.ts /
- * src/lib/loans/compute.ts / src/lib/investments/compute.ts client-side
- * instead. `fetchBillCalendarAction` now takes already-decrypted loans as a
- * parameter for the same reason — `getBillCalendarData()` used to fetch
- * loans itself server-side.
+ * Thin client-callable wrappers around query functions. net-worth-snapshots
+ * is the only one left that's just a raw-ciphertext passthrough with no
+ * further server logic. goals, loans, investments, and recurring are the
+ * other Phase 3.5.4 exceptions: `fetchGoalsRaw()`/`fetchLoansRaw()`/
+ * `fetchInvestmentsRaw()`/`fetchRecurringRulesRaw()` return packed
+ * ciphertext now, so these wrappers can no longer compute
+ * `GoalsData`/`LoansData`/`InvestmentsData`/`RecurringData` themselves —
+ * see src/lib/finance/use-side-data.ts, which decrypts and calls
+ * src/lib/goals/compute.ts / src/lib/loans/compute.ts /
+ * src/lib/investments/compute.ts / src/lib/recurring/compute.ts
+ * client-side instead. `fetchBillCalendarAction` now takes already-
+ * decrypted loans and rules as parameters for the same reason —
+ * `getBillCalendarData()` used to fetch both itself server-side.
  */
 
 import { fetchGoalsRaw } from "@/lib/goals/queries";
 import { fetchLoansRaw } from "@/lib/loans/queries";
 import { fetchInvestmentsRaw } from "@/lib/investments/queries";
-import { getRecurringData } from "@/lib/recurring/queries";
+import { fetchRecurringRulesRaw } from "@/lib/recurring/queries";
 import { fetchNetWorthSnapshotsRaw } from "@/lib/networth/queries";
 import { getBillCalendarData } from "@/lib/calendar/queries";
 import { createClient } from "@/lib/supabase/server";
 import type { LoanWithProjection } from "@/lib/loans/types";
+import type { RecurringRuleWithSchedule } from "@/lib/recurring/types";
 
 export async function fetchGoalsDataAction() {
   return fetchGoalsRaw();
@@ -38,7 +39,7 @@ export async function fetchInvestmentsDataAction() {
 }
 
 export async function fetchRecurringDataAction() {
-  return getRecurringData();
+  return fetchRecurringRulesRaw();
 }
 
 export async function fetchNetWorthSnapshotsAction() {
@@ -46,6 +47,9 @@ export async function fetchNetWorthSnapshotsAction() {
   return fetchNetWorthSnapshotsRaw(supabase);
 }
 
-export async function fetchBillCalendarAction(loans: LoanWithProjection[]) {
-  return getBillCalendarData(loans);
+export async function fetchBillCalendarAction(
+  loans: LoanWithProjection[],
+  rules: RecurringRuleWithSchedule[],
+) {
+  return getBillCalendarData(loans, rules);
 }

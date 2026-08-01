@@ -24,6 +24,8 @@ import type { LoanType } from "@/lib/loans/types";
 import type { RawInvestmentRow } from "@/lib/investments/queries";
 import type { InvestmentType } from "@/lib/investments/types";
 import type { RawSnapshotRow } from "@/lib/networth/queries";
+import type { RawRecurringRow } from "@/lib/recurring/queries";
+import type { RecurringKind } from "@/lib/recurring/types";
 
 export interface DecryptedIncomeRow {
   id: string;
@@ -140,6 +142,23 @@ export interface DecryptedContributionRow {
 export interface DecryptedInvestmentContribution {
   amount: number;
   contributedAt: string;
+}
+
+export interface DecryptedRecurringRow {
+  id: string;
+  name: string;
+  kind: RecurringKind;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  accountId: string | null;
+  amount: number;
+  frequency: string;
+  interval: number;
+  startDate: string;
+  endDate: string | null;
+  isActive: boolean;
+  note: string | null;
 }
 
 export interface DecryptedSnapshotRow {
@@ -317,6 +336,19 @@ export async function decryptInvestmentContributionRows(
     rows.map(async (r): Promise<DecryptedInvestmentContribution> => ({
       amount: Number(await decryptPacked(r.amount, dek)),
       contributedAt: r.contributedAt,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptRecurringRows(
+  rows: RawRecurringRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedRecurringRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedRecurringRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
     })),
   );
   return splitSettled(settled);

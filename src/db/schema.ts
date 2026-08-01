@@ -521,7 +521,9 @@ export const recurringRules = pgTable(
     accountId: uuid("account_id").references(() => accounts.id, {
       onDelete: "set null",
     }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     frequency: frequency("frequency").notNull().default("monthly"),
     /** Repeat every N periods of `frequency` (>= 1). */
