@@ -323,4 +323,68 @@ export async function decryptPacked(packed: string, dek: CryptoKey): Promise<str
   return decryptField(unpackPayload(packed), dek);
 }
 
+const BASE64_RE = /^[A-Za-z0-9+/]+=*$/;
+/** `randomBytes(IV_BYTES)` base64-encoded is always exactly this many
+ * characters (12 bytes → ceil(12/3)*4, no padding) — used to tell a
+ * genuine packed payload's IV half from a plaintext string that merely
+ * happens to contain a colon. */
+const IV_BASE64_LEN = 16;
+
+/** Structural check only — does `value` have the shape of a packed
+ * `{iv}:{ciphertext}` payload? Doesn't attempt to decrypt it. Used by
+ * `decryptOrRecoverPacked` to decide whether a decrypt failure means
+ * "wrong key / corrupted ciphertext" (leave alone) vs. "this was never
+ * encrypted at all" (safe to backfill) — see docs/e2ee-path-b-plan.md
+ * 3.5.7 "Backfill." */
+function looksLikePackedPayload(value: string): boolean {
+  const i = value.indexOf(PACK_DELIMITER);
+  if (i === -1) return false;
+  const ivPart = value.slice(0, i);
+  const ctPart = value.slice(i + 1);
+  return (
+    ivPart.length === IV_BASE64_LEN &&
+    BASE64_RE.test(ivPart) &&
+    ctPart.length > 0 &&
+    BASE64_RE.test(ctPart)
+  );
+}
+
+export interface RecoveredPacked {
+  /** The value to display — either genuinely decrypted, or (if this row
+   * pre-dates encryption) the raw stored string, unchanged. */
+  plaintext: string;
+  /** Non-null only when this row was recovered from legacy plaintext: the
+   * freshly packed re-encryption the caller should write back so this
+   * row never needs to fall back again. */
+  backfillPacked: string | null;
+}
+
+/**
+ * Phase 3.5.7 "Backfill" — the read-time half of migrating rows that
+ * were written before a table's encryption landed. Tries a normal
+ * decrypt first; if `value` doesn't even look like a packed payload
+ * (`looksLikePackedPayload`), it's confidently legacy plaintext — no
+ * decrypt attempted at all, `plaintext` is the raw value, and
+ * `backfillPacked` is its fresh encryption. If it *does* look like a
+ * packed payload but still fails to decrypt (wrong DEK, corrupted), this
+ * returns `null` — that's a genuine unreadable row, not a legacy one,
+ * and callers must keep treating it as a decrypt failure rather than
+ * silently accepting ciphertext-looking garbage as if it were data (a
+ * numeric field like this would otherwise become `NaN`, or a corrupted
+ * blob would get "recovered" as visible garbage text).
+ */
+export async function decryptOrRecoverPacked(
+  value: string,
+  dek: CryptoKey,
+): Promise<RecoveredPacked | null> {
+  if (looksLikePackedPayload(value)) {
+    try {
+      return { plaintext: await decryptPacked(value, dek), backfillPacked: null };
+    } catch {
+      return null;
+    }
+  }
+  return { plaintext: value, backfillPacked: await encryptPacked(value, dek) };
+}
+
 export { toBase64, fromBase64 };

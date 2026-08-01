@@ -24,6 +24,13 @@ import {
   decryptInvestmentMonthlyContributions,
   decryptLoanAmounts,
 } from "./decrypt";
+import {
+  backfillBudgetRows,
+  backfillExpenseRows,
+  backfillGoalContributionRows,
+  backfillIncomeRows,
+  backfillInvestmentContributionRows,
+} from "@/lib/vault/backfill-actions";
 import { computeBudgetsData, type BudgetsData } from "@/lib/budgets/compute";
 import { computeAnalyticsData } from "@/lib/analytics/compute";
 import { computeTransactionsList } from "@/lib/transactions/compute";
@@ -79,6 +86,21 @@ export function useFinanceData(currency: CurrencyCode) {
         decryptContributionRows(raw.contributions, dek),
         decryptInvestmentContributionRows(raw.investmentContributions, dek),
       ]);
+
+      // Phase 3.5.7 "Backfill" — fire-and-forget re-encryption of any
+      // legacy plaintext rows this decrypt pass recovered. Never awaited
+      // (a failed write just means this row falls back to needing
+      // recovery again next load, not a lost row) and never blocks
+      // rendering the data already in hand.
+      if (incomeResult.backfill.length) backfillIncomeRows(incomeResult.backfill).catch(() => {});
+      if (expenseResult.backfill.length) backfillExpenseRows(expenseResult.backfill).catch(() => {});
+      if (budgetResult.backfill.length) backfillBudgetRows(budgetResult.backfill).catch(() => {});
+      if (contributionsResult.backfill.length) {
+        backfillGoalContributionRows(contributionsResult.backfill).catch(() => {});
+      }
+      if (investmentContributionsResult.backfill.length) {
+        backfillInvestmentContributionRows(investmentContributionsResult.backfill).catch(() => {});
+      }
 
       const budgets = computeBudgetsData(
         expenseResult.rows,

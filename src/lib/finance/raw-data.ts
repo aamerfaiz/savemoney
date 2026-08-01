@@ -108,8 +108,11 @@ export interface FinanceRawData {
    * finance/decrypt.ts. */
   investmentMonthlyContributions: (string | null)[];
   /** Packed ciphertext (Phase 3.5.4) — decrypt via
-   * decryptInvestmentContributionRows() in finance/decrypt.ts. */
-  investmentContributions: { amount: string; contributedAt: string }[];
+   * decryptInvestmentContributionRows() in finance/decrypt.ts. `id` is
+   * only here for Phase 3.5.7 backfill write-back; nothing else needs
+   * per-row identity for this table (see decrypt.ts's doc comment on
+   * decryptInvestmentContributionRows). */
+  investmentContributions: { id: string; amount: string; contributedAt: string }[];
 }
 
 // Covers analytics' trailing-6-month window and budgets' "since Jan 1"
@@ -214,7 +217,7 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
     supabase.from("investments").select("monthly_contribution").is("deleted_at", null),
     supabase
       .from("investment_contributions")
-      .select("amount, contributed_at")
+      .select("id, amount, contributed_at")
       .is("deleted_at", null)
       .gte("contributed_at", fromISO),
   ]);
@@ -315,8 +318,8 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
   ).map((i) => i.monthly_contribution);
 
   const investmentContributions = (
-    (investmentContribRows ?? []) as { amount: string; contributed_at: string }[]
-  ).map((r) => ({ amount: r.amount, contributedAt: r.contributed_at }));
+    (investmentContribRows ?? []) as { id: string; amount: string; contributed_at: string }[]
+  ).map((r) => ({ id: r.id, amount: r.amount, contributedAt: r.contributed_at }));
 
   return {
     income,

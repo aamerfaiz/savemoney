@@ -28,6 +28,13 @@ import {
   decryptRecurringRows,
   decryptSnapshotRows,
 } from "./decrypt";
+import {
+  backfillGoalRows,
+  backfillInvestmentRows,
+  backfillLoanRows,
+  backfillRecurringRuleRows,
+  backfillSnapshotRows,
+} from "@/lib/vault/backfill-actions";
 import { computeGoalsData } from "@/lib/goals/compute";
 import { computeLoansData } from "@/lib/loans/compute";
 import { computeInvestmentsData } from "@/lib/investments/compute";
@@ -67,6 +74,22 @@ export function useSideData(currency: CurrencyCode) {
         decryptRecurringRows(rawRecurring, dek),
         decryptSnapshotRows(rawSnapshots, dek),
       ]);
+
+      // Phase 3.5.7 "Backfill" — see use-finance-data.ts's identical
+      // comment; same fire-and-forget re-encryption of recovered legacy
+      // plaintext rows.
+      if (goalRowsResult.backfill.length) backfillGoalRows(goalRowsResult.backfill).catch(() => {});
+      if (loanRowsResult.backfill.length) backfillLoanRows(loanRowsResult.backfill).catch(() => {});
+      if (investmentRowsResult.backfill.length) {
+        backfillInvestmentRows(investmentRowsResult.backfill).catch(() => {});
+      }
+      if (recurringRowsResult.backfill.length) {
+        backfillRecurringRuleRows(recurringRowsResult.backfill).catch(() => {});
+      }
+      if (snapshotRowsResult.backfill.length) {
+        backfillSnapshotRows(snapshotRowsResult.backfill).catch(() => {});
+      }
+
       const goalsData = computeGoalsData(goalRowsResult.rows, currency);
       const loansData = computeLoansData(loanRowsResult.rows, currency);
       const investmentsData = computeInvestmentsData(investmentRowsResult.rows, currency);

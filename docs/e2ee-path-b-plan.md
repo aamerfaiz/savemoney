@@ -1353,15 +1353,89 @@ folded into generic "connect an agent" copy.
         `encryptPacked`/`decryptField`/`encryptField` primitives already
         proven correct by every prior phase's round-trip, not on any new
         crypto — but that's a code-review argument, not a tested one.
-- [ ] **3.5.7 — Backfill & cleanup.**
-  - [ ] Backfill tooling for any pre-existing plaintext rows, including
-        today's `AI_KEYS_ENCRYPTION_KEY`-wrapped provider keys (users
-        re-save their key once to move it under the vault).
-  - [ ] Remove dead server-side plaintext code paths, including
-        `AI_KEYS_ENCRYPTION_KEY` and `src/lib/ai/crypto.ts`'s
-        server-secret path, once every consumer has migrated.
-  - [ ] Security review + a fresh Supabase advisor pass on every new
-        private-schema table.
+- [x] **3.5.7 — Backfill & cleanup.** Done, all three sub-items.
+  - [x] Backfill tooling for any pre-existing plaintext rows — turned out
+        to be a real, immediate need, not a hypothetical: querying the
+        live DB showed every seed row in `income`/`expenses`/`budgets`/
+        `goals`/`investments`/`net_worth_snapshots` is still plain decimal
+        text (`"50000.00"`, not `iv:ciphertext`), left over from before
+        each table's migration landed. Built automatic backfill exactly as
+        this doc's own "mandatory per module" section already promised:
+        "3.5.7's backfill re-encrypts their existing data the first time
+        they touch the now-migrated module."
+        **Detection**: new `decryptOrRecoverPacked()` (`vault/crypto.ts`)
+        — a structural check (`looksLikePackedPayload`: does the value
+        even have the shape of a packed `{iv}:{ciphertext}` payload, IV
+        half exactly 16 base64 chars?) decides whether a decrypt failure
+        means "never encrypted at all" (recover the raw value, hand back
+        a fresh re-encryption too) vs. "genuinely undecryptable" (wrong
+        DEK, corruption — returns `null`, stays a real failure, never
+        guessed at). Verified with a standalone script exercising all four
+        cases — legacy plaintext, already-good ciphertext, ciphertext
+        under a *different* DEK, and free text that happens to contain a
+        colon — since a live browser session isn't available here; all
+        four behaved as designed, including the two adversarial-shaped
+        ones that must NOT be treated as legacy plaintext.
+        **Wiring**: `finance/decrypt.ts`'s per-row builders now return an
+        additional `backfill` array alongside the existing `rows`/
+        `failedCount`; the two central hooks that already touch every
+        encrypted table — `use-finance-data.ts` (income, expenses,
+        budgets, goal_contributions, investment_contributions — the last
+        one needed a new `id` column threaded through `raw-data.ts`'s
+        query, since nothing previously needed its row identity) and
+        `use-side-data.ts` (goals, loans, investments, recurring_rules,
+        net_worth_snapshots) — fire the matching new `backfillXRows`
+        action (`vault/backfill-actions.ts`, one per table, each scoped
+        by `id` *and* `userId`) fire-and-forget after decrypting, never
+        blocking the page. **Deliberately not covered**: the three
+        "narrow" cross-module fetches (`decryptActiveGoals`/
+        `decryptLoanAmounts`/`decryptInvestmentMonthlyContributions`,
+        used only for the safe-to-spend/health-score aggregates) have no
+        row `id` in their raw queries at all — backfilling those tables
+        still happens, just via the owning module's own full fetch
+        (Goals/Loans/Investments pages) rather than every place that
+        happens to read a sliver of the same table. `loan_payments` and
+        `notifications.body` have no read/decrypt path anywhere (write-
+        once audit trails), so there's no "touch the module" moment for
+        them either — a documented gap, not an oversight; both still get
+        cleaned up whenever the user runs "Rotate vault" (3.5.6), which
+        re-encrypts every row regardless of read paths.
+        The `AI_KEYS_ENCRYPTION_KEY`-wrapped provider key case needed no
+        new tooling — `resolveActiveKey()` (`ai/client-key.ts`) already
+        catches a decrypt failure there and tells the user to re-save
+        their key in Settings, which was always the intended fix per this
+        doc's own parenthetical.
+  - [x] Removed dead server-side plaintext code paths: `src/lib/ai/
+        crypto.ts` (the old `encryptSecret`/`decryptSecret` pair) was
+        confirmed to have zero remaining importers anywhere in `src` —
+        Phase 3.5.2 already fully cut `ai_provider_keys` over to
+        DEK-wrapping, so this was pure dead code, not something requiring
+        a migration window. Deleted the file outright. Removed
+        `AI_KEYS_ENCRYPTION_KEY` from `.env.example` and corrected its
+        neighboring `DATABASE_URL` comment, which still described the
+        connection's purpose as of 3.5.1 (just `ai_provider_keys`) rather
+        than its real scope today (`vault_keys`, `mcp_agent_tokens`, and
+        the bulk rotation/backfill queries). Left the narrative mentions
+        of `AI_KEYS_ENCRYPTION_KEY` in `docs/phase-3-ai-assistant-plan.md`
+        and the financeos skill alone — updating those to reflect E2EE
+        being live is explicitly 3.5.8's job ("update the financeos
+        skill's roadmap section... to note E2EE is live"), not this
+        sub-item's.
+  - [x] Security review: re-checked every new write path added across
+        3.5.6/3.5.7 scopes its `WHERE` by both `id` *and* `userId`, not
+        `id` alone (the same class of bug caught and fixed during 3.5.6's
+        rotation action) — confirmed clean across all ten
+        `backfillXRows` actions. No new `private` schema tables since
+        3.5.1, so nothing new needs its own RLS pass; `get_advisors`
+        (security) still shows only the pre-existing
+        `auth_leaked_password_protection` WARN, unchanged since 3.5.1.
+  - [x] **Verify**: `npm run build`/`npm run lint` clean. **Not
+        verified**: a real browser session actually recovering the live
+        DB's known-plaintext seed rows — this sandbox still has no
+        Supabase auth credentials, same limitation as every phase so far;
+        the detection/recovery logic itself was verified standalone (see
+        above), just not the end-to-end write-back against a real
+        session.
 - [ ] **3.5.8 — Rollout & documentation.**
   - [ ] Flip this doc's Status line from "design only" once shipped.
   - [ ] Mark Phase 3.5 in `docs/phase-3-ai-assistant-plan.md`.
