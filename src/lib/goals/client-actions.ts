@@ -123,11 +123,14 @@ export async function encryptedAddContribution(
   const v = parsed.data;
 
   const newAmount = goal.currentAmount + v.amount;
-  const newCurrentAmount = await encryptPacked(String(newAmount), dek);
   const newStatus = newAmount >= goal.targetAmount ? "completed" : "active";
+  const [amount, newCurrentAmount] = await Promise.all([
+    encryptPacked(String(v.amount), dek),
+    encryptPacked(String(newAmount), dek),
+  ]);
 
   const input: EncryptedContributionInput = {
-    amount: v.amount,
+    amount,
     contributedAt: v.contributedAt,
     note: v.note ?? null,
     newCurrentAmount,

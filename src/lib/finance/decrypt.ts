@@ -16,6 +16,7 @@ import type {
   RawBudgetRow,
   RawActiveGoalRow,
   RawLoanAmountRow,
+  RawContributionRow,
 } from "./raw-data";
 import type { RawGoalRow } from "@/lib/goals/queries";
 import type { RawLoanRow } from "@/lib/loans/queries";
@@ -124,6 +125,16 @@ export interface DecryptedInvestmentRow {
   expectedReturn: number;
   currency: string;
   startDate: string;
+}
+
+export interface DecryptedContributionRow {
+  id: string;
+  amount: number;
+  contributedAt: string;
+  note: string | null;
+  goalName: string | null;
+  goalIcon: string | null;
+  goalDeletedAt: string | null;
 }
 
 export interface DecryptedSnapshotRow {
@@ -276,6 +287,19 @@ export async function decryptInvestmentMonthlyContributions(
 ): Promise<DecryptResult<number>> {
   const settled = await Promise.allSettled(
     rows.map(async (r) => (r ? Number(await decryptPacked(r, dek)) : 0)),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptContributionRows(
+  rows: RawContributionRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedContributionRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedContributionRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
   );
   return splitSettled(settled);
 }

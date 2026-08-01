@@ -5,14 +5,17 @@
  */
 
 import type { CurrencyCode } from "@/lib/format";
-import type { DecryptedExpenseRow, DecryptedIncomeRow } from "@/lib/finance/decrypt";
-import type { RawContributionRow } from "@/lib/finance/raw-data";
+import type {
+  DecryptedContributionRow,
+  DecryptedExpenseRow,
+  DecryptedIncomeRow,
+} from "@/lib/finance/decrypt";
 import type { Transaction, TransactionFilter, TransactionSummary } from "./types";
 
 export function computeTransactionsList(
   income: DecryptedIncomeRow[],
   expenses: DecryptedExpenseRow[],
-  contributions: RawContributionRow[],
+  contributions: DecryptedContributionRow[],
   filter: TransactionFilter = "all",
 ): Transaction[] {
   const results: Transaction[] = [];

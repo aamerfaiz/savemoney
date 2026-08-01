@@ -99,6 +99,13 @@
       "when": 1785619899726,
       "tag": "0013_fixed_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785620308430,
+      "tag": "0014_sturdy_deathbird",
+      "breakpoints": true
     }
   ]
 }

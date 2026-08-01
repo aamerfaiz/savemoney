@@ -41,18 +41,19 @@ const encryptedGoalInputSchema = z.object({
 
 export type EncryptedGoalInput = z.infer<typeof encryptedGoalInputSchema>;
 
-/** `goal_contributions.amount` isn't encrypted this pass — only the
- * running `goals.current_amount` balance it feeds is. Because that balance
- * is ciphertext now, the server can no longer read-modify-write it (add
- * this contribution to whatever's currently stored): the client computes
- * the new total from its own already-decrypted `current_amount` and sends
- * the encrypted result + derived status directly. This trades the
- * database's atomic increment for a client-computed one — two concurrent
- * contributions from the same user (e.g. two open tabs) could race and one
- * could clobber the other's update. Accepted for a single-user app; see
- * docs/e2ee-path-b-plan.md 3.5.4. */
+/** `goal_contributions.amount` is encrypted as of Phase 3.5.4, same as the
+ * running `goals.current_amount` balance it feeds. Because that balance is
+ * ciphertext, the server can no longer read-modify-write it (add this
+ * contribution to whatever's currently stored): the client computes the
+ * new total from its own already-decrypted `current_amount`, encrypts both
+ * the contribution amount and the new total, and sends the derived status
+ * directly. This trades the database's atomic increment for a
+ * client-computed one — two concurrent contributions from the same user
+ * (e.g. two open tabs) could race and one could clobber the other's
+ * update. Accepted for a single-user app; see docs/e2ee-path-b-plan.md
+ * 3.5.4. */
 const encryptedContributionInputSchema = z.object({
-  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  amount: z.string().min(1),
   contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   note: z.string().trim().max(200).optional().nullable(),
   newCurrentAmount: z.string().min(1),

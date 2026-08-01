@@ -10,6 +10,7 @@ import { computeGoalProjection } from "@/lib/finance/goals";
 import type { CurrencyCode } from "@/lib/format";
 import type {
   DecryptedActiveGoal,
+  DecryptedContributionRow,
   DecryptedExpenseRow,
   DecryptedIncomeRow,
   DecryptedLoanAmounts,
@@ -24,7 +25,8 @@ export function computeAnalyticsData(
   expenses: DecryptedExpenseRow[],
   decryptedActiveGoals: DecryptedActiveGoal[],
   decryptedLoans: DecryptedLoanAmounts[],
-  raw: Pick<FinanceRawData, "contributions" | "investmentContributions">,
+  decryptedContributions: DecryptedContributionRow[],
+  raw: Pick<FinanceRawData, "investmentContributions">,
   currency: CurrencyCode,
   now = new Date(),
 ): AnalyticsData {
@@ -39,7 +41,7 @@ export function computeAnalyticsData(
     const i = index.get(r.spentAt.slice(0, 7));
     if (i != null) months[i].expenses += r.amount;
   }
-  for (const r of raw.contributions) {
+  for (const r of decryptedContributions) {
     const i = index.get(r.contributedAt.slice(0, 7));
     if (i != null) months[i].contributed += r.amount;
   }

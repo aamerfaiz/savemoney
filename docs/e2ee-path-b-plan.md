@@ -1044,7 +1044,35 @@ folded into generic "connect an agent" copy.
         `npm run lint` clean; migration applied via Supabase MCP,
         `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `goal_contributions.amount`
+  - [x] `goal_contributions.amount` — done. Contained: only `raw-data.ts`
+        (the `contributions` feed used by Transactions' "transfer" rows and
+        Analytics' monthly `contributed` bucket) and `goals/actions.ts`'s
+        `addContribution` touch this column; no Smart Entry capability
+        exists for it (`goal.contribution` was already removed in the
+        `goals.*` sub-item, before this table's own amount was even in
+        scope). `contributed_at`/`note` stay plaintext; migration
+        `encrypt_goal_contributions_amount` applied live (`numeric` →
+        `text`, `USING amount::text`).
+        **Read path**: `raw-data.ts`'s `RawContributionRow.amount` is now
+        ciphertext; new `decryptContributionRows()` in `finance/decrypt.ts`.
+        `computeAnalyticsData`/`computeTransactionsList` both take an
+        explicit `decryptedContributions` param now instead of reading
+        `raw.contributions` themselves. Added `failedContributionCount` to
+        `FinanceData` and folded it into the existing Transactions
+        decrypt-failure banner (already covering income/expenses) rather
+        than adding a new one.
+        **Write path**: `addContribution`'s `amount` field (the log entry
+        itself) now travels as ciphertext alongside the already-ciphertext
+        `newCurrentAmount` (the running balance, encrypted since the
+        `goals.*` sub-item) — `goals/client-actions.ts`'s
+        `encryptedAddContribution` encrypts both from the same plaintext
+        form value before calling the action. No new read-modify-write
+        problem here: the balance arithmetic was already moved client-side
+        last sub-item, this just adds one more field to the same
+        already-encrypting call. **Verified**: `npm run build`/
+        `npm run lint` clean; migration applied via Supabase MCP,
+        `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `investment_contributions.amount`
   - [ ] `loan_payments.*`
   - [ ] `recurring_rules.amount`

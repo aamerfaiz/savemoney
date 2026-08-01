@@ -47,9 +47,9 @@ export interface RawExpenseRow {
 }
 
 export interface RawContributionRow {
-  /** `goal_contributions.amount` isn't in Phase 3.5.3's scope — still plain. */
   id: string;
-  amount: number;
+  /** Packed ciphertext (Phase 3.5.4) — decrypt via decryptContributionRows(). */
+  amount: string;
   contributedAt: string;
   note: string | null;
   goalName: string | null;
@@ -148,7 +148,7 @@ type ExpenseSel = {
 
 type ContributionSel = {
   id: string;
-  amount: string | number;
+  amount: string;
   contributed_at: string;
   note: string | null;
   goals: { name: string | null; icon: string | null; deleted_at: string | null } | null;
@@ -255,7 +255,7 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
     .filter((r) => r.goals && !r.goals.deleted_at)
     .map((r) => ({
       id: r.id,
-      amount: Number(r.amount),
+      amount: r.amount,
       contributedAt: r.contributed_at,
       note: r.note,
       goalName: r.goals?.name ?? null,

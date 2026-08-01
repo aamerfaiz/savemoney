@@ -70,12 +70,15 @@ export function AuthedTransactionsView({
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      {(data.failedIncomeCount > 0 || data.failedExpenseCount > 0) && (
+      {(data.failedIncomeCount > 0 ||
+        data.failedExpenseCount > 0 ||
+        data.failedContributionCount > 0) && (
         <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
           <ShieldAlert className="size-4 shrink-0" />
-          {data.failedIncomeCount + data.failedExpenseCount} entries couldn&apos;t
-          be read — they were saved before encryption was enabled and can&apos;t
-          be recovered. Re-enter them if you still need them.
+          {data.failedIncomeCount + data.failedExpenseCount + data.failedContributionCount} entries
+          couldn&apos;t be read — they were saved before encryption was
+          enabled and can&apos;t be recovered. Re-enter them if you still
+          need them.
         </p>
       )}
       <TransactionsView

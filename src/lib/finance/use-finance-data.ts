@@ -17,6 +17,7 @@ import { fetchFinanceRawData } from "./raw-data";
 import {
   decryptActiveGoals,
   decryptBudgetRows,
+  decryptContributionRows,
   decryptExpenseRows,
   decryptIncomeRows,
   decryptInvestmentMonthlyContributions,
@@ -40,6 +41,7 @@ export interface FinanceData {
   failedIncomeCount: number;
   failedExpenseCount: number;
   failedBudgetCount: number;
+  failedContributionCount: number;
 }
 
 export function useFinanceData(currency: CurrencyCode) {
@@ -64,6 +66,7 @@ export function useFinanceData(currency: CurrencyCode) {
         activeGoalsResult,
         loanAmountsResult,
         investmentContributionsResult,
+        contributionsResult,
       ] = await Promise.all([
         decryptIncomeRows(raw.income, dek),
         decryptExpenseRows(raw.expenses, dek),
@@ -71,6 +74,7 @@ export function useFinanceData(currency: CurrencyCode) {
         decryptActiveGoals(raw.activeGoals, dek),
         decryptLoanAmounts(raw.loans, dek),
         decryptInvestmentMonthlyContributions(raw.investmentMonthlyContributions, dek),
+        decryptContributionRows(raw.contributions, dek),
       ]);
 
       const budgets = computeBudgetsData(
@@ -87,13 +91,14 @@ export function useFinanceData(currency: CurrencyCode) {
         expenseResult.rows,
         activeGoalsResult.rows,
         loanAmountsResult.rows,
+        contributionsResult.rows,
         raw,
         currency,
       );
       const transactions = computeTransactionsList(
         incomeResult.rows,
         expenseResult.rows,
-        raw.contributions,
+        contributionsResult.rows,
       );
 
       return {
@@ -103,6 +108,7 @@ export function useFinanceData(currency: CurrencyCode) {
         failedIncomeCount: incomeResult.failedCount,
         failedExpenseCount: expenseResult.failedCount,
         failedBudgetCount: budgetResult.failedCount,
+        failedContributionCount: contributionsResult.failedCount,
       };
     },
   });
