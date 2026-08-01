@@ -457,14 +457,11 @@ export const investments = pgTable(
     }),
     name: text("name").notNull(),
     type: investmentType("type").notNull().default("stocks"),
-    investedAmount: numeric("invested_amount", { precision: 14, scale: 2 })
-      .notNull(),
-    currentValue: numeric("current_value", { precision: 14, scale: 2 })
-      .notNull(),
-    monthlyContribution: numeric("monthly_contribution", {
-      precision: 14,
-      scale: 2,
-    }),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    investedAmount: text("invested_amount").notNull(),
+    currentValue: text("current_value").notNull(),
+    monthlyContribution: text("monthly_contribution"),
     /** Expected annual return as a percentage, e.g. 8.0 — drives projection. */
     expectedReturn: numeric("expected_return", { precision: 6, scale: 3 })
       .notNull()

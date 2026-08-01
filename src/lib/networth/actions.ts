@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { getInvestmentsData } from "@/lib/investments/queries";
 import { computeNetWorth } from "@/lib/finance/net-worth";
 
 export interface ActionResult {
@@ -17,14 +16,14 @@ export interface ActionResult {
  * the live totals from investments, goals and loans, then upserts the row for
  * today (repeated captures on the same day overwrite rather than pile up).
  *
- * `goalsSavedTotal`/`loansRemainingTotal` arrive pre-computed from the
- * caller (Phase 3.5.4) — both `goals.current_amount` and
- * `loans.remaining_amount` are encrypted now, so this server-side action can
- * no longer read them itself; the client already has the decrypted totals
- * via `useSideData()`. investments aren't encrypted yet, so that still
- * fetches server-side as before.
+ * `investmentsTotalValue`/`goalsSavedTotal`/`loansRemainingTotal` all arrive
+ * pre-computed from the caller (Phase 3.5.4) — `investments.current_value`,
+ * `goals.current_amount`, and `loans.remaining_amount` are all encrypted
+ * now, so this server-side action can no longer read any of them itself;
+ * the client already has the decrypted totals via `useSideData()`.
  */
 export async function captureSnapshot(
+  investmentsTotalValue: number,
   goalsSavedTotal: number,
   loansRemainingTotal: number,
 ): Promise<ActionResult> {
@@ -34,14 +33,12 @@ export async function captureSnapshot(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "You need to sign in first." };
 
-  const investments = await getInvestmentsData();
-
   const result = computeNetWorth([
     {
       key: "investments",
       label: "Investments",
       icon: "trending-up",
-      amount: investments.totalValue,
+      amount: investmentsTotalValue,
       kind: "asset",
     },
     {

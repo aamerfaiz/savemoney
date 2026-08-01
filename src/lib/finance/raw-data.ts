@@ -103,7 +103,10 @@ export interface FinanceRawData {
    * sum and the health score's on-track share. */
   activeGoals: RawActiveGoalRow[];
   loans: RawLoanAmountRow[];
-  investmentMonthlyContributions: number[];
+  /** Packed ciphertext (Phase 3.5.4), null for holdings with no SIP —
+   * decrypt via decryptInvestmentMonthlyContributions() in
+   * finance/decrypt.ts. */
+  investmentMonthlyContributions: (string | null)[];
   investmentContributions: { amount: number; contributedAt: string }[];
 }
 
@@ -306,8 +309,8 @@ export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: s
   }));
 
   const investmentMonthlyContributions = (
-    (investmentRows ?? []) as { monthly_contribution: string | number | null }[]
-  ).map((i) => Number(i.monthly_contribution ?? 0));
+    (investmentRows ?? []) as { monthly_contribution: string | null }[]
+  ).map((i) => i.monthly_contribution);
 
   const investmentContributions = (
     (investmentContribRows ?? []) as { amount: string | number; contributed_at: string }[]

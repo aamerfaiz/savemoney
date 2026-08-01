@@ -20,13 +20,15 @@ import type { NetWorthComponent } from "@/lib/finance/net-worth";
 
 export function NetWorthView({
   data,
+  investmentsTotalValue,
   goalsSavedTotal,
   loansRemainingTotal,
 }: {
   data: NetWorthData;
   /** Already-decrypted totals, passed through to captureSnapshot() since it
-   * can no longer read goals.current_amount/loans.remaining_amount
-   * server-side (Phase 3.5.4). */
+   * can no longer read investments.current_value/goals.current_amount/
+   * loans.remaining_amount server-side (Phase 3.5.4). */
+  investmentsTotalValue: number;
   goalsSavedTotal: number;
   loansRemainingTotal: number;
 }) {
@@ -40,7 +42,11 @@ export function NetWorthView({
   const onCapture = () => {
     setError(null);
     startTransition(async () => {
-      const res = await captureSnapshot(goalsSavedTotal, loansRemainingTotal);
+      const res = await captureSnapshot(
+        investmentsTotalValue,
+        goalsSavedTotal,
+        loansRemainingTotal,
+      );
       if (!res.ok) setError(res.error ?? "Couldn't capture snapshot.");
       else router.refresh();
     });

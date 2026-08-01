@@ -20,6 +20,8 @@ import type {
 import type { RawGoalRow } from "@/lib/goals/queries";
 import type { RawLoanRow } from "@/lib/loans/queries";
 import type { LoanType } from "@/lib/loans/types";
+import type { RawInvestmentRow } from "@/lib/investments/queries";
+import type { InvestmentType } from "@/lib/investments/types";
 
 export interface DecryptedIncomeRow {
   id: string;
@@ -109,6 +111,18 @@ export interface DecryptedLoanAmounts {
   emi: number;
   extraEmi: number;
   remainingAmount: number;
+}
+
+export interface DecryptedInvestmentRow {
+  id: string;
+  name: string;
+  type: InvestmentType;
+  investedAmount: number;
+  currentValue: number;
+  monthlyContribution: number | null;
+  expectedReturn: number;
+  currency: string;
+  startDate: string;
 }
 
 export interface DecryptResult<T> {
@@ -222,6 +236,36 @@ export async function decryptLoanAmounts(
       extraEmi: r.extraEmi ? Number(await decryptPacked(r.extraEmi, dek)) : 0,
       remainingAmount: Number(await decryptPacked(r.remainingAmount, dek)),
     })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptInvestmentRows(
+  rows: RawInvestmentRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedInvestmentRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedInvestmentRow> => ({
+      ...r,
+      investedAmount: Number(await decryptPacked(r.investedAmount, dek)),
+      currentValue: Number(await decryptPacked(r.currentValue, dek)),
+      monthlyContribution: r.monthlyContribution
+        ? Number(await decryptPacked(r.monthlyContribution, dek))
+        : null,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+/** Just the monthly SIP amount `computeBudgetsData` needs — a narrower
+ * shape than the full `DecryptedInvestmentRow` used by the Investments
+ * page itself, mirroring `DecryptedActiveGoal`/`DecryptedLoanAmounts`. */
+export async function decryptInvestmentMonthlyContributions(
+  rows: (string | null)[],
+  dek: CryptoKey,
+): Promise<DecryptResult<number>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r) => (r ? Number(await decryptPacked(r, dek)) : 0)),
   );
   return splitSettled(settled);
 }

@@ -963,7 +963,52 @@ folded into generic "connect an agent" copy.
         `npm run lint` clean; migration applied via Supabase MCP,
         `get_advisors` shows no new findings. **Not verified**: a real
         browser session, same sandbox limitation as every phase so far.
-  - [ ] `investments.investedAmount`/`currentValue`/`monthlyContribution`
+  - [x] `investments.investedAmount`/`currentValue`/`monthlyContribution` —
+        done. Same shape as goals/loans exactly: Investments page was still
+        a server component computing `computeInvestmentProjection()`
+        server-side, plus a narrower parallel `investmentMonthlyContributions`
+        feed in `raw-data.ts` for safe-to-spend. `expectedReturn`/
+        `startDate`/`type` stay plaintext per the locked scope; migration
+        `encrypt_investments_amount_columns` applied live (`numeric` →
+        `text` × 3, `USING <col>::text`).
+        **Read path**: `investments/queries.ts`'s `fetchInvestmentsRaw()`
+        returns ciphertext only — the old DB-level `ORDER BY current_value`
+        moved to a client-side sort in the new `investments/compute.ts`'s
+        `computeInvestmentsData()`. New `decryptInvestmentRows()`/
+        `decryptInvestmentMonthlyContributions()` in `finance/decrypt.ts`
+        (the latter narrow, mirroring `decryptActiveGoals`/
+        `decryptLoanAmounts`) — this let `computeBudgetsData` finally drop
+        its last `FinanceRawData` passthrough param entirely, now taking
+        every input as an explicit decrypted value.
+        `use-side-data.ts` decrypts+computes investments alongside
+        goals/loans now, exposing `failedInvestmentCount`.
+        **Write path**: `investment-form.tsx`/`contribution-form.tsx` now
+        require a `dek: CryptoKey` prop (threaded from a new
+        `authed-investments-view.tsx`, replacing the server-component
+        `investments/page.tsx`); new `src/lib/investments/client-actions.ts`
+        mirrors `loans/client-actions.ts`.
+        **Hardest piece, same shape as goals/loans**: `recordContribution`'s
+        server-side read-modify-write (`invested_amount += amount`,
+        `current_value += amount` when `addToValue`) is impossible once
+        both are ciphertext. Moved to `contribution-form.tsx`'s client
+        wrapper, which already has the holding's decrypted
+        `investedAmount`/`currentValue` on screen. `investment_contributions.
+        amount` itself stays plaintext (own future turn in this list). Same
+        documented concurrency tradeoff as goals/loans applies here too.
+        `net_worth/actions.ts`'s `captureSnapshot()` now takes
+        `investmentsTotalValue` as a third pre-computed parameter — the
+        last of the three net-worth components to need this fix (goals and
+        loans were already converted).
+        **Scope cut**: removed `investment.create`/`investment.edit`/
+        `investment.contribution` Smart Entry capabilities (and the now-dead
+        `fetchCurrentInvestment` helper, and the `monthly_contribution`-based
+        `typicalAmount` in `loadReferenceData()`'s investments reference) —
+        same reasoning as goals/loans, with `investment.contribution`
+        additionally blocked by needing the holding's current decrypted
+        amounts server-side. `investment.delete` is untouched. **Verified**:
+        `npm run build`/`npm run lint` clean; migration applied via Supabase
+        MCP, `get_advisors` shows no new findings. **Not verified**: a real
+        browser session, same sandbox limitation as every phase so far.
   - [ ] `net_worth_snapshots.*`
   - [ ] `goal_contributions.amount`
   - [ ] `investment_contributions.amount`

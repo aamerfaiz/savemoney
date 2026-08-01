@@ -16,7 +16,7 @@ import type { BudgetsData } from "@/lib/budgets/compute";
 import type { AnalyticsData } from "@/lib/analytics/types";
 import type { GoalsData } from "@/lib/goals/compute";
 import type { LoansData } from "@/lib/loans/compute";
-import type { InvestmentsData } from "@/lib/investments/queries";
+import type { InvestmentsData } from "@/lib/investments/compute";
 import type { NetWorthData } from "@/lib/networth/types";
 
 export function buildFinanceContext(input: {

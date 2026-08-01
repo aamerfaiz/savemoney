@@ -6,10 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  recordContribution,
-  type ActionResult,
-} from "@/lib/investments/actions";
+import type { ActionResult } from "@/lib/investments/actions";
+import { encryptedRecordContribution } from "@/lib/investments/client-actions";
 import { formatCurrency } from "@/lib/format";
 import type { InvestmentWithProjection } from "@/lib/investments/types";
 
@@ -18,13 +16,15 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function ContributionForm({
   investment,
   onSuccess,
+  dek,
 }: {
   investment: InvestmentWithProjection;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
   const [addToValue, setAddToValue] = useState(true);
-  const action = recordContribution.bind(null, investment.id);
+  const action = encryptedRecordContribution.bind(null, dek, investment);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

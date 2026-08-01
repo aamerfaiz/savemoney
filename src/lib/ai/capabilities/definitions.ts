@@ -2,17 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import {
-  investmentInputSchema,
-  contributionInputSchema as investmentContributionSchema,
-  INVESTMENT_TYPES,
-} from "@/lib/investments/types";
-import {
-  createInvestment,
-  recordContribution,
-  updateInvestment,
-  deleteInvestment,
-} from "@/lib/investments/actions";
+import { deleteInvestment } from "@/lib/investments/actions";
 
 import { deleteLoan } from "@/lib/loans/actions";
 
@@ -31,7 +21,6 @@ import type { AICapability } from "./types";
 import {
   matchByName,
   toFormData,
-  fetchCurrentInvestment,
   fetchCurrentRecurring,
 } from "./shared";
 import {
@@ -52,165 +41,32 @@ const emptySchema = z.object({});
  * No `transaction.*` capabilities as of Phase 3.5.3; no `budget.create`/
  * `budget.edit` as of Phase 3.5.4 (budgets.amount); no `goal.create`/
  * `goal.edit`/`goal.contribution` as of Phase 3.5.4 (goals.targetAmount/
- * currentAmount/monthlyContribution); and no `loan.create`/`loan.edit`/
+ * currentAmount/monthlyContribution); no `loan.create`/`loan.edit`/
  * `loan.payment` as of Phase 3.5.4 (loans.principal/emi/remainingAmount/
- * extraEmi) — all removed, not disabled: once a table's amount is
- * encrypted under the vault DEK, this file's `execute()` calls — which run
- * entirely server-side via /api/v1/ai/commit — have no DEK to encrypt
- * with. Properly supporting them would mean moving amount validation
- * client-side (before encryption) while commit.ts's independent
+ * extraEmi); and no `investment.create`/`investment.edit`/
+ * `investment.contribution` as of Phase 3.5.4 (investments.investedAmount/
+ * currentValue/monthlyContribution) — all removed, not disabled: once a
+ * table's amount is encrypted under the vault DEK, this file's `execute()`
+ * calls — which run entirely server-side via /api/v1/ai/commit — have no
+ * DEK to encrypt with. Properly supporting them would mean moving amount
+ * validation client-side (before encryption) while commit.ts's independent
  * re-validation (`def.schema.safeParse`, the "never trust fields"
  * defense-in-depth check) can no longer inspect a real numeric amount
  * post-encryption — a real redesign of that trust boundary, not done here.
- * `goal.contribution`/`loan.payment` have the added wrinkle that they'd
- * need the goal/loan's *current* decrypted amount to compute a new running
- * total or interest/principal split, which the server can't read either
- * (see the comments on `EncryptedContributionInput` in
- * src/lib/goals/actions.ts and `EncryptedPaymentInput` in
- * src/lib/loans/actions.ts). Creating/editing a budget, goal, or loan, and
- * logging a goal contribution or loan payment, all still work normally
- * through their own pages (client-side encrypt path).
- * `budget.delete`/`goal.delete`/`loan.delete` are unaffected (no amount
- * involved) and stay. Only the natural-language Smart Entry shortcut is
- * unavailable for these.
+ * `goal.contribution`/`loan.payment`/`investment.contribution` have the
+ * added wrinkle that they'd need the goal/loan/investment's *current*
+ * decrypted amount to compute a new running total or split, which the
+ * server can't read either (see the comments on
+ * `EncryptedContributionInput` in src/lib/goals/actions.ts,
+ * `EncryptedPaymentInput` in src/lib/loans/actions.ts, and
+ * `EncryptedContributionInput` in src/lib/investments/actions.ts).
+ * Creating/editing a budget, goal, loan, or investment, and logging a
+ * contribution or payment, all still work normally through their own pages
+ * (client-side encrypt path). `budget.delete`/`goal.delete`/`loan.delete`/
+ * `investment.delete` are unaffected (no amount involved) and stay. Only
+ * the natural-language Smart Entry shortcut is unavailable for these.
  */
 export const CAPABILITY_DEFINITIONS: AICapability[] = [
-  {
-    key: "investment.contribution",
-    module: "investment",
-    label: "Investment contribution",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "Money added to an EXISTING investment holding (a SIP/top-up, not a new " +
-      "holding). args: investmentName (string, required — must refer to a " +
-      "holding the user already has), amount (number, required), date " +
-      "(YYYY-MM-DD, optional, defaults to today).",
-    schema: investmentContributionSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.investmentName);
-      const investment = matchByName(nameGuess, ref.investments);
-      const warnings: string[] = [];
-      if (!investment) {
-        warnings.push(
-          nameGuess
-            ? `Couldn't match investment "${nameGuess}" — pick one below.`
-            : "No investment specified — pick one below.",
-        );
-      }
-      const amount = toNumber(args.amount);
-      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
-
-      const parsed = investmentContributionSchema.safeParse({
-        amount,
-        addToValue: true,
-        contributedAt: normalizeDate(args.date) ?? todayISO(),
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      // Unresolved: still a valid draft, just missing a target — the UI
-      // shows a picker (never a guessed id) and commit re-requires it.
-      return {
-        ok: true,
-        fields: parsed.data,
-        targetId: investment?.id,
-        targetLabel: investment?.name,
-        warnings,
-      };
-    },
-    execute: (fields, targetId) => recordContribution(targetId!, undefined, toFormData(fields)),
-  },
-
-  {
-    key: "investment.create",
-    module: "investment",
-    label: "New investment",
-    requiresTarget: false,
-    destructive: false,
-    actionLabel: "Add",
-    promptDescription:
-      "A brand-new investment holding the user is starting. args: name " +
-      "(string, required), type (one of stocks/mutual_fund/etf/bonds/crypto/" +
-      "real_estate/gold/retirement/other, optional), investedAmount (number, " +
-      "required), currentValue (number, optional — defaults to investedAmount " +
-      "for a fresh holding), monthlyContribution (number, optional), " +
-      "expectedReturn (number, percent, optional), startDate (YYYY-MM-DD, " +
-      "optional, defaults to today).",
-    schema: investmentInputSchema,
-    async resolve(args) {
-      const name = asString(args.name);
-      const investedAmount = toNumber(args.investedAmount);
-      if (!name || investedAmount == null) {
-        return { ok: false, warnings: [], error: "Missing investment name or invested amount." };
-      }
-      const currentValue = toNumber(args.currentValue) ?? investedAmount;
-      const type = normalizeEnum(args.type, INVESTMENT_TYPES);
-
-      const parsed = investmentInputSchema.safeParse({
-        name,
-        type: type ?? undefined,
-        investedAmount,
-        currentValue,
-        monthlyContribution: toNumber(args.monthlyContribution),
-        expectedReturn: toNumber(args.expectedReturn) ?? 0,
-        startDate: normalizeDate(args.startDate) ?? todayISO(),
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, warnings: [] };
-    },
-    execute: (fields) => createInvestment(undefined, toFormData(fields)),
-  },
-
-  {
-    key: "investment.edit",
-    module: "investment",
-    label: "Edit investment",
-    requiresTarget: true,
-    destructive: false,
-    actionLabel: "Save",
-    promptDescription:
-      "Change details of an EXISTING investment holding. args: investmentName " +
-      "(string, required — must refer to a holding the user already has), " +
-      "plus ONLY the fields the user wants changed: name, type, " +
-      "investedAmount, currentValue, monthlyContribution, expectedReturn, " +
-      "startDate.",
-    schema: investmentInputSchema,
-    async resolve(args, ref) {
-      const nameGuess = asString(args.investmentName);
-      const match = matchByName(nameGuess, ref.investments);
-      if (!match) {
-        return {
-          ok: false,
-          warnings: [],
-          error: nameGuess ? `Couldn't find an investment named "${nameGuess}".` : "Missing investment name.",
-        };
-      }
-      const current = await fetchCurrentInvestment(match.id);
-      if (!current) return { ok: false, warnings: [], error: "That investment could not be found." };
-
-      const type = normalizeEnum(args.type, INVESTMENT_TYPES);
-      const parsed = investmentInputSchema.safeParse({
-        name: asString(args.name) ?? current.name,
-        type: type ?? current.type,
-        investedAmount: toNumber(args.investedAmount) ?? current.investedAmount,
-        currentValue: toNumber(args.currentValue) ?? current.currentValue,
-        monthlyContribution:
-          args.monthlyContribution !== undefined ? toNumber(args.monthlyContribution) : current.monthlyContribution,
-        expectedReturn: toNumber(args.expectedReturn) ?? current.expectedReturn,
-        startDate: normalizeDate(args.startDate) ?? current.startDate,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
-      return { ok: true, fields: parsed.data, targetId: match.id, targetLabel: match.name, warnings: [] };
-    },
-    execute: (fields, targetId) => updateInvestment(targetId!, undefined, toFormData(fields)),
-  },
-
   {
     key: "investment.delete",
     module: "investment",

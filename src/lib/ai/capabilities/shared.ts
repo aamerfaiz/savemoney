@@ -63,12 +63,11 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       .select("id, name")
       .is("deleted_at", null)
       .eq("is_active", true),
-    supabase
-      .from("investments")
-      .select("id, name, monthly_contribution")
-      .is("deleted_at", null),
-    // No `emi` here — encrypted since Phase 3.5.4, same as budgets never
-    // had a plaintext amount to build a typicalAmount from.
+    // No `monthly_contribution` here — encrypted since Phase 3.5.4, same
+    // as budgets never had a plaintext amount to build a typicalAmount
+    // from.
+    supabase.from("investments").select("id, name").is("deleted_at", null),
+    // No `emi` here — encrypted since Phase 3.5.4, same reasoning.
     supabase.from("loans").select("id, name").is("deleted_at", null),
     supabase.from("goals").select("id, name").is("deleted_at", null),
     supabase
@@ -95,17 +94,9 @@ export async function loadReferenceData(): Promise<ReferenceData> {
       id: a.id,
       name: a.name,
     })),
-    investments: (
-      (investments ?? []) as {
-        id: string;
-        name: string;
-        monthly_contribution: string | number | null;
-      }[]
-    ).map((i) => ({
+    investments: ((investments ?? []) as { id: string; name: string }[]).map((i) => ({
       id: i.id,
       name: i.name,
-      typicalAmount:
-        i.monthly_contribution == null ? undefined : Number(i.monthly_contribution),
     })),
     loans: ((loans ?? []) as { id: string; name: string }[]).map((l) => ({
       id: l.id,
@@ -135,25 +126,6 @@ export async function loadReferenceData(): Promise<ReferenceData> {
  * of what's already there (edit capabilities never wipe fields the user
  * didn't mention). RLS scopes every read to the caller.
  */
-export async function fetchCurrentInvestment(id: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("investments")
-    .select("name, type, invested_amount, current_value, monthly_contribution, expected_return, start_date")
-    .eq("id", id)
-    .single();
-  if (!data) return null;
-  return {
-    name: data.name as string,
-    type: data.type as string,
-    investedAmount: Number(data.invested_amount),
-    currentValue: Number(data.current_value),
-    monthlyContribution: data.monthly_contribution == null ? null : Number(data.monthly_contribution),
-    expectedReturn: Number(data.expected_return),
-    startDate: data.start_date as string,
-  };
-}
-
 export async function fetchCurrentRecurring(id: string) {
   const supabase = await createClient();
   const { data } = await supabase
