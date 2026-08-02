@@ -41,12 +41,30 @@ import { deriveKekFromSecret, fromBase64, unwrapDek } from "@/lib/vault/crypto";
  * out, which also blocked reaching the nav to log out. Closing it leaves
  * a page-level trigger button behind so they can reopen it whenever
  * they're ready, instead of the old "go to Settings" link.
+ *
+ * Deliberately waits for `useVaultStatus()` to actually resolve before
+ * rendering `VaultUnlockFlow` at all, rather than passing it a guessed
+ * `hasVault` while loading. `VaultUnlockFlow` only reads its `hasVault`
+ * prop once, to seed its internal mode at mount (same as the Settings
+ * page, where the prop is already correct from a server-rendered value
+ * by the time anything mounts) — feeding it a since-corrected guess here
+ * would leave a brand-new user stuck on the "enter your passphrase"
+ * screen forever, since nothing re-derives that state after mount.
  */
 export function VaultLockedPrompt({ module }: { module: string }) {
   const status = useVaultStatus();
+  const [open, setOpen] = useState(true);
+
+  if (status.isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <div className="h-24 animate-pulse rounded-md border border-border bg-muted/40" />
+      </div>
+    );
+  }
+
   const hasVault = status.data?.hasVault ?? true;
   const isOAuthOnly = status.data?.isOAuthOnly ?? false;
-  const [open, setOpen] = useState(true);
 
   return (
     <>
