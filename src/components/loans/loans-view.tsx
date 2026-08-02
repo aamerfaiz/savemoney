@@ -12,6 +12,7 @@ import { PaymentForm } from "./payment-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteLoan } from "@/lib/loans/actions";
 import type { LoansData } from "@/lib/loans/compute";
 import { LOAN_TYPE_ICON, type LoanWithProjection } from "@/lib/loans/types";
@@ -30,7 +31,7 @@ export function LoansView({
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<LoanWithProjection | null>(null);
   const [paying, setPaying] = useState<LoanWithProjection | null>(null);
   const { currency } = data;

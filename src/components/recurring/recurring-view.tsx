@@ -11,6 +11,7 @@ import { RecurringForm } from "./recurring-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDateShort, daysUntil } from "@/lib/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import {
   deleteRecurringRule,
   toggleRecurringRule,
@@ -43,7 +44,7 @@ export function RecurringView({
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<RecurringRuleWithSchedule | null>(null);
   const { currency } = data;
 

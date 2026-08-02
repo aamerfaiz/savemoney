@@ -13,6 +13,7 @@ import { BudgetForm } from "./budget-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteBudget } from "@/lib/budgets/actions";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { BudgetWithProgress } from "@/lib/budgets/types";
@@ -34,7 +35,7 @@ export function BudgetsView({
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<BudgetWithProgress | null>(null);
   const { safeToSpend, currency } = data;
 

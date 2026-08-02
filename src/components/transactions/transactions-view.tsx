@@ -16,6 +16,7 @@ import {
   type CurrencyCode,
 } from "@/lib/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteTransaction, type ActionResult } from "@/lib/transactions/actions";
 import type {
   Transaction,
@@ -71,7 +72,7 @@ export function TransactionsView({
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<Transaction | null>(null);
   const currency = summary.currency;
 

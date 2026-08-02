@@ -12,6 +12,7 @@ import { ContributionForm } from "./contribution-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteInvestment } from "@/lib/investments/actions";
 import type { InvestmentsData } from "@/lib/investments/compute";
 import {
@@ -34,7 +35,7 @@ export function InvestmentsView({
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<InvestmentWithProjection | null>(null);
   const [contributing, setContributing] =
     useState<InvestmentWithProjection | null>(null);
