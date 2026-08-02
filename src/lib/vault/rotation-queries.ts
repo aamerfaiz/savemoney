@@ -6,11 +6,15 @@ import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface RotationRawData {

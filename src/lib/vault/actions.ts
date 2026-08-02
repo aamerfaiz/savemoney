@@ -24,12 +24,16 @@ export interface ActionResult {
 }
 
 async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." } as const;
-  return { userId: user.id } as const;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "You need to sign in first." } as const;
+    return { userId: user.id } as const;
+  } catch {
+    return { error: "Couldn't verify your session. Try again." } as const;
+  }
 }
 
 export const wrappedPayloadSchema = z.object({

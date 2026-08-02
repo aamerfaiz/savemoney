@@ -6,11 +6,15 @@ import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 
 async function currentUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user;
+  } catch {
+    return null;
+  }
 }
 
 /**
