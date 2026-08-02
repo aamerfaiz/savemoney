@@ -260,6 +260,31 @@ password in that flow to derive a KEK from. E2EE therefore needs a secret
   to fall back on to lower how often it's needed, which is a real cost of
   deferring WebAuthn, worth remembering if it starts happening often in
   practice.
+- **Total lockout ("reset account", built ad hoc, not a numbered
+  sub-phase):** a real user hit this — vault set up on a device they no
+  longer have access to, the passphrase retyped elsewhere didn't match
+  (near-certainly a silent byte-level mismatch: no Unicode normalization
+  happens anywhere in this stack, confirmed by reading both `vault/
+  crypto.ts` and hash-wasm's own `getUInt8Buffer`, so a passphrase with
+  any accent/quote/dash that a different keyboard represents differently
+  fails outright even though it looks identical), and the recovery code
+  wasn't available either. This is exactly the scenario "not even me"
+  says has no recovery path — confirmed by direct inspection: the
+  `vault_keys` row was intact and never touched by rotation, so it
+  genuinely was unrecoverable, not a bug. **"Reset account"** (Settings →
+  Danger Zone, `vault/reset-actions.ts` + `components/settings/
+  reset-account-settings.tsx`) is the honest way out: type-to-confirm
+  dialog, then deletes every row this account owns across every
+  vault-DEK-encrypted table (permanently undecryptable garbage anyway,
+  once the wrapping DEK is unreachable — this doesn't destroy anything
+  still readable) plus the vault credentials and MCP tokens, landing back
+  at "no vault set up" for a real fresh start. Deliberately leaves
+  `accounts`/`categories`/the `auth.users` row/profile alone — none of
+  those were ever vault-encrypted, so a lost passphrase doesn't touch
+  them, and a brand-new signup already re-seeds categories. Works
+  regardless of vault lock state (scoped by the authenticated session's
+  `userId` only, never needs the DEK) since that's precisely the state
+  it exists to get someone out of.
 
 ## Scope — what gets encrypted
 
