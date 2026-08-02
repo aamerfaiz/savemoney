@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { KeyRound, ShieldAlert } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
@@ -33,28 +35,52 @@ import { deriveKekFromSecret, fromBase64, unwrapDek } from "@/lib/vault/crypto";
  * while the status query is loading or if it fails — the safer
  * assumption, since it never tells an existing vault owner their data is
  * gone.
+ *
+ * The overlay opens automatically but is genuinely closable (real X /
+ * backdrop / Escape, not a no-op) — it used to trap the user with no way
+ * out, which also blocked reaching the nav to log out. Closing it leaves
+ * a page-level trigger button behind so they can reopen it whenever
+ * they're ready, instead of the old "go to Settings" link.
  */
 export function VaultLockedPrompt({ module }: { module: string }) {
   const status = useVaultStatus();
   const hasVault = status.data?.hasVault ?? true;
   const isOAuthOnly = status.data?.isOAuthOnly ?? false;
+  const [open, setOpen] = useState(true);
 
   return (
-    <Dialog
-      open
-      onClose={() => {}}
-      title={hasVault ? "Unlock your vault" : "Set up your vault"}
-      description={
-        hasVault
-          ? `Unlock your vault to see ${module}.`
-          : `Set up your Vault Passphrase to see ${module}.`
-      }
-    >
-      <div className="space-y-4">
-        {hasVault && <QuickUnlockPin />}
-        <VaultUnlockFlow hasVault={hasVault} isOAuthOnly={isOAuthOnly} />
+    <>
+      <div className="mx-auto max-w-3xl">
+        <div className="space-y-2.5 rounded-md border border-border bg-muted/40 p-4 text-sm">
+          <p className="flex items-center gap-1.5 font-medium text-warning">
+            <ShieldAlert className="size-4 shrink-0" />
+            {hasVault
+              ? `Unlock your vault to see ${module}.`
+              : `Set up encryption to see ${module}.`}
+          </p>
+          <Button type="button" size="sm" onClick={() => setOpen(true)}>
+            <KeyRound className="size-4" />
+            {hasVault ? "Unlock vault" : "Set Encryption"}
+          </Button>
+        </div>
       </div>
-    </Dialog>
+
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={hasVault ? "Unlock your vault" : "Set up your vault"}
+        description={
+          hasVault
+            ? `Unlock your vault to see ${module}.`
+            : `Set up your Vault Passphrase to see ${module}.`
+        }
+      >
+        <div className="space-y-4">
+          {hasVault && <QuickUnlockPin />}
+          <VaultUnlockFlow hasVault={hasVault} isOAuthOnly={isOAuthOnly} />
+        </div>
+      </Dialog>
+    </>
   );
 }
 

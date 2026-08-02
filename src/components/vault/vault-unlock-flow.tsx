@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog } from "@/components/ui/dialog";
+import { ResetAccountSettings } from "@/components/settings/reset-account-settings";
 import {
   decodeRecoveryCode,
   deriveKekFromHighEntropySecret,
@@ -344,6 +345,14 @@ export function VaultUnlockFlow({
           This only works with your recovery code — if you&apos;ve lost both
           your passphrase and this code, your data is permanently unreadable.
         </p>
+
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">
+            Don&apos;t have your recovery code either? You can start fresh
+            instead:
+          </p>
+          <ResetAccountSettings />
+        </div>
       </div>
     );
   }
