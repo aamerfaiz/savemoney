@@ -818,7 +818,7 @@ folded into generic "connect an agent" copy.
         verified**: a real end-to-end session (real login, real data) —
         this sandbox has no Supabase auth credentials to drive that with,
         same limitation as every phase so far.
-- [ ] **3.5.4 — Roll the pattern out** to the remaining finance tables,
+- [x] **3.5.4 — Roll the pattern out** to the remaining finance tables,
       module by module, following the skill's "Add a new feature module"
       shape for each. Each one likely repeats 3.5.3's real lesson: trace
       every consumer before assuming a table can be migrated in isolation —
