@@ -17,6 +17,7 @@
  */
 
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 interface Chunk {
   completed: number;
@@ -56,23 +57,34 @@ export function withProgress<T>(key: string, n: number, promise: Promise<T>): Pr
  * page actually awaits (e.g. just `["finance-side-data"]` for Goals), not
  * every key that's ever been registered this session. A page that only
  * reads `useSideData` shouldn't have its progress diluted (or falsely
- * completed) by a `finance-data` chunk some other page finished earlier. */
+ * completed) by a `finance-data` chunk some other page finished earlier.
+ *
+ * Wrapped in `useShallow`: the selector below builds a fresh `{ percent,
+ * known }` object every call, and Zustand's `useSyncExternalStore`-backed
+ * subscription requires `getSnapshot()` to return a referentially stable
+ * result when the underlying state hasn't changed. Without `useShallow`
+ * (which compares the returned object's own fields instead of its
+ * reference), every store update anywhere — even to an unrelated key —
+ * looks like a change, which React detects as an unstable snapshot and
+ * responds to by re-rendering forever ("Maximum update depth exceeded"). */
 export function useDecryptProgress(keys: string[]) {
-  return useDecryptProgressStore((s) => {
-    let completed = 0;
-    let total = 0;
-    for (const key of keys) {
-      const c = s.chunks[key];
-      if (c) {
-        completed += c.completed;
-        total += c.total;
+  return useDecryptProgressStore(
+    useShallow((s) => {
+      let completed = 0;
+      let total = 0;
+      for (const key of keys) {
+        const c = s.chunks[key];
+        if (c) {
+          completed += c.completed;
+          total += c.total;
+        }
       }
-    }
-    return {
-      percent: total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 100,
-      /** False while still waiting on the network fetch (no row counts to
-       * weight by yet) — callers show an indeterminate state until then. */
-      known: total > 0,
-    };
-  });
+      return {
+        percent: total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 100,
+        /** False while still waiting on the network fetch (no row counts to
+         * weight by yet) — callers show an indeterminate state until then. */
+        known: total > 0,
+      };
+    }),
+  );
 }
