@@ -1,10 +1,10 @@
-import { GoalsView } from "@/components/goals/goals-view";
-import { getGoalsData } from "@/lib/goals/queries";
+import { AuthedGoalsView } from "@/components/goals/authed-goals-view";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Goals · Finance OS" };
 
 export default async function GoalsPage() {
-  const data = await getGoalsData();
+  const currency = await getDisplayCurrency();
 
-  return <GoalsView data={data} />;
+  return <AuthedGoalsView currency={currency} />;
 }

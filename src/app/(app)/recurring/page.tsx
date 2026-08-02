@@ -1,21 +1,21 @@
-import { RecurringView } from "@/components/recurring/recurring-view";
-import { getRecurringData } from "@/lib/recurring/queries";
+import { AuthedRecurringView } from "@/components/recurring/authed-recurring-view";
 import { getCategories, getAccounts } from "@/lib/transactions/reference";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Recurring · Finance OS" };
 
 export default async function RecurringPage() {
-  const [data, categories, accounts] = await Promise.all([
-    getRecurringData(),
+  const [categories, accounts, currency] = await Promise.all([
     getCategories(),
     getAccounts(),
+    getDisplayCurrency(),
   ]);
 
   return (
-    <RecurringView
-      data={data}
+    <AuthedRecurringView
       categories={categories}
       accounts={accounts}
+      currency={currency}
     />
   );
 }

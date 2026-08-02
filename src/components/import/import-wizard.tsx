@@ -19,11 +19,8 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
-import {
-  commitImport,
-  previewImport,
-  rollbackImport,
-} from "@/lib/import/actions";
+import { rollbackImport } from "@/lib/import/actions";
+import { commitImportClientSide, previewImportClientSide } from "@/lib/import/client-actions";
 import { detectMapping } from "@/lib/import/pipeline";
 import type {
   ColumnMapping,
@@ -32,6 +29,7 @@ import type {
   ImportPreview,
 } from "@/lib/import/types";
 import type { TransactionKind } from "@/lib/transactions/types";
+import { useVaultStore } from "@/lib/vault/store";
 
 type Step = "upload" | "map" | "preview" | "done";
 
@@ -53,6 +51,7 @@ const SAMPLE_CSV = `Date,Description,Category,Amount,Type
 
 export function ImportWizard() {
   const router = useRouter();
+  const dek = useVaultStore((s) => s.dek);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
 
@@ -94,8 +93,16 @@ export function ImportWizard() {
 
   function runPreview() {
     setError(null);
+    if (!dek) {
+      setError("Unlock your vault in Settings → Vault & Encryption first.");
+      return;
+    }
     startTransition(async () => {
-      const p = await previewImport({ rows, mapping, defaultKind });
+      const p = await previewImportClientSide(rows, mapping, defaultKind, dek);
+      if ("error" in p) {
+        setError(p.error);
+        return;
+      }
       setPreview(p);
       setStep("preview");
     });
@@ -103,14 +110,12 @@ export function ImportWizard() {
 
   function runCommit() {
     setError(null);
+    if (!dek || !preview) {
+      setError("Unlock your vault in Settings → Vault & Encryption first.");
+      return;
+    }
     startTransition(async () => {
-      const r = await commitImport({
-        rows,
-        mapping,
-        defaultKind,
-        filename,
-        skipDuplicates,
-      });
+      const r = await commitImportClientSide(preview, filename, skipDuplicates, dek);
       if (!r.ok) {
         setError(r.error ?? "Import failed.");
         return;

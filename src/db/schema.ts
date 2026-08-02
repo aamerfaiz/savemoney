@@ -23,6 +23,7 @@ import {
   integer,
   timestamp,
   date,
+  jsonb,
   pgEnum,
   index,
 } from "drizzle-orm/pg-core";
@@ -227,8 +228,13 @@ export const income = pgTable(
       onDelete: "set null",
     }),
     sourceType: incomeType("source_type").notNull().default("salary"),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    /** AES-256-GCM ciphertext (packed iv+ciphertext, see
+     * src/lib/vault/crypto.ts packPayload) under the user's vault DEK —
+     * Phase 3.5.3. Postgres-level numeric constraints are lost here by
+     * design; validation moves entirely to the client before encryption. */
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
+    /** Packed ciphertext, or NULL (never encrypt an absent value). */
     description: text("description"),
     receivedAt: date("received_at").notNull(),
     isRecurring: boolean("is_recurring").notNull().default(false),
@@ -265,11 +271,19 @@ export const expenses = pgTable(
     categoryId: uuid("category_id").references(() => categories.id, {
       onDelete: "set null",
     }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    /** AES-256-GCM ciphertext (packed iv+ciphertext, see
+     * src/lib/vault/crypto.ts packPayload) under the user's vault DEK —
+     * Phase 3.5.3. Postgres-level numeric constraints are lost here by
+     * design; validation moves entirely to the client before encryption. */
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
+    /** Packed ciphertext, or NULL (never encrypt an absent value). */
     description: text("description"),
     note: text("note"),
-    tags: text("tags").array(),
+    /** Packed ciphertext of the JSON-serialized tag array, or NULL. Was a
+     * native Postgres array; encrypting forecloses SQL-level tag filters,
+     * same trade-off as every other encrypted column (see the plan doc). */
+    tags: text("tags"),
     spentAt: date("spent_at").notNull(),
     isRecurring: boolean("is_recurring").notNull().default(false),
     frequency: frequency("frequency").notNull().default("one_time"),
@@ -303,7 +317,9 @@ export const budgets = pgTable(
       onDelete: "cascade",
     }),
     period: budgetPeriod("period").notNull().default("monthly"),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     startsOn: date("starts_on").notNull(),
     ...audit,
@@ -327,18 +343,14 @@ export const goals = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     icon: text("icon"),
-    targetAmount: numeric("target_amount", { precision: 14, scale: 2 })
-      .notNull(),
-    currentAmount: numeric("current_amount", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    targetAmount: text("target_amount").notNull(),
+    currentAmount: text("current_amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     deadline: date("deadline"),
     priority: goalPriority("priority").notNull().default("medium"),
-    monthlyContribution: numeric("monthly_contribution", {
-      precision: 14,
-      scale: 2,
-    }),
+    monthlyContribution: text("monthly_contribution"),
     status: goalStatus("status").notNull().default("active"),
     ...audit,
   },
@@ -355,7 +367,9 @@ export const goalContributions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     contributedAt: date("contributed_at").notNull(),
     note: text("note"),
     ...audit,
@@ -379,15 +393,16 @@ export const loans = pgTable(
       .references(() => authUsers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     type: loanType("type").notNull().default("personal"),
-    principal: numeric("principal", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2). interestRate/remainingMonths stay plaintext.
+    principal: text("principal").notNull(),
     interestRate: numeric("interest_rate", { precision: 6, scale: 3 })
       .notNull()
       .default("0"),
-    emi: numeric("emi", { precision: 14, scale: 2 }).notNull().default("0"),
-    remainingAmount: numeric("remaining_amount", { precision: 14, scale: 2 })
-      .notNull(),
+    emi: text("emi").notNull(),
+    remainingAmount: text("remaining_amount").notNull(),
     remainingMonths: integer("remaining_months"),
-    extraEmi: numeric("extra_emi", { precision: 14, scale: 2 }),
+    extraEmi: text("extra_emi"),
     currency: text("currency").notNull().default("USD"),
     startDate: date("start_date").notNull(),
     ...audit,
@@ -405,15 +420,11 @@ export const loanPayments = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-    principalComponent: numeric("principal_component", {
-      precision: 14,
-      scale: 2,
-    }),
-    interestComponent: numeric("interest_component", {
-      precision: 14,
-      scale: 2,
-    }),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
+    principalComponent: text("principal_component"),
+    interestComponent: text("interest_component"),
     paidOn: date("paid_on").notNull(),
     isExtra: boolean("is_extra").notNull().default(false),
     ...audit,
@@ -444,14 +455,11 @@ export const investments = pgTable(
     }),
     name: text("name").notNull(),
     type: investmentType("type").notNull().default("stocks"),
-    investedAmount: numeric("invested_amount", { precision: 14, scale: 2 })
-      .notNull(),
-    currentValue: numeric("current_value", { precision: 14, scale: 2 })
-      .notNull(),
-    monthlyContribution: numeric("monthly_contribution", {
-      precision: 14,
-      scale: 2,
-    }),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    investedAmount: text("invested_amount").notNull(),
+    currentValue: text("current_value").notNull(),
+    monthlyContribution: text("monthly_contribution"),
     /** Expected annual return as a percentage, e.g. 8.0 — drives projection. */
     expectedReturn: numeric("expected_return", { precision: 6, scale: 3 })
       .notNull()
@@ -476,7 +484,9 @@ export const investmentContributions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     contributedAt: date("contributed_at").notNull(),
     note: text("note"),
     ...audit,
@@ -511,7 +521,9 @@ export const recurringRules = pgTable(
     accountId: uuid("account_id").references(() => accounts.id, {
       onDelete: "set null",
     }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    amount: text("amount").notNull(),
     currency: text("currency").notNull().default("USD"),
     frequency: frequency("frequency").notNull().default("monthly"),
     /** Repeat every N periods of `frequency` (>= 1). */
@@ -594,10 +606,11 @@ export const netWorthSnapshots = pgTable(
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
     capturedAt: date("captured_at").notNull(),
-    totalAssets: numeric("total_assets", { precision: 14, scale: 2 }).notNull(),
-    totalLiabilities: numeric("total_liabilities", { precision: 14, scale: 2 })
-      .notNull(),
-    netWorth: numeric("net_worth", { precision: 14, scale: 2 }).notNull(),
+    // Packed ciphertext (Phase 3.5.4, see docs/e2ee-path-b-plan.md) — was
+    // numeric(14,2).
+    totalAssets: text("total_assets").notNull(),
+    totalLiabilities: text("total_liabilities").notNull(),
+    netWorth: text("net_worth").notNull(),
     currency: text("currency").notNull().default("USD"),
     note: text("note"),
     ...audit,
@@ -658,6 +671,136 @@ export const aiProviderKeys = privateSchema.table(
   (t) => [index("ai_provider_keys_user_idx").on(t.userId)],
 );
 
+/* ----------------------------------------------------------------------- */
+/* Vault (Phase 3.5, E2EE "not even me") — private schema, NOT PostgREST-  */
+/* exposed. See docs/e2ee-path-b-plan.md.                                  */
+/* ----------------------------------------------------------------------- */
+/* Never a plaintext-readable table: every column here is either ciphertext
+ * or non-secret metadata (salts, KDF params, timestamps) that's useless
+ * without the secret the user holds. No server-side "read plaintext" action
+ * exists for either table below, by design — see the plan doc's "not even
+ * me" goal. Same `private` schema / PostgREST-lockdown / RLS treatment as
+ * `ai_provider_keys` above; RLS + revokes hand-written in
+ * drizzle/manual/0007_vault_and_mcp_tokens_rls.sql. */
+
+/** One row per user: the wrapped DEK, under each of its two mandatory
+ * unlock paths (password, recovery key). A third, optional per-agent wrap
+ * lives in `mcpAgentTokens` below, not here — it's independently
+ * mintable/revocable and there can be many of them per user. */
+export const vaultKeys = privateSchema.table(
+  "vault_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** AES-256-GCM(DEK) under a KEK derived (Argon2id) from the vault
+     * passphrase. */
+    wrappedDekByPassword: text("wrapped_dek_by_password").notNull(),
+    passwordDekIv: text("password_dek_iv").notNull(),
+    passwordKekSalt: text("password_kek_salt").notNull(),
+    /** Argon2id params used for the passphrase KEK (memory/iterations/
+     * parallelism) — recorded per-user so they can be strengthened for new
+     * setups without invalidating existing vaults. */
+    passwordKdfParams: jsonb("password_kdf_params").notNull(),
+    /** AES-256-GCM(DEK) under a KEK derived (HKDF — the recovery key is
+     * already full-entropy random, not a human secret, so a slow KDF buys
+     * nothing) from the one-time recovery key. */
+    wrappedDekByRecovery: text("wrapped_dek_by_recovery").notNull(),
+    recoveryDekIv: text("recovery_dek_iv").notNull(),
+    recoveryKekSalt: text("recovery_kek_salt").notNull(),
+    /** Set once the user has confirmed (at setup) that they saved the
+     * recovery code. The code itself is never stored — this is just an
+     * acknowledgment timestamp. */
+    recoveryAcknowledgedAt: timestamp("recovery_acknowledged_at", {
+      withTimezone: true,
+    }),
+    ...audit,
+  },
+  (t) => [index("vault_keys_user_idx").on(t.userId)],
+);
+
+export const mcpTokenScope = privateSchema.enum("mcp_token_scope", [
+  /** Metadata/computed summaries only — never unwraps the DEK. Works
+   * headless, no vault-gating. */
+  "read_summary",
+  /** Real field-level financial data — unwraps the DEK transiently,
+   * per-call, via this token's own wrap. */
+  "read_full",
+]);
+
+/** A user-mintable, independently revocable third unlock path for the DEK
+ * (see docs/e2ee-path-b-plan.md "Resolved: MCP agent access"). Many rows
+ * per user — one per connected agent/integration. */
+export const mcpAgentTokens = privateSchema.table(
+  "mcp_agent_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** User-facing name, e.g. "Claude Desktop", "budget-check automation". */
+    label: text("label").notNull(),
+    /** SHA-256 of the raw token, for lookup/rate-limiting only — never
+     * usable to derive the KEK, so a DB leak alone doesn't unlock anything. */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** AES-256-GCM(DEK) under an HKDF-derived KEK — see wrappedDekByRecovery
+     * above for why no slow KDF is needed for a full-entropy secret. */
+    wrappedDekByToken: text("wrapped_dek_by_token").notNull(),
+    tokenDekIv: text("token_dek_iv").notNull(),
+    tokenKekSalt: text("token_kek_salt").notNull(),
+    scope: mcpTokenScope("scope").notNull().default("read_summary"),
+    /** Phase 3.5.9 — a second, independent axis from `scope`: whether this
+     * token can call write tools (create/update/delete) at all, on top of
+     * whatever it can read. Defaults to `false` for every existing and new
+     * token — write access is opt-in per token, never silently granted to
+     * a token minted before this existed. Write tools additionally require
+     * `scope = 'read_full'` (see mcp/session.ts) — a token that can't read
+     * real amounts has no sane way to confirm a change to one either. */
+    canWrite: boolean("can_write").notNull().default(false),
+    /** Chosen by the user at creation (preset durations) but always capped
+     * server-side — "no expiry" is never offered. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...audit,
+  },
+  (t) => [
+    index("mcp_agent_tokens_user_idx").on(t.userId),
+    index("mcp_agent_tokens_token_hash_idx").on(t.tokenHash),
+  ],
+);
+
+/** Phase 3.5.9 — records that an MCP tool was called, never what it saw or
+ * changed: `toolName`/`action`/`targetTable`/`targetId` only, no field
+ * values, no ciphertext, no plaintext. Serves two purposes: the "who/when
+ * a token was used" audit trail the plan doc calls for ("content stays
+ * opaque, but usage isn't"), and a cheap basis for per-token rate
+ * limiting (count recent rows instead of an in-memory counter, which
+ * wouldn't be shared across serverless instances anyway). */
+export const mcpToolCallLog = privateSchema.table(
+  "mcp_tool_call_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenId: uuid("token_id")
+      .notNull()
+      .references(() => mcpAgentTokens.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    action: text("action").notNull(), // "read" | "propose" | "write"
+    targetTable: text("target_table"),
+    targetId: uuid("target_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mcp_tool_call_log_token_idx").on(t.tokenId, t.createdAt),
+    index("mcp_tool_call_log_user_idx").on(t.userId),
+  ],
+);
+
 /* Convenience type exports */
 export type Profile = typeof profiles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -677,3 +820,5 @@ export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type AIProviderKey = typeof aiProviderKeys.$inferSelect;
+export type VaultKeys = typeof vaultKeys.$inferSelect;
+export type McpAgentToken = typeof mcpAgentTokens.$inferSelect;

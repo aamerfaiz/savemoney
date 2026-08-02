@@ -1,10 +1,10 @@
-import { InvestmentsView } from "@/components/investments/investments-view";
-import { getInvestmentsData } from "@/lib/investments/queries";
+import { AuthedInvestmentsView } from "@/components/investments/authed-investments-view";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Investments · Finance OS" };
 
 export default async function InvestmentsPage() {
-  const data = await getInvestmentsData();
+  const currency = await getDisplayCurrency();
 
-  return <InvestmentsView data={data} />;
+  return <AuthedInvestmentsView currency={currency} />;
 }

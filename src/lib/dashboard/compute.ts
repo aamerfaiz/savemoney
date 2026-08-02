@@ -1,19 +1,20 @@
-import "server-only";
+/**
+ * Pure dashboard composition (Phase 3.5.3) — the exact composition logic
+ * that used to live in getDashboardData(), unchanged, now taking
+ * already-decrypted/computed finance data instead of fetching it itself.
+ */
 
-import { getProfile } from "@/lib/profile/queries";
-import { getAnalyticsData } from "@/lib/analytics/queries";
-import { getBudgetsData } from "@/lib/budgets/queries";
-import { getGoalsData } from "@/lib/goals/queries";
-import { getLoansData } from "@/lib/loans/queries";
-import { getInvestmentsData } from "@/lib/investments/queries";
-import { getRecurringData } from "@/lib/recurring/queries";
+import { buildNetWorth } from "@/lib/networth/compute";
 import { expandOccurrences, toUpcomingItems } from "@/lib/calendar/build";
-import {
-  buildNetWorth,
-  fetchNetWorthSnapshots,
-} from "@/lib/networth/queries";
-import { getTransactions } from "@/lib/transactions/queries";
-import { createClient } from "@/lib/supabase/server";
+import type { CurrencyCode } from "@/lib/format";
+import type { BudgetsData } from "@/lib/budgets/compute";
+import type { AnalyticsData } from "@/lib/analytics/types";
+import type { Transaction as TxnRow } from "@/lib/transactions/types";
+import type { GoalsData } from "@/lib/goals/compute";
+import type { LoansData } from "@/lib/loans/compute";
+import type { InvestmentsData } from "@/lib/investments/compute";
+import type { RecurringData } from "@/lib/recurring/compute";
+import type { SnapshotSummary } from "@/lib/networth/types";
 import type {
   DashboardData,
   GoalSummary,
@@ -21,37 +22,36 @@ import type {
   UpcomingItem,
 } from "@/data/mock-dashboard";
 
-/** The dashboard snapshot, composed entirely from the real module queries. */
-export async function getDashboardData(): Promise<DashboardData> {
-  const supabase = await createClient();
-  const [
-    profile,
-    analytics,
+export function computeDashboardData(input: {
+  userName: string;
+  currency: CurrencyCode;
+  budgets: BudgetsData;
+  analytics: AnalyticsData;
+  transactions: TxnRow[];
+  goalsData: GoalsData;
+  loansData: LoansData;
+  investmentsData: InvestmentsData;
+  recurringData: RecurringData;
+  snapshots: SnapshotSummary[];
+  now?: Date;
+}): DashboardData {
+  const {
+    userName,
+    currency,
     budgets,
+    analytics,
+    transactions,
     goalsData,
     loansData,
     investmentsData,
     recurringData,
     snapshots,
-    txns,
-  ] = await Promise.all([
-    getProfile(),
-    getAnalyticsData(),
-    getBudgetsData(),
-    getGoalsData(),
-    getLoansData(),
-    getInvestmentsData(),
-    getRecurringData(),
-    fetchNetWorthSnapshots(supabase),
-    getTransactions("all"),
-  ]);
+  } = input;
+  const now = input.now ?? new Date();
 
-  const currency = profile.baseCurrency;
   const months = analytics.months;
   const thisMonth = months[months.length - 1] ?? { income: 0, expenses: 0, net: 0 };
 
-  // Net worth: composed from the same engine the Net Worth page uses (investment
-  // holdings + goal savings − outstanding debt), so the two never diverge.
   const nw = buildNetWorth({
     components: {
       investmentsValue: investmentsData.totalValue,
@@ -62,9 +62,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     snapshots,
     currency,
   });
-  const netWorth = nw.result.netWorth;
-  const netWorthTrend = nw.trend;
-  const netWorthChangePct = nw.changePct;
 
   const entertainment = budgets.budgets.find(
     (b) => b.categoryName?.toLowerCase() === "entertainment",
@@ -81,9 +78,6 @@ export async function getDashboardData(): Promise<DashboardData> {
       target: g.targetAmount,
     }));
 
-  // Upcoming bills + EMIs, composed from the same expansion the calendar uses
-  // so the dashboard card and the calendar page never diverge.
-  const now = new Date();
   const upcoming: UpcomingItem[] = toUpcomingItems(
     expandOccurrences({
       rules: recurringData.rules,
@@ -95,7 +89,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     now,
   );
 
-  const recent: DashTxn[] = txns.slice(0, 6).map((t) => ({
+  const recent: DashTxn[] = transactions.slice(0, 6).map((t) => ({
     id: t.id,
     title: t.description || t.categoryName || (t.kind === "income" ? "Income" : "Expense"),
     category: t.categoryName ?? "Uncategorized",
@@ -106,13 +100,13 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   return {
     currency,
-    userName: profile.name,
+    userName,
     monthlyIncome: thisMonth.income,
     monthlyExpenses: thisMonth.expenses,
     savings: thisMonth.net,
     investments: investmentsData.totalValue,
-    netWorth,
-    netWorthChangePct,
+    netWorth: nw.result.netWorth,
+    netWorthChangePct: nw.changePct,
     cashFlow: thisMonth.net,
     budget: budgets.safeToSpend,
     health: analytics.health,
@@ -122,7 +116,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     goals,
     upcoming,
     recent,
-    netWorthTrend,
+    netWorthTrend: nw.trend,
     spendingByCategory: analytics.byCategory.slice(0, 6),
   };
 }

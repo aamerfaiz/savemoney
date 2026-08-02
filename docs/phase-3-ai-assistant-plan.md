@@ -123,6 +123,28 @@ guest data for that module — don't add a route there without one.
       computing numbers itself. Unrelated to Smart Entry (read-only
       narration, not data entry).
 
+## Phase 3.5 — End-to-end encryption ("not even me")
+
+Not part of the original Phase 3 spec — added after a security-model
+discussion concluded that server-side envelope encryption (this file's
+Phase 3.1/3.2 model, `AI_KEYS_ENCRYPTION_KEY`) isn't sufficient once the
+bar is "even the developer can't read it," not just "a DB leak can't read
+it." Scope reaches every financial table, not just the AI keys, so it's
+tracked in its own doc rather than inline here.
+
+- [x] **Live for 3.5.0–3.5.9** — vault infrastructure, the transient AI-key
+      relay, every finance table's client-side field encryption, the
+      passphrase/recovery-code/quick-unlock/vault-rotation UX, automatic
+      backfill of pre-migration plaintext rows, and the MCP agent server
+      (read + confirm-gated write tools, transport, `get_capabilities`,
+      the Agent Access write-access toggle) are all shipped.
+      `private.ai_provider_keys` (this file's Phase 3.1 table) moved from
+      `AI_KEYS_ENCRYPTION_KEY` envelope encryption to vault-DEK wrapping
+      in 3.5.2; the old server-secret code path (`src/lib/ai/crypto.ts`)
+      was deleted in 3.5.7.
+      Full plan, phase-wise build, and open questions:
+      `docs/e2ee-path-b-plan.md`.
+
 ## Out of scope for Phase 3 (later phases per the roadmap)
 
 - Phase 4: SMS/Bank/Email import feeding the same pipeline.
@@ -135,6 +157,9 @@ enum, `ai_provider_keys` table) and `drizzle/manual/0006_ai_provider_keys_rls.sq
 (RLS + PostgREST-role revokes) are **applied** to the `FinanceOS` Supabase
 project (`ucgholzcnqqwwentdaqt`) via the Supabase MCP — `list_tables` confirms
 `private.ai_provider_keys` exists with RLS enabled and a clean security
-advisor pass. `AI_KEYS_ENCRYPTION_KEY` is set in Vercel — Phase 3.0/3.1/3.2
-are now live end-to-end against the real deployment (DeepSeek only; save a
-key in Settings → AI & Integrations to try it).
+advisor pass. Phase 3.0/3.1/3.2 are live end-to-end against the real
+deployment (DeepSeek only; save a key in Settings → AI & Integrations to
+try it). `AI_KEYS_ENCRYPTION_KEY` was set in Vercel for the original
+server-held-key model described above; as of Phase 3.5.2/3.5.7 no code
+path reads it anymore (`src/lib/ai/crypto.ts` was deleted), so it's safe
+to remove from the deployment's environment variables.

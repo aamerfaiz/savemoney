@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { budgetInputSchema } from "./types";
+import { BUDGET_PERIODS } from "./types";
 
 export interface ActionResult {
   ok: boolean;
@@ -12,15 +13,22 @@ export interface ActionResult {
   fieldErrors?: Record<string, string>;
 }
 
-function parse(formData: FormData) {
-  return budgetInputSchema.safeParse({
-    categoryId: emptyToNull(formData.get("categoryId")),
-    period: formData.get("period") || "monthly",
-    amount: formData.get("amount"),
-    currency: formData.get("currency") || "USD",
-    startsOn: formData.get("startsOn") || new Date().toISOString().slice(0, 10),
-  });
-}
+/**
+ * What the server actually validates now (Phase 3.5.4): shape only, for the
+ * fields that stay plaintext. `amount` arrives as already-packed ciphertext
+ * — the client validated the real value (positive, within range) *before*
+ * encrypting, via the same `budgetInputSchema` it always used. See
+ * src/lib/budgets/client-actions.ts, which builds this input.
+ */
+const encryptedBudgetInputSchema = z.object({
+  categoryId: z.string().uuid().optional().nullable(),
+  period: z.enum(BUDGET_PERIODS),
+  amount: z.string().min(1),
+  currency: z.string().length(3),
+  startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date"),
+});
+
+export type EncryptedBudgetInput = z.infer<typeof encryptedBudgetInputSchema>;
 
 async function requireUser() {
   const supabase = await createClient();
@@ -31,11 +39,8 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-export async function createBudget(
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = parse(formData);
+export async function createBudget(input: EncryptedBudgetInput): Promise<ActionResult> {
+  const parsed = encryptedBudgetInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -61,10 +66,9 @@ export async function createBudget(
 
 export async function updateBudget(
   id: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedBudgetInput,
 ): Promise<ActionResult> {
-  const parsed = parse(formData);
+  const parsed = encryptedBudgetInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -105,12 +109,7 @@ export async function deleteBudget(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-function emptyToNull(v: FormDataEntryValue | null): string | null {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s === "" ? null : s;
-}
-
-function fieldErrors(err: import("zod").ZodError): ActionResult {
+function fieldErrors(err: z.ZodError): ActionResult {
   const fieldErrors: Record<string, string> = {};
   for (const issue of err.issues) {
     const key = issue.path[0];

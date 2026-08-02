@@ -14,11 +14,17 @@ import {
   formatDateShort,
   type CurrencyCode,
 } from "@/lib/format";
-import { captureSnapshot } from "@/lib/networth/actions";
+import { encryptedCaptureSnapshot } from "@/lib/networth/client-actions";
 import type { NetWorthData } from "@/lib/networth/types";
 import type { NetWorthComponent } from "@/lib/finance/net-worth";
 
-export function NetWorthView({ data }: { data: NetWorthData }) {
+export function NetWorthView({
+  data,
+  dek,
+}: {
+  data: NetWorthData;
+  dek: CryptoKey;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +35,7 @@ export function NetWorthView({ data }: { data: NetWorthData }) {
   const onCapture = () => {
     setError(null);
     startTransition(async () => {
-      const res = await captureSnapshot();
+      const res = await encryptedCaptureSnapshot(dek, result);
       if (!res.ok) setError(res.error ?? "Couldn't capture snapshot.");
       else router.refresh();
     });

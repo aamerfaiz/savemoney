@@ -2,7 +2,7 @@
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, TrendingDown, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingDown, AlertTriangle, ShieldAlert } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,20 @@ import { PaymentForm } from "./payment-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import { deleteLoan } from "@/lib/loans/actions";
-import type { LoansData } from "@/lib/loans/queries";
+import type { LoansData } from "@/lib/loans/compute";
 import { LOAN_TYPE_ICON, type LoanWithProjection } from "@/lib/loans/types";
 
-export function LoansView({ data }: { data: LoansData }) {
+export function LoansView({
+  data,
+  dek,
+  failedCount = 0,
+}: {
+  data: LoansData;
+  dek: CryptoKey;
+  /** Loans that existed but couldn't be decrypted with the current DEK —
+   * e.g. pre-3.5.4 rows saved before encryption was enabled. */
+  failedCount?: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -58,6 +68,15 @@ export function LoansView({ data }: { data: LoansData }) {
           <Plus className="size-4" /> Add loan
         </Button>
       </div>
+
+      {failedCount > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          {failedCount} {failedCount === 1 ? "loan" : "loans"} couldn&apos;t be
+          read — saved before encryption was enabled and can&apos;t be
+          recovered. Re-enter if you still need them.
+        </p>
+      )}
 
       {/* Portfolio summary */}
       <div className="grid grid-cols-3 gap-3">
@@ -106,11 +125,13 @@ export function LoansView({ data }: { data: LoansData }) {
         title="Add loan"
         description="Track an EMI, its payoff and interest saved."
       >
-        <LoanForm onSuccess={() => setAdding(false)} />
+        <LoanForm onSuccess={() => setAdding(false)} dek={dek} />
       </Dialog>
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} title="Edit loan">
-        {editing && <LoanForm existing={editing} onSuccess={() => setEditing(null)} />}
+        {editing && (
+          <LoanForm existing={editing} onSuccess={() => setEditing(null)} dek={dek} />
+        )}
       </Dialog>
 
       <Dialog
@@ -118,7 +139,9 @@ export function LoansView({ data }: { data: LoansData }) {
         onClose={() => setPaying(null)}
         title={paying ? `Pay ${paying.name}` : "Record payment"}
       >
-        {paying && <PaymentForm loan={paying} onSuccess={() => setPaying(null)} />}
+        {paying && (
+          <PaymentForm loan={paying} onSuccess={() => setPaying(null)} dek={dek} />
+        )}
       </Dialog>
     </div>
   );

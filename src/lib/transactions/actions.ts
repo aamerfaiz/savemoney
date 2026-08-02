@@ -1,13 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import {
-  transactionInputSchema,
-  type TransactionKind,
-} from "./types";
+import type { TransactionKind } from "./types";
 
 export interface ActionResult {
   ok: boolean;
@@ -15,22 +13,53 @@ export interface ActionResult {
   fieldErrors?: Record<string, string>;
 }
 
-function parse(formData: FormData) {
-  const raw = {
-    kind: formData.get("kind"),
-    amount: formData.get("amount"),
-    currency: formData.get("currency") || "USD",
-    date: formData.get("date"),
-    categoryId: emptyToNull(formData.get("categoryId")),
-    accountId: emptyToNull(formData.get("accountId")),
-    description: emptyToNull(formData.get("description")),
-    isRecurring: formData.get("isRecurring") === "on" || formData.get("isRecurring") === "true",
-    frequency: formData.get("frequency") || "one_time",
-    sourceType: formData.get("sourceType") || undefined,
-    note: emptyToNull(formData.get("note")),
-  };
-  return transactionInputSchema.safeParse(raw);
-}
+const frequencies = [
+  "one_time",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+  "yearly",
+] as const;
+const incomeSourceTypes = [
+  "salary",
+  "freelance",
+  "rental",
+  "interest",
+  "business",
+  "dividend",
+  "other",
+] as const;
+
+/**
+ * What the server actually validates now (Phase 3.5.3): shape only, for the
+ * fields that stay plaintext. `amount`/`description`/`note` arrive as
+ * already-packed ciphertext strings — the client validated the real values
+ * (positive amount, length limits, etc.) *before* encrypting, via the same
+ * `transactionInputSchema` it always used; the server can't re-check a
+ * value it can't read. See src/lib/transactions/client-actions.ts, which
+ * builds this input.
+ */
+const encryptedTransactionInputSchema = z
+  .object({
+    kind: z.enum(["income", "expense"]),
+    amount: z.string().min(1),
+    currency: z.string().length(3).default("USD"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date"),
+    categoryId: z.string().uuid().optional().nullable(),
+    accountId: z.string().uuid().optional().nullable(),
+    description: z.string().min(1).optional().nullable(),
+    isRecurring: z.boolean().default(false),
+    frequency: z.enum(frequencies).default("one_time"),
+    sourceType: z.enum(incomeSourceTypes).optional(),
+    note: z.string().min(1).optional().nullable(),
+  })
+  .refine((v) => !v.isRecurring || v.frequency !== "one_time", {
+    message: "Choose how often a recurring transaction repeats",
+    path: ["frequency"],
+  });
+
+export type EncryptedTransactionInput = z.infer<typeof encryptedTransactionInputSchema>;
 
 async function requireUser() {
   const supabase = await createClient();
@@ -41,12 +70,9 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-/** Create an income or expense row. */
-export async function createTransaction(
-  _prev: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = parse(formData);
+/** Create an income or expense row. Every secret field arrives pre-encrypted. */
+export async function createTransaction(input: EncryptedTransactionInput): Promise<ActionResult> {
+  const parsed = encryptedTransactionInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -90,10 +116,9 @@ export async function createTransaction(
 export async function updateTransaction(
   id: string,
   kind: TransactionKind,
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedTransactionInput,
 ): Promise<ActionResult> {
-  const parsed = parse(formData);
+  const parsed = encryptedTransactionInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -129,11 +154,9 @@ export async function updateTransaction(
   return { ok: true };
 }
 
-/** Soft-delete (sets deleted_at) — never a hard delete, per the audit spec. */
-export async function deleteTransaction(
-  id: string,
-  kind: TransactionKind,
-): Promise<ActionResult> {
+/** Soft-delete (sets deleted_at) — never a hard delete, per the audit spec.
+ * Untouched by encryption — no encrypted field involved. */
+export async function deleteTransaction(id: string, kind: TransactionKind): Promise<ActionResult> {
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase } = auth;
@@ -150,12 +173,7 @@ export async function deleteTransaction(
   return { ok: true };
 }
 
-function emptyToNull(v: FormDataEntryValue | null): string | null {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s === "" ? null : s;
-}
-
-function fieldErrors(err: import("zod").ZodError): ActionResult {
+function fieldErrors(err: z.ZodError): ActionResult {
   const fieldErrors: Record<string, string> = {};
   for (const issue of err.issues) {
     const key = issue.path[0];

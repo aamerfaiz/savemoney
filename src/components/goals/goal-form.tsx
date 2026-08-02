@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { createGoal, updateGoal, type ActionResult } from "@/lib/goals/actions";
+import type { ActionResult } from "@/lib/goals/actions";
+import { encryptedCreateGoal, encryptedUpdateGoal } from "@/lib/goals/client-actions";
 import {
   GOAL_ICONS,
   GOAL_PRIORITIES,
@@ -17,12 +18,16 @@ import {
 export function GoalForm({
   existing,
   onSuccess,
+  dek,
 }: {
   existing?: GoalWithProgress;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
-  const action = existing ? updateGoal.bind(null, existing.id) : createGoal;
+  const action = existing
+    ? encryptedUpdateGoal.bind(null, dek, existing.id)
+    : encryptedCreateGoal.bind(null, dek);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

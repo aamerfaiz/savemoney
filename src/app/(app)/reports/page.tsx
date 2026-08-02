@@ -1,9 +1,9 @@
-import { ReportsView } from "@/components/reports/reports-view";
-import { getReportsData } from "@/lib/reports/queries";
+import { AuthedReports } from "@/components/reports/authed-reports";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Reports · Finance OS" };
 
 export default async function ReportsPage() {
-  const data = await getReportsData();
-  return <ReportsView data={data} />;
+  const currency = await getDisplayCurrency();
+  return <AuthedReports currency={currency} />;
 }

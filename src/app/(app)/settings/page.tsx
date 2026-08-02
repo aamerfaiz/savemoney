@@ -1,15 +1,21 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { AiProviderSettings } from "@/components/settings/ai-provider-settings";
+import { VaultSettings } from "@/components/settings/vault-settings";
+import { AgentAccessSettings } from "@/components/settings/agent-access-settings";
+import { ResetAccountSettings } from "@/components/settings/reset-account-settings";
 import { getProfile } from "@/lib/profile/queries";
 import { listProviderKeys } from "@/lib/ai/queries";
+import { getVaultSetupStatus, listMcpTokens } from "@/lib/vault/queries";
 
 export const metadata = { title: "Settings · Finance OS" };
 
 export default async function SettingsPage() {
-  const [profile, providerKeys] = await Promise.all([
+  const [profile, providerKeys, vaultStatus, mcpTokens] = await Promise.all([
     getProfile(),
     listProviderKeys(),
+    getVaultSetupStatus(),
+    listMcpTokens(),
   ]);
 
   return (
@@ -38,6 +44,33 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <AiProviderSettings keys={providerKeys} />
+        </CardContent>
+      </Card>
+
+      <Card id="vault">
+        <CardHeader>
+          <CardTitle>Vault & Encryption</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <VaultSettings hasVault={vaultStatus.hasVault} isOAuthOnly={vaultStatus.isOAuthOnly} />
+        </CardContent>
+      </Card>
+
+      <Card id="agent-access">
+        <CardHeader>
+          <CardTitle>Agent Access</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AgentAccessSettings tokens={mcpTokens} />
+        </CardContent>
+      </Card>
+
+      <Card id="danger-zone" className="border-negative/40">
+        <CardHeader>
+          <CardTitle className="text-negative">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResetAccountSettings />
         </CardContent>
       </Card>
     </div>

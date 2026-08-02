@@ -1,16 +1,50 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { recurringInputSchema } from "./types";
+import { RECURRING_FREQUENCIES } from "./types";
 
 export interface ActionResult {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
 }
+
+/**
+ * What the server actually validates now (Phase 3.5.4): shape only, for
+ * the fields that stay plaintext. `amount` arrives as already-packed
+ * ciphertext — the client validated the real value (positive) *before*
+ * encrypting, via the same `recurringInputSchema` it always used. See
+ * src/lib/recurring/client-actions.ts, which builds this input.
+ */
+const encryptedRecurringInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    kind: z.enum(["income", "expense"]),
+    categoryId: z.string().uuid().optional().nullable(),
+    accountId: z.string().uuid().optional().nullable(),
+    amount: z.string().min(1),
+    currency: z.string().length(3),
+    frequency: z.enum(RECURRING_FREQUENCIES),
+    interval: z.coerce.number().int().min(1).max(365),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .nullable(),
+    isActive: z.boolean(),
+    note: z.string().trim().max(500).optional().nullable(),
+  })
+  .refine((v) => !v.endDate || v.endDate >= v.startDate, {
+    message: "End date can't be before the start date",
+    path: ["endDate"],
+  });
+
+export type EncryptedRecurringInput = z.infer<typeof encryptedRecurringInputSchema>;
 
 async function requireUser() {
   const supabase = await createClient();
@@ -21,24 +55,6 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-function parseRule(formData: FormData) {
-  return recurringInputSchema.safeParse({
-    name: formData.get("name"),
-    kind: formData.get("kind") || "expense",
-    categoryId: emptyToNull(formData.get("categoryId")),
-    accountId: emptyToNull(formData.get("accountId")),
-    amount: formData.get("amount"),
-    currency: formData.get("currency") || "USD",
-    frequency: formData.get("frequency") || "monthly",
-    interval: formData.get("interval") || 1,
-    startDate:
-      formData.get("startDate") || new Date().toISOString().slice(0, 10),
-    endDate: emptyToNull(formData.get("endDate")),
-    isActive: formData.get("isActive") !== "false",
-    note: emptyToNull(formData.get("note")),
-  });
-}
-
 function revalidate() {
   revalidatePath("/recurring");
   revalidatePath("/calendar");
@@ -46,10 +62,9 @@ function revalidate() {
 }
 
 export async function createRecurringRule(
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedRecurringInput,
 ): Promise<ActionResult> {
-  const parsed = parseRule(formData);
+  const parsed = encryptedRecurringInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -81,10 +96,9 @@ export async function createRecurringRule(
 
 export async function updateRecurringRule(
   id: string,
-  _prev: ActionResult | undefined,
-  formData: FormData,
+  input: EncryptedRecurringInput,
 ): Promise<ActionResult> {
-  const parsed = parseRule(formData);
+  const parsed = encryptedRecurringInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -149,12 +163,7 @@ export async function deleteRecurringRule(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-function emptyToNull(v: FormDataEntryValue | null): string | null {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s === "" ? null : s;
-}
-
-function fieldErrors(err: import("zod").ZodError): ActionResult {
+function fieldErrors(err: z.ZodError): ActionResult {
   const fieldErrors: Record<string, string> = {};
   for (const issue of err.issues) {
     const key = issue.path[0];

@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import type { ActionResult } from "@/lib/investments/actions";
 import {
-  createInvestment,
-  updateInvestment,
-  type ActionResult,
-} from "@/lib/investments/actions";
+  encryptedCreateInvestment,
+  encryptedUpdateInvestment,
+} from "@/lib/investments/client-actions";
 import {
   INVESTMENT_TYPES,
   INVESTMENT_TYPE_LABEL,
@@ -23,14 +23,16 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function InvestmentForm({
   existing,
   onSuccess,
+  dek,
 }: {
   existing?: InvestmentWithProjection;
   onSuccess: () => void;
+  dek: CryptoKey;
 }) {
   const router = useRouter();
   const action = existing
-    ? updateInvestment.bind(null, existing.id)
-    : createInvestment;
+    ? encryptedUpdateInvestment.bind(null, dek, existing.id)
+    : encryptedCreateInvestment.bind(null, dek);
   const [state, formAction, pending] = useActionState<
     ActionResult | undefined,
     FormData

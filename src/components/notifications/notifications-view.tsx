@@ -19,12 +19,11 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatDateShort } from "@/lib/format";
 import {
-  markNotificationRead,
-  dismissNotification,
-  markAllNotificationsRead,
-  type NotificationPayload,
-} from "@/lib/notifications/actions";
-import type { NotificationsData } from "@/lib/notifications/queries";
+  encryptedMarkNotificationRead,
+  encryptedDismissNotification,
+  encryptedMarkAllNotificationsRead,
+} from "@/lib/notifications/client-actions";
+import type { NotificationsData } from "@/lib/notifications/compute";
 import type {
   NotificationItem,
   NotificationType,
@@ -45,18 +44,13 @@ const SEVERITY_TONE = {
   positive: "text-positive",
 } as const;
 
-function toPayload(i: NotificationItem): NotificationPayload {
-  return {
-    dedupeKey: i.dedupeKey,
-    type: i.type,
-    severity: i.severity,
-    title: i.title,
-    body: i.body,
-    href: i.href,
-  };
-}
-
-export function NotificationsView({ data }: { data: NotificationsData }) {
+export function NotificationsView({
+  data,
+  dek,
+}: {
+  data: NotificationsData;
+  dek: CryptoKey;
+}) {
   const [, startTransition] = useTransition();
   const [items, setItems] = useState<NotificationItem[]>(data.items);
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -72,21 +66,19 @@ export function NotificationsView({ data }: { data: NotificationsData }) {
     setItems((prev) =>
       prev.map((n) => (n.dedupeKey === i.dedupeKey ? { ...n, isRead: true } : n)),
     );
-    startTransition(() => void markNotificationRead(toPayload(i)));
+    startTransition(() => void encryptedMarkNotificationRead(dek, i));
   };
 
   const dismiss = (i: NotificationItem) => {
     setItems((prev) => prev.filter((n) => n.dedupeKey !== i.dedupeKey));
-    startTransition(() => void dismissNotification(toPayload(i)));
+    startTransition(() => void encryptedDismissNotification(dek, i));
   };
 
   const markAll = () => {
     const unreadItems = items.filter((i) => !i.isRead);
     if (unreadItems.length === 0) return;
     setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    startTransition(() =>
-      void markAllNotificationsRead(unreadItems.map(toPayload)),
-    );
+    startTransition(() => void encryptedMarkAllNotificationsRead(dek, unreadItems));
   };
 
   return (

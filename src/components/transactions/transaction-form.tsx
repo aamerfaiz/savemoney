@@ -9,11 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import {
-  createTransaction,
-  updateTransaction,
-  type ActionResult,
-} from "@/lib/transactions/actions";
+import type { ActionResult } from "@/lib/transactions/actions";
 import {
   FREQUENCIES,
   INCOME_SOURCE_TYPES,
@@ -27,22 +23,33 @@ import type {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+type CreateAction = (
+  prev: ActionResult | undefined,
+  formData: FormData,
+) => Promise<ActionResult>;
+type UpdateAction = (
+  id: string,
+  kind: TransactionKind,
+  prev: ActionResult | undefined,
+  formData: FormData,
+) => Promise<ActionResult>;
+
 export function TransactionForm({
   categories,
   accounts,
   existing,
   onSuccess,
-  createAction = createTransaction,
-  updateAction = updateTransaction,
+  createAction,
+  updateAction,
 }: {
   categories: CategoryOption[];
   accounts: AccountOption[];
   existing?: Transaction;
   onSuccess: () => void;
-  /** Override for guest mode (IndexedDB) — same signature as the Server Action. */
-  createAction?: typeof createTransaction;
-  /** Override for guest mode (IndexedDB) — same signature as the Server Action. */
-  updateAction?: typeof updateTransaction;
+  /** The real (vault-encrypting) path or guest mode's IndexedDB path —
+   * either way, same shape `useActionState` needs. */
+  createAction: CreateAction;
+  updateAction: UpdateAction;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<TransactionKind>(existing?.kind ?? "expense");

@@ -1,10 +1,9 @@
-import { AnalyticsView } from "@/components/analytics/analytics-view";
-import { getAnalyticsData } from "@/lib/analytics/queries";
+import { AuthedAnalyticsView } from "@/components/analytics/authed-analytics-view";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Analytics · Finance OS" };
 
 export default async function AnalyticsPage() {
-  const data = await getAnalyticsData();
-
-  return <AnalyticsView data={data} />;
+  const currency = await getDisplayCurrency();
+  return <AuthedAnalyticsView currency={currency} />;
 }

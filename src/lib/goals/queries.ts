@@ -1,52 +1,42 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { getDisplayCurrency } from "@/lib/profile/queries";
-import { computeGoalProjection } from "@/lib/finance/goals";
-import type { CurrencyCode } from "@/lib/format";
-import type {
-  GoalPriority,
-  GoalStatus,
-  GoalWithProgress,
-} from "./types";
 
-export interface GoalsData {
-  goals: GoalWithProgress[];
-  totalSaved: number;
-  totalTarget: number;
-  currency: CurrencyCode;
-}
-
-interface GoalRow {
+/**
+ * Packed-ciphertext row straight off the `goals` table (Phase 3.5.4, see
+ * docs/e2ee-path-b-plan.md) — `targetAmount`/`currentAmount`/
+ * `monthlyContribution` need the vault DEK to read, so no computation
+ * (sorting, projection, totals) happens here anymore. See
+ * src/lib/goals/compute.ts, which takes over once the client has decrypted
+ * these via src/lib/finance/decrypt.ts's `decryptGoalRows`.
+ */
+export interface RawGoalRow {
   id: string;
   name: string;
   icon: string | null;
-  target_amount: string | number;
-  current_amount: string | number;
+  targetAmount: string;
+  currentAmount: string;
   currency: string;
   deadline: string | null;
   priority: string;
-  monthly_contribution: string | number | null;
+  monthlyContribution: string | null;
   status: string;
 }
 
-const PRIORITY_RANK: Record<GoalPriority, number> = { high: 0, medium: 1, low: 2 };
-
-/** Goals with progress + projection, sorted by priority then soonest deadline. */
-export async function getGoalsData(): Promise<GoalsData> {
-  const currency = await getDisplayCurrency();
-  const raw = await fetchGoals();
-  // Display every goal in the user's base currency (no conversion yet).
-  const goals = raw.map((g) => ({ ...g, currency }));
-
-  const active = goals.filter((g) => g.status === "active" || g.status === "completed");
-  const totalSaved = active.reduce((s, g) => s + g.currentAmount, 0);
-  const totalTarget = active.reduce((s, g) => s + g.targetAmount, 0);
-
-  return { goals, totalSaved, totalTarget, currency };
+interface GoalSel {
+  id: string;
+  name: string;
+  icon: string | null;
+  target_amount: string;
+  current_amount: string;
+  currency: string;
+  deadline: string | null;
+  priority: string;
+  monthly_contribution: string | null;
+  status: string;
 }
 
-async function fetchGoals(): Promise<GoalWithProgress[]> {
+export async function fetchGoalsRaw(): Promise<RawGoalRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("goals")
@@ -55,41 +45,16 @@ async function fetchGoals(): Promise<GoalWithProgress[]> {
     )
     .is("deleted_at", null);
 
-  const goals = ((data ?? []) as GoalRow[]).map(mapRow);
-
-  goals.sort((a, b) => {
-    if (a.priority !== b.priority)
-      return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-    if (a.deadline && b.deadline) return a.deadline < b.deadline ? -1 : 1;
-    if (a.deadline) return -1;
-    if (b.deadline) return 1;
-    return 0;
-  });
-  return goals;
-}
-
-function mapRow(g: GoalRow): GoalWithProgress {
-  const targetAmount = Number(g.target_amount);
-  const currentAmount = Number(g.current_amount);
-  const monthlyContribution =
-    g.monthly_contribution == null ? null : Number(g.monthly_contribution);
-  const projection = computeGoalProjection({
-    targetAmount,
-    currentAmount,
-    monthlyContribution,
-    deadline: g.deadline,
-  });
-  return {
+  return ((data ?? []) as GoalSel[]).map((g) => ({
     id: g.id,
     name: g.name,
     icon: g.icon,
-    targetAmount,
-    currentAmount,
-    currency: (g.currency as CurrencyCode) ?? "USD",
+    targetAmount: g.target_amount,
+    currentAmount: g.current_amount,
+    currency: g.currency,
     deadline: g.deadline,
-    priority: g.priority as GoalPriority,
-    monthlyContribution,
-    status: g.status as GoalStatus,
-    projection,
-  };
+    priority: g.priority,
+    monthlyContribution: g.monthly_contribution,
+    status: g.status,
+  }));
 }

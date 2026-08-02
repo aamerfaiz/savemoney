@@ -2,7 +2,7 @@
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, ShieldAlert } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Button } from "@/components/ui/button";
@@ -12,14 +12,24 @@ import { ContributionForm } from "./contribution-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { deleteInvestment } from "@/lib/investments/actions";
-import type { InvestmentsData } from "@/lib/investments/queries";
+import type { InvestmentsData } from "@/lib/investments/compute";
 import {
   INVESTMENT_TYPE_ICON,
   INVESTMENT_TYPE_LABEL,
   type InvestmentWithProjection,
 } from "@/lib/investments/types";
 
-export function InvestmentsView({ data }: { data: InvestmentsData }) {
+export function InvestmentsView({
+  data,
+  dek,
+  failedCount = 0,
+}: {
+  data: InvestmentsData;
+  dek: CryptoKey;
+  /** Investments that existed but couldn't be decrypted with the current
+   * DEK — e.g. pre-3.5.4 rows saved before encryption was enabled. */
+  failedCount?: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -77,6 +87,15 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
           <Plus className="size-4" /> Add investment
         </Button>
       </div>
+
+      {failedCount > 0 && (
+        <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-3 text-xs text-warning">
+          <ShieldAlert className="size-4 shrink-0" />
+          {failedCount} {failedCount === 1 ? "investment" : "investments"}{" "}
+          couldn&apos;t be read — saved before encryption was enabled and
+          can&apos;t be recovered. Re-enter if you still need them.
+        </p>
+      )}
 
       {/* Portfolio summary */}
       <div className="grid grid-cols-3 gap-3">
@@ -140,7 +159,7 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
         title="Add investment"
         description="Track a holding, its returns and projected growth."
       >
-        <InvestmentForm onSuccess={() => setAdding(false)} />
+        <InvestmentForm onSuccess={() => setAdding(false)} dek={dek} />
       </Dialog>
 
       <Dialog
@@ -152,6 +171,7 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
           <InvestmentForm
             existing={editing}
             onSuccess={() => setEditing(null)}
+            dek={dek}
           />
         )}
       </Dialog>
@@ -165,6 +185,7 @@ export function InvestmentsView({ data }: { data: InvestmentsData }) {
           <ContributionForm
             investment={contributing}
             onSuccess={() => setContributing(null)}
+            dek={dek}
           />
         )}
       </Dialog>

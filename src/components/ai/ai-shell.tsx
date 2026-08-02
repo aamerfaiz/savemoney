@@ -6,12 +6,19 @@ import { cn } from "@/lib/utils";
 import { AiAssistantView } from "./ai-assistant-view";
 import { SmartEntryView } from "./smart-entry-view";
 import type { SmartEntryReference } from "./smart-entry-types";
+import type { CurrencyCode } from "@/lib/format";
 
 type Mode = "ask" | "manage";
 
 const MODE_LABEL: Record<Mode, string> = { ask: "Ask", manage: "Manage" };
 
-export function AiShell({ reference }: { reference: SmartEntryReference }) {
+export function AiShell({
+  reference,
+  currency,
+}: {
+  reference: SmartEntryReference;
+  currency: CurrencyCode;
+}) {
   const [mode, setMode] = useState<Mode>("ask");
 
   return (
@@ -32,7 +39,11 @@ export function AiShell({ reference }: { reference: SmartEntryReference }) {
         ))}
       </div>
 
-      {mode === "ask" ? <AiAssistantView /> : <SmartEntryView reference={reference} />}
+      {mode === "ask" ? (
+        <AiAssistantView currency={currency} />
+      ) : (
+        <SmartEntryView reference={reference} />
+      )}
     </div>
   );
 }

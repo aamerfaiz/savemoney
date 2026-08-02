@@ -1,9 +1,9 @@
-import { FinancialScoreView } from "@/components/score/financial-score-view";
-import { getScoreData } from "@/lib/score/queries";
+import { AuthedScore } from "@/components/score/authed-score";
+import { getDisplayCurrency } from "@/lib/profile/queries";
 
 export const metadata = { title: "Financial Score · Finance OS" };
 
 export default async function FinancialScorePage() {
-  const data = await getScoreData();
-  return <FinancialScoreView data={data} />;
+  const currency = await getDisplayCurrency();
+  return <AuthedScore currency={currency} />;
 }

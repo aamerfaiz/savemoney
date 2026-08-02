@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 
-import { TransactionsView } from "@/components/transactions/transactions-view";
+import { AuthedTransactionsView } from "@/components/transactions/authed-transactions-view";
 import { GuestTransactionsView } from "@/components/transactions/guest-transactions-view";
-import { getTransactions, summarize } from "@/lib/transactions/queries";
 import { getCategories, getAccounts } from "@/lib/transactions/reference";
 import { getDisplayCurrency } from "@/lib/profile/queries";
 import { GUEST_COOKIE } from "@/lib/guest/constants";
@@ -24,21 +23,21 @@ export default async function TransactionsPage({
     return <GuestTransactionsView filter={filter} />;
   }
 
-  const [transactions, categories, accounts, currency] = await Promise.all([
-    getTransactions(filter),
+  // Reference data only — categories/accounts/currency aren't encrypted,
+  // safe to keep server-rendering. The transaction rows themselves need
+  // the vault unlocked, so that fetch+decrypt happens client-side; see
+  // AuthedTransactionsView.
+  const [categories, accounts, currency] = await Promise.all([
     getCategories(),
     getAccounts(),
     getDisplayCurrency(),
   ]);
 
-  const summary = summarize(transactions, currency);
-
   return (
-    <TransactionsView
-      transactions={transactions}
-      summary={summary}
+    <AuthedTransactionsView
       categories={categories}
       accounts={accounts}
+      currency={currency}
       filter={filter}
     />
   );

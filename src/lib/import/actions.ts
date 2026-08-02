@@ -5,16 +5,9 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import type { TransactionKind } from "@/lib/transactions/types";
-import { buildPreview, dedupeKey, parseDate } from "./pipeline";
-import type { ColumnMapping, CommitResult, ImportPreview } from "./types";
+import type { CommitResult } from "./types";
 
 const MAX_ROWS = 5000;
-
-interface ImportPayload {
-  rows: Record<string, string>[];
-  mapping: ColumnMapping;
-  defaultKind: TransactionKind;
-}
 
 async function requireUser() {
   const supabase = await createClient();
@@ -25,81 +18,82 @@ async function requireUser() {
   return { supabase, userId: user.id };
 }
 
-/** Fetch dedupe keys of existing rows within the CSV's date range. */
-async function existingKeysInRange(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  rows: Record<string, string>[],
-  mapping: ColumnMapping,
-): Promise<Set<string>> {
-  const dates = rows
-    .map((r) => (mapping.date ? parseDate(r[mapping.date] ?? "") : null))
-    .filter((d): d is string => !!d)
-    .sort();
-  const keys = new Set<string>();
-  if (dates.length === 0) return keys;
-  const from = dates[0];
-  const to = dates[dates.length - 1];
+export interface RawImportRow {
+  kind: TransactionKind;
+  amount: string; // packed ciphertext
+  description: string | null; // packed ciphertext or null
+  date: string;
+}
+
+/**
+ * Existing income/expense rows (ciphertext) in a date range, for the client
+ * to decrypt and dedupe against — Phase 3.5.3. The server can no longer
+ * compute dedupe keys itself (that needs plaintext amount/description), so
+ * previewImport's old server-side dedupe pass moved entirely client-side;
+ * see src/lib/import/client-actions.ts. Pipeline functions themselves
+ * (buildPreview, dedupeKey — src/lib/import/pipeline.ts) are unchanged and
+ * still pure, just called from the browser now instead of here.
+ */
+export async function fetchExistingImportRows(
+  fromISO: string,
+  toISO: string,
+): Promise<RawImportRow[] | { error: string }> {
+  const auth = await requireUser();
+  if ("error" in auth) return { error: auth.error ?? "You need to sign in first." };
+  const { supabase } = auth;
 
   const [{ data: inc }, { data: exp }] = await Promise.all([
     supabase
       .from("income")
       .select("amount, received_at, description")
       .is("deleted_at", null)
-      .gte("received_at", from)
-      .lte("received_at", to),
+      .gte("received_at", fromISO)
+      .lte("received_at", toISO),
     supabase
       .from("expenses")
       .select("amount, spent_at, description")
       .is("deleted_at", null)
-      .gte("spent_at", from)
-      .lte("spent_at", to),
+      .gte("spent_at", fromISO)
+      .lte("spent_at", toISO),
   ]);
 
-  for (const r of (inc ?? []) as { amount: number | string; received_at: string; description: string | null }[]) {
-    keys.add(dedupeKey({ kind: "income", amount: Number(r.amount), date: r.received_at, description: r.description, categoryName: null }));
+  const rows: RawImportRow[] = [];
+  for (const r of (inc ?? []) as { amount: string; received_at: string; description: string | null }[]) {
+    rows.push({ kind: "income", amount: r.amount, description: r.description, date: r.received_at });
   }
-  for (const r of (exp ?? []) as { amount: number | string; spent_at: string; description: string | null }[]) {
-    keys.add(dedupeKey({ kind: "expense", amount: Number(r.amount), date: r.spent_at, description: r.description, categoryName: null }));
+  for (const r of (exp ?? []) as { amount: string; spent_at: string; description: string | null }[]) {
+    rows.push({ kind: "expense", amount: r.amount, description: r.description, date: r.spent_at });
   }
-  return keys;
+  return rows;
 }
 
-/** Normalize + flag duplicates (within file and against the database). */
-export async function previewImport(
-  payload: ImportPayload,
-): Promise<ImportPreview> {
-  const rows = payload.rows.slice(0, MAX_ROWS);
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const keys = user
-    ? await existingKeysInRange(supabase, rows, payload.mapping)
-    : new Set<string>();
-  return buildPreview(rows, payload.mapping, payload.defaultKind, keys);
+export interface EncryptedImportItem {
+  kind: TransactionKind;
+  /** Packed ciphertext — encrypted client-side before this call. */
+  amount: string;
+  description: string | null;
+  date: string;
+  categoryName: string | null;
 }
 
-/** Commit the import: create a batch and insert the (non-duplicate) rows. */
-export async function commitImport(
-  payload: ImportPayload & { filename: string; skipDuplicates: boolean },
-): Promise<CommitResult> {
+/** Commit the import: create a batch and insert the (already-encrypted,
+ * already-deduped-client-side) rows. The server can't re-run dedupe against
+ * ciphertext, so it trusts the client's preview — the same trust boundary
+ * every encrypted-write action now has (see docs/e2ee-path-b-plan.md). */
+export async function commitImport(payload: {
+  items: EncryptedImportItem[];
+  filename: string;
+}): Promise<CommitResult> {
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
   const currency = await baseCurrencyFor(supabase, userId);
 
-  const rows = payload.rows.slice(0, MAX_ROWS);
-  const keys = await existingKeysInRange(supabase, rows, payload.mapping);
-  const preview = buildPreview(rows, payload.mapping, payload.defaultKind, keys);
-
-  const toImport = preview.items.filter(
-    (i) => i.status === "new" || (i.status === "duplicate" && !payload.skipDuplicates),
-  );
-  if (toImport.length === 0) {
-    return { ok: true, imported: 0, skipped: preview.summary.duplicate, errors: preview.summary.error };
+  const items = payload.items.slice(0, MAX_ROWS);
+  if (items.length === 0) {
+    return { ok: true, imported: 0, skipped: 0, errors: 0 };
   }
 
-  // Resolve category names → ids (per kind, case-insensitive).
   const { data: cats } = await supabase
     .from("categories")
     .select("id, name, kind")
@@ -109,15 +103,14 @@ export async function commitImport(
     catMap.set(`${c.kind}|${c.name.toLowerCase()}`, c.id);
   }
 
-  // Create the batch first so rows can reference it.
   const { data: batch, error: batchErr } = await supabase
     .from("import_batches")
     .insert({
       user_id: userId,
       source: "csv",
       filename: payload.filename,
-      total_rows: preview.summary.total,
-      duplicate_rows: preview.summary.duplicate,
+      total_rows: items.length,
+      duplicate_rows: 0,
       imported_rows: 0,
     })
     .select("id")
@@ -128,23 +121,22 @@ export async function commitImport(
 
   const incomeRows: Record<string, unknown>[] = [];
   const expenseRows: Record<string, unknown>[] = [];
-  for (const item of toImport) {
-    const c = item.canonical!;
-    const categoryId = c.categoryName
-      ? (catMap.get(`${c.kind}|${c.categoryName.toLowerCase()}`) ?? null)
+  for (const item of items) {
+    const categoryId = item.categoryName
+      ? (catMap.get(`${item.kind}|${item.categoryName.toLowerCase()}`) ?? null)
       : null;
     const base = {
       user_id: userId,
-      amount: c.amount,
+      amount: item.amount,
       currency,
-      description: c.description,
+      description: item.description,
       category_id: categoryId,
       import_batch_id: batch.id,
     };
-    if (c.kind === "income") {
-      incomeRows.push({ ...base, received_at: c.date, source_type: "other" });
+    if (item.kind === "income") {
+      incomeRows.push({ ...base, received_at: item.date, source_type: "other" });
     } else {
-      expenseRows.push({ ...base, spent_at: c.date });
+      expenseRows.push({ ...base, spent_at: item.date });
     }
   }
 
@@ -158,24 +150,16 @@ export async function commitImport(
   }
 
   const imported = incomeRows.length + expenseRows.length;
-  await supabase
-    .from("import_batches")
-    .update({ imported_rows: imported })
-    .eq("id", batch.id);
+  await supabase.from("import_batches").update({ imported_rows: imported }).eq("id", batch.id);
 
   revalidatePath("/import");
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
-  return {
-    ok: true,
-    batchId: batch.id,
-    imported,
-    skipped: preview.summary.duplicate,
-    errors: preview.summary.error,
-  };
+  return { ok: true, batchId: batch.id, imported, skipped: 0, errors: 0 };
 }
 
-/** Undo an import: soft-delete its rows and mark the batch rolled back. */
+/** Undo an import: soft-delete its rows and mark the batch rolled back.
+ * Untouched by encryption — no encrypted field involved. */
 export async function rollbackImport(batchId: string): Promise<CommitResult> {
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };

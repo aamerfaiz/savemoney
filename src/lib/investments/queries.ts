@@ -1,103 +1,60 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import { getDisplayCurrency } from "@/lib/profile/queries";
-import { computeInvestmentProjection } from "@/lib/finance/investment";
-import type { CurrencyCode } from "@/lib/format";
-import type { InvestmentType, InvestmentWithProjection } from "./types";
+import type { InvestmentType } from "./types";
 
-export interface InvestmentsData {
-  investments: InvestmentWithProjection[];
-  totalValue: number;
-  totalInvested: number;
-  totalGain: number;
-  /** Sum of monthly SIP contributions — feeds safe-to-spend. */
-  monthlyContribution: number;
-  /** Compounded portfolio value at the projection horizon. */
-  projectedValue: number;
-  currency: CurrencyCode;
+/**
+ * Packed-ciphertext row straight off the `investments` table (Phase 3.5.4,
+ * see docs/e2ee-path-b-plan.md) — `investedAmount`/`currentValue`/
+ * `monthlyContribution` need the vault DEK to read, so no computation
+ * (sorting, projection, totals) happens here anymore, and the previous
+ * DB-level `ORDER BY current_value` is gone too (ciphertext sorts
+ * meaninglessly). See src/lib/investments/compute.ts, which takes over once
+ * the client has decrypted these via src/lib/finance/decrypt.ts's
+ * `decryptInvestmentRows`.
+ */
+export interface RawInvestmentRow {
+  id: string;
+  name: string;
+  type: InvestmentType;
+  investedAmount: string;
+  currentValue: string;
+  monthlyContribution: string | null;
+  expectedReturn: number;
+  currency: string;
+  startDate: string;
 }
 
-interface InvestmentRow {
+interface InvestmentSel {
   id: string;
   name: string;
   type: string;
-  invested_amount: string | number;
-  current_value: string | number;
-  monthly_contribution: string | number | null;
+  invested_amount: string;
+  current_value: string;
+  monthly_contribution: string | null;
   expected_return: string | number;
   currency: string;
   start_date: string;
 }
 
-/** Holdings with gain/loss + future-value projections and portfolio totals. */
-export async function getInvestmentsData(): Promise<InvestmentsData> {
-  const currency = await getDisplayCurrency();
-  const raw = await fetchInvestments();
-  // Display every holding in the user's base currency (no conversion yet).
-  const investments = raw.map((i) => ({ ...i, currency }));
-
-  const totalValue = investments.reduce((s, i) => s + i.currentValue, 0);
-  const totalInvested = investments.reduce((s, i) => s + i.investedAmount, 0);
-  const totalGain = totalValue - totalInvested;
-  const monthlyContribution = investments.reduce(
-    (s, i) => s + (i.monthlyContribution ?? 0),
-    0,
-  );
-  const projectedValue = investments.reduce(
-    (s, i) => s + i.projection.projectedValue,
-    0,
-  );
-
-  return {
-    investments,
-    totalValue,
-    totalInvested,
-    totalGain,
-    monthlyContribution,
-    projectedValue,
-    currency,
-  };
-}
-
-async function fetchInvestments(): Promise<InvestmentWithProjection[]> {
+export async function fetchInvestmentsRaw(): Promise<RawInvestmentRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("investments")
     .select(
       "id, name, type, invested_amount, current_value, monthly_contribution, expected_return, currency, start_date",
     )
-    .is("deleted_at", null)
-    .order("current_value", { ascending: false });
+    .is("deleted_at", null);
 
-  return ((data ?? []) as InvestmentRow[]).map(mapRow);
-}
-
-function mapRow(i: InvestmentRow): InvestmentWithProjection {
-  const investedAmount = Number(i.invested_amount);
-  const currentValue = Number(i.current_value);
-  const monthlyContribution =
-    i.monthly_contribution == null ? null : Number(i.monthly_contribution);
-  const expectedReturn = Number(i.expected_return);
-
-  const projection = computeInvestmentProjection({
-    investedAmount,
-    currentValue,
-    monthlyContribution,
-    expectedReturn,
-    startDate: i.start_date,
-  });
-
-  return {
+  return ((data ?? []) as InvestmentSel[]).map((i) => ({
     id: i.id,
     name: i.name,
     type: i.type as InvestmentType,
-    investedAmount,
-    currentValue,
-    monthlyContribution,
-    expectedReturn,
-    currency: (i.currency as CurrencyCode) ?? "USD",
+    investedAmount: i.invested_amount,
+    currentValue: i.current_value,
+    monthlyContribution: i.monthly_contribution,
+    expectedReturn: Number(i.expected_return),
+    currency: i.currency,
     startDate: i.start_date,
-    projection,
-  };
+  }));
 }
