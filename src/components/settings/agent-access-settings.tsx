@@ -42,6 +42,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
 
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState<McpTokenMeta["scope"]>("read_summary");
+  const [canWrite, setCanWrite] = useState(false);
   const [durationDays, setDurationDays] = useState<number>(
     MCP_TOKEN_DURATION_PRESETS_DAYS[1],
   );
@@ -49,6 +50,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
   const [error, setError] = useState<string | null>(null);
   const [mintedToken, setMintedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [configCopied, setConfigCopied] = useState(false);
 
   async function handleMint() {
     if (!dek) {
@@ -75,6 +77,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
       const result = await mintMcpToken({
         label: label.trim(),
         scope,
+        canWrite,
         durationDays,
         tokenHash,
         wrap,
@@ -86,6 +89,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
       }
       setMintedToken(token.display);
       setLabel("");
+      setCanWrite(false);
       router.refresh();
     } catch {
       setError("Something went wrong creating the token.");
@@ -105,6 +109,28 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
     await navigator.clipboard.writeText(mintedToken);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function mcpConfigJson(): string {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return JSON.stringify(
+      {
+        mcpServers: {
+          "finance-os": {
+            url: `${origin}/api/mcp`,
+            headers: { Authorization: `Bearer ${mintedToken}` },
+          },
+        },
+      },
+      null,
+      2,
+    );
+  }
+
+  async function handleCopyConfig() {
+    await navigator.clipboard.writeText(mcpConfigJson());
+    setConfigCopied(true);
+    setTimeout(() => setConfigCopied(false), 2000);
   }
 
   const active = tokens.filter((t) => !t.revokedAt && new Date(t.expiresAt) > new Date());
@@ -142,6 +168,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
                   <Badge variant={t.scope === "read_full" ? "brand" : "default"}>
                     {t.scope === "read_full" ? "Full" : "Summary"}
                   </Badge>
+                  {t.canWrite && <Badge variant="brand">Write</Badge>}
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
                   Expires {formatDate(t.expiresAt)}
@@ -195,7 +222,11 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
             <Select
               id="mcpScope"
               value={scope}
-              onChange={(e) => setScope(e.target.value as McpTokenMeta["scope"])}
+              onChange={(e) => {
+                const next = e.target.value as McpTokenMeta["scope"];
+                setScope(next);
+                if (next !== "read_full") setCanWrite(false);
+              }}
               disabled={!dek}
             >
               <option value="read_summary">Summary only</option>
@@ -219,6 +250,23 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">{SCOPE_LABELS[scope]}</p>
+
+        <label className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+          <span className="text-sm">
+            <span className="font-medium">Allow write access</span>
+            <span className="block text-xs text-muted-foreground">
+              The agent can create, edit, and delete data — every edit or delete still needs your
+              agent to ask for confirmation first. Requires &quot;Full data&quot; access.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={canWrite}
+            onChange={(e) => setCanWrite(e.target.checked)}
+            disabled={!dek || scope !== "read_full"}
+            className="size-4 shrink-0 accent-[var(--color-brand)]"
+          />
+        </label>
 
         {error && <p className="text-sm text-negative">{error}</p>}
 
@@ -248,6 +296,27 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
               </>
             )}
           </Button>
+
+          <div className="space-y-1.5 border-t border-border pt-4">
+            <p className="text-xs font-medium text-muted-foreground">
+              Connect it (e.g. Claude Desktop / Claude Code / Cursor MCP config)
+            </p>
+            <pre className="overflow-x-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap break-all">
+              {mcpConfigJson()}
+            </pre>
+            <Button type="button" variant="outline" onClick={handleCopyConfig} className="w-full">
+              {configCopied ? (
+                <>
+                  <Check className="size-4" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="size-4" /> Copy config
+                </>
+              )}
+            </Button>
+          </div>
+
           <Button type="button" onClick={() => setMintedToken(null)} className="w-full">
             Done
           </Button>

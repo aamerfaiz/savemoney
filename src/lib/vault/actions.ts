@@ -181,6 +181,7 @@ export async function rotateVaultSecret(
 const mintMcpTokenInputSchema = z.object({
   label: z.string().trim().min(1, "Give this token a name.").max(60),
   scope: z.enum(["read_summary", "read_full"]),
+  canWrite: z.boolean().default(false),
   durationDays: z.number().int().positive().max(MCP_TOKEN_MAX_DURATION_DAYS),
   tokenHash: z.string().min(1),
   wrap: wrappedPayloadSchema,
@@ -223,6 +224,7 @@ export async function mintMcpToken(
       tokenDekIv: parsed.data.wrap.iv,
       tokenKekSalt: parsed.data.salt,
       scope: parsed.data.scope,
+      canWrite: parsed.data.canWrite,
       expiresAt,
     })
     .returning({

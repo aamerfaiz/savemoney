@@ -57,6 +57,7 @@ export interface McpTokenMeta {
   id: string;
   label: string;
   scope: "read_summary" | "read_full";
+  canWrite: boolean;
   expiresAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
@@ -74,6 +75,7 @@ export async function listMcpTokens(): Promise<McpTokenMeta[]> {
       id: schema.mcpAgentTokens.id,
       label: schema.mcpAgentTokens.label,
       scope: schema.mcpAgentTokens.scope,
+      canWrite: schema.mcpAgentTokens.canWrite,
       expiresAt: schema.mcpAgentTokens.expiresAt,
       lastUsedAt: schema.mcpAgentTokens.lastUsedAt,
       revokedAt: schema.mcpAgentTokens.revokedAt,

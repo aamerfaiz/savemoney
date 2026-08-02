@@ -751,6 +751,14 @@ export const mcpAgentTokens = privateSchema.table(
     tokenDekIv: text("token_dek_iv").notNull(),
     tokenKekSalt: text("token_kek_salt").notNull(),
     scope: mcpTokenScope("scope").notNull().default("read_summary"),
+    /** Phase 3.5.9 — a second, independent axis from `scope`: whether this
+     * token can call write tools (create/update/delete) at all, on top of
+     * whatever it can read. Defaults to `false` for every existing and new
+     * token — write access is opt-in per token, never silently granted to
+     * a token minted before this existed. Write tools additionally require
+     * `scope = 'read_full'` (see mcp/session.ts) — a token that can't read
+     * real amounts has no sane way to confirm a change to one either. */
+    canWrite: boolean("can_write").notNull().default(false),
     /** Chosen by the user at creation (preset durations) but always capped
      * server-side — "no expiry" is never offered. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -761,6 +769,35 @@ export const mcpAgentTokens = privateSchema.table(
   (t) => [
     index("mcp_agent_tokens_user_idx").on(t.userId),
     index("mcp_agent_tokens_token_hash_idx").on(t.tokenHash),
+  ],
+);
+
+/** Phase 3.5.9 — records that an MCP tool was called, never what it saw or
+ * changed: `toolName`/`action`/`targetTable`/`targetId` only, no field
+ * values, no ciphertext, no plaintext. Serves two purposes: the "who/when
+ * a token was used" audit trail the plan doc calls for ("content stays
+ * opaque, but usage isn't"), and a cheap basis for per-token rate
+ * limiting (count recent rows instead of an in-memory counter, which
+ * wouldn't be shared across serverless instances anyway). */
+export const mcpToolCallLog = privateSchema.table(
+  "mcp_tool_call_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenId: uuid("token_id")
+      .notNull()
+      .references(() => mcpAgentTokens.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    toolName: text("tool_name").notNull(),
+    action: text("action").notNull(), // "read" | "propose" | "write"
+    targetTable: text("target_table"),
+    targetId: uuid("target_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mcp_tool_call_log_token_idx").on(t.tokenId, t.createdAt),
+    index("mcp_tool_call_log_user_idx").on(t.userId),
   ],
 );
 

@@ -3,8 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { GUEST_ALLOWED_PATHS, GUEST_COOKIE } from "@/lib/guest/constants";
 
-/** Routes that never require an authenticated session. */
-const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest"];
+/** Routes that never require an authenticated session. `/api/mcp` does its
+ * own auth entirely (a bearer token, checked in the route handler itself
+ * via mcp/session.ts's `resolveMcpSession`) — external MCP clients (Claude
+ * Desktop, Cursor, ...) have no Supabase session cookie at all, so gating
+ * this route on one would make it unreachable from outside a browser. */
+const PUBLIC_PATHS = ["/login", "/auth", "/_next", "/favicon", "/manifest", "/api/mcp"];
 
 /**
  * Refreshes the Supabase auth session on every request and guards the app.

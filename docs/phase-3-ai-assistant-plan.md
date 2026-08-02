@@ -132,18 +132,16 @@ bar is "even the developer can't read it," not just "a DB leak can't read
 it." Scope reaches every financial table, not just the AI keys, so it's
 tracked in its own doc rather than inline here.
 
-- [x] **Live for 3.5.0–3.5.7** — vault infrastructure, the transient AI-key
+- [x] **Live for 3.5.0–3.5.9** — vault infrastructure, the transient AI-key
       relay, every finance table's client-side field encryption, the
-      passphrase/recovery-code/quick-unlock/vault-rotation UX, and
-      automatic backfill of pre-migration plaintext rows are all shipped.
+      passphrase/recovery-code/quick-unlock/vault-rotation UX, automatic
+      backfill of pre-migration plaintext rows, and the MCP agent server
+      (read + confirm-gated write tools, transport, `get_capabilities`,
+      the Agent Access write-access toggle) are all shipped.
       `private.ai_provider_keys` (this file's Phase 3.1 table) moved from
       `AI_KEYS_ENCRYPTION_KEY` envelope encryption to vault-DEK wrapping
       in 3.5.2; the old server-secret code path (`src/lib/ai/crypto.ts`)
       was deleted in 3.5.7.
-- [ ] **3.5.9 (MCP agent access — the actual tool server) not started.**
-      Token infrastructure landed early alongside 3.5.1; building the
-      tool handlers is on hold pending a locked decision on write access
-      and scope granularity.
       Full plan, phase-wise build, and open questions:
       `docs/e2ee-path-b-plan.md`.
 

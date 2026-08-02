@@ -6,17 +6,18 @@ points here. Internally numbered **3.5.0–3.5.9** below, following the same
 `3.x` convention that doc uses for its own sub-phases. Also referred to as
 "Path B" earlier in the design discussion that produced this doc.
 
-Status: **live for 3.5.0–3.5.7.** Vault infrastructure, the transient
+Status: **live for 3.5.0–3.5.9.** Vault infrastructure, the transient
 AI-key relay, every finance table's client-side field encryption (income
 through recurring rules and AI provider keys), the passphrase/recovery-
-code/quick-unlock/vault-rotation UX, and automatic backfill of
-pre-migration plaintext rows are all shipped and running against the live
-database. **3.5.9 (the actual MCP server: tool handlers, transport,
-`get_capabilities`) is not started** — the token infrastructure landed
-early alongside 3.5.1, but building the tools themselves is on hold
-pending a locked decision on write access and scope granularity (see
-"Still open" below). This section (3.5.8) is the rollout/documentation
-pass tying 3.5.0–3.5.7 off; 3.5.9 remains open work.
+code/quick-unlock/vault-rotation UX, automatic backfill of pre-migration
+plaintext rows, and the MCP server itself (read + confirm-gated write
+tools, transport, `get_capabilities`, the Agent Access write-access
+toggle) are all shipped. **Not yet verified**: a real MCP client (Claude
+Desktop/Code, Cursor) connected end to end against a live project with a
+real vault — every phase in this doc shares the same sandbox limitation
+(no configured database here), so this was checked via `npm run build`/
+`lint`, a live-schema check through the Supabase MCP, and a local
+`next dev` smoke test of the auth boundary instead.
 
 This was deliberately a different, stronger bar than the AI provider key
 encryption Phase 3 originally shipped with — envelope encryption under a
@@ -1504,45 +1505,102 @@ folded into generic "connect an agent" copy.
         build`/`npm run lint` re-run anyway for consistency with every
         other sub-item's verification, both clean (unaffected, as
         expected).
-- [ ] **3.5.9 — MCP agent access.** Depends on 3.5.1 (vault infra) and the
-      relay pattern proven in 3.5.2; independent of 3.5.3–3.5.7 (can land
-      before or after the rest of the finance-table rollout, but tools
-      that read a given table obviously can't return real data for it
-      until that table's migrated). The token *infrastructure* below
-      landed early, alongside 3.5.1's schema work — the actual MCP
-      server/tool handlers did not, and are the remaining scope here.
+- [x] **3.5.9 — MCP agent access.** Depends on 3.5.1 (vault infra) and the
+      relay pattern proven in 3.5.2. The token *infrastructure* landed
+      early, alongside 3.5.1's schema work; this pass added the actual
+      MCP server — transport, read tools, write tools with a confirm-gate,
+      and the Agent Access UI's write-access toggle.
   - [x] `private.mcp_agent_tokens` (`id`, `userId`, `label`, `tokenHash`,
         `wrappedDekByToken`, `tokenDekIv`, `tokenKekSalt`, `scope`,
-        `expiresAt`, `lastUsedAt`, `revokedAt`, `...audit`) — built and
-        migrated alongside `vault_keys` in 3.5.1, same RLS/PostgREST
-        treatment. Applied to the live project.
+        `canWrite`, `expiresAt`, `lastUsedAt`, `revokedAt`, `...audit`) —
+        `canWrite` added this pass (migration `0018_shallow_frog_thor`,
+        defaults `false` for every existing token — write access is
+        opt-in per token, never silently granted). Applied to the live
+        project.
+  - [x] `private.mcp_tool_call_log` (`id`, `tokenId`, `userId`, `toolName`,
+        `action` — `read`/`propose`/`write` — `targetTable`, `targetId`,
+        `createdAt`) — the audit trail: who/when a token was used, never
+        what it saw or changed (no field values, no ciphertext). Also
+        doubles as the basis for per-token rate limiting (count recent
+        rows rather than an in-memory counter, which wouldn't be shared
+        across Vercel's independent serverless instances). RLS applied
+        (`drizzle/manual/0008_mcp_write_access_rls.sql`) — owner-only
+        select/insert, no update/delete policy (a log row is never
+        modified once written).
   - [x] Settings → "Agent Access" card: mint a scoped (`read_summary` /
         `read_full`), named, expiring token (preset durations, hard-capped
         at `MCP_TOKEN_MAX_DURATION_DAYS`, shown once); list active tokens
-        with `lastUsedAt`; revoke. Wraps the DEK under an HKDF-derived
-        token KEK client-side (`src/lib/vault/crypto.ts`,
-        `src/components/settings/agent-access-settings.tsx`).
-  - [ ] Metadata/computed-only MCP tools (headless, no token-DEK
-        unwrapping needed) — ship first, independent of the rest of this
-        phase. **Not started** — this is the actual MCP server (tool
-        definitions, transport, `get_capabilities`), distinct from the
-        token infrastructure above.
-  - [ ] Vault-gated MCP tools: the per-call transient unwrap Route
-        Handler described above, scoped per token, rate-limited and
-        audit-logged (who/when a token was used — content stays opaque,
-        but usage isn't).
-  - [ ] Every tool response includes the JSON as a `content[].text` block
-        (never `structuredContent`-only) — see the cross-client
-        compatibility note above; test against Claude Code, Claude
-        Desktop, and Cursor specifically, not just one client.
-  - [ ] `get_capabilities` tool (self-describing, no vault access
-        needed) — ship with the first headless tools.
-  - [ ] **Verify**: `npm run build` passes. Manual test: mint a token,
-        call a scoped tool end to end, confirm a revoked token is refused
-        immediately, confirm the stored row is unreadable ciphertext with
-        no server secret able to open it absent a valid token, confirm
-        an expired token is refused and that "no expiry" isn't offered
-        as a choice in the UI.
+        with `lastUsedAt` and a "Write" badge; revoke. Wraps the DEK under
+        an HKDF-derived token KEK client-side (`src/lib/vault/crypto.ts`,
+        `src/components/settings/agent-access-settings.tsx`). This pass
+        added an "Allow write access" checkbox (disabled unless scope is
+        `read_full` — a token that can't read real amounts can't sanely
+        confirm a change to one either) and a copyable MCP client config
+        block (`{"mcpServers": {"finance-os": {"url", "headers"}}}`,
+        pointing at `/api/mcp` with the bearer token) in the "shown once"
+        dialog, so connecting an agent doesn't require guessing the
+        config shape.
+  - [x] Read tools (`src/lib/mcp/tools/read.ts`): `list_transactions`,
+        `list_budgets`, `list_goals`, `list_loans`, `list_investments`,
+        `list_recurring_rules`, `get_net_worth`. `read_summary`-scoped
+        tokens get structural fields only (`redacted: true`, no amounts);
+        `read_full` decrypts via the token's transiently-unwrapped DEK.
+  - [x] Write tools (`src/lib/mcp/tools/write.ts`, 22 tools: create/
+        update/delete for transactions, budgets, goals, loans,
+        investments, recurring rules, plus `add_goal_contribution`,
+        `record_loan_payment`, `record_investment_contribution`,
+        `toggle_recurring_rule`) — stateless confirm-gate: called without
+        `confirm: true` a tool computes and returns a preview (real
+        decrypted numbers, so a human can sanity-check it) but writes
+        nothing; called again with `confirm: true` and the same arguments
+        it commits. No pending-drafts table — the second call is a fresh,
+        independently-authorized write, not a stored confirmation (see
+        the module doc comment on the tradeoff this implies). Every
+        mutation's `WHERE` clause is scoped by both `id` and
+        `session.userId`, never `id` alone — there is no RLS on an MCP
+        call (the bearer token is the entire credential), so this file is
+        the enforcement point, mirroring the IDOR discipline in
+        `vault/rotation-actions.ts`/`backfill-actions.ts`. Every write
+        additionally requires `canWrite` **and** `scope = 'read_full'`
+        (`requireWriteAccess` in `mcp/tools/shared.ts`).
+  - [x] Transport (`src/app/api/mcp/route.ts`): one bearer-authenticated,
+        stateless endpoint — a fresh `McpServer` +
+        `WebStandardStreamableHTTPServerTransport` per request (the SDK's
+        own stateless pattern), tools wired to that request's resolved
+        session via closures. Rate-limited (`checkRateLimit`, 30
+        calls/min/token) and audit-logged (`logToolCall` on every call,
+        classified `read`/`propose`/`write`) before the tool runs.
+        `/api/mcp` was added to `PUBLIC_PATHS` in
+        `src/lib/supabase/middleware.ts` — a real bug caught during
+        verification: the app's proxy-level auth guard was redirecting
+        every unauthenticated request (including this route, which has no
+        Supabase session cookie at all) to `/login` before the route
+        handler's own bearer-token auth ever ran, making the endpoint
+        unreachable from any external MCP client.
+  - [x] Every tool response includes the JSON as a `content[].text` block
+        (never `structuredContent`-only, see `toolResult()` in
+        `mcp/tools/shared.ts`) — the cross-client compatibility rule
+        applies uniformly since every tool funnels through it.
+  - [x] `get_capabilities` tool — returns this token's scope/`canWrite`,
+        the available read/write tool names, and an explanation of the
+        confirm-gate, so a connecting agent can self-orient.
+  - [x] **Verify**: `npm run build` and `npm run lint` clean. `tsc
+        --noEmit` clean. Migration + RLS confirmed live via the Supabase
+        MCP (`can_write` column present, `mcp_tool_call_log` RLS enabled
+        with owner-only select/insert policies); `get_advisors` shows only
+        the pre-existing, unrelated "leaked password protection disabled"
+        warning. Manually verified against a local `next dev` instance:
+        an unauthenticated request now reaches the route (previously
+        blocked by the middleware bug above) and correctly returns a
+        clean 401 rather than a redirect or a crash, both with no bearer
+        token and with a garbage one. **Not verified**: a real MCP client
+        (Claude Desktop/Code, Cursor) end to end against a live Supabase
+        project with a real vault — this sandbox has no configured
+        database, the same limitation noted throughout this plan for
+        every phase's Server Actions. `get_dashboard_summary`/
+        `get_financial_score` tools were scoped out (the existing list/get
+        tools cover the same underlying data; a dedicated dashboard-shaped
+        tool can be added later if an agent's usage shows it's needed).
 
 ## Resolved (formerly open questions)
 
@@ -1559,6 +1617,18 @@ isn't lost:
 - MCP token max lifetime: **user-chosen at creation (preset durations),
   hard-capped at a maximum (e.g. 365 days) — "no expiry" is not offered.**
   (See "Resolved: MCP agent access.")
+- MCP scope granularity: **not per-module — a single `scope` axis
+  (`read_summary` vs. `read_full`) crossed with an independent `canWrite`
+  boolean**, both v1 offerings, not deferred to read-only-only. A token
+  is either summary-only or sees every module's real data (no
+  transactions-but-not-goals split); write access is a separate opt-in
+  toggle on top, gated to `read_full` tokens only (`requireWriteAccess`
+  in `mcp/tools/shared.ts`) since a token that can't read a real amount
+  can't sanely confirm a change to one. Per-module scoping was considered
+  and dropped for v1 — it multiplies the settings UI and the token-mint
+  flow for a distinction most callers (one assistant reading/acting on
+  "my finances" as a whole) don't need; revisit if usage shows a real
+  need to hand a narrower slice to a single-purpose automation.
 - MCP token storage on the agent side: **assume the worst case (plaintext
   config file, no OS keychain)** — the target client set is broad
   (Cursor, Claude Code, Claude Desktop, others), not one controlled
@@ -1568,12 +1638,8 @@ isn't lost:
   attempt-throttling (wipe local cache after N wrong tries)** — WebAuthn/
   biometric deferred, see below.
 
-## Still open (not blocking 3.5.1, needs a decision before 3.5.9 ships)
+## Still open
 
-- **MCP scope granularity** — per-module (transactions vs. budget vs.
-  net-worth vs. everything) is the current assumption; whether read+write
-  scopes are offered at all in v1, or read-only only until the pattern's
-  proven, still needs a decision.
 - Per-provider CORS support (DeepSeek now, OpenAI/Gemini/Claude later) —
   no longer blocking (the relay doesn't need it), but worth checking
   later purely as an optimization; see 3.5.2.

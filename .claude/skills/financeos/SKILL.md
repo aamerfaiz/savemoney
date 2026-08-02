@@ -387,10 +387,12 @@ module behind "user has a valid active key" (it is an optional module).
   "AI providers & user API keys" section above — pluggable providers
   (DeepSeek first), What-if Simulator, Receipt OCR, CSV intelligence,
   auto-categorization. **Phase 3.5, end-to-end encryption ("not even
-  me"), is live** for every finance table plus AI provider keys — see
-  `docs/e2ee-path-b-plan.md`. Only 3.5.9 (an MCP server exposing this
-  data to external agents) remains unbuilt, on hold pending a scope
-  decision.
+  me"), is live** for every finance table plus AI provider keys, and now
+  includes **3.5.9, an MCP server** (`src/app/api/mcp/route.ts`) exposing
+  this data to external agents (Claude Desktop, Claude Code, Cursor) via
+  the same token infrastructure — read tools plus confirm-gated write
+  tools, minted from Settings → Agent Access. See
+  `docs/e2ee-path-b-plan.md`.
 - **Phase 4**: SMS/Bank/Email sync (one shared import pipeline), shared family
   accounts.
 - **Phase 5**: Native mobile (Expo) via a shared Turborepo, offline sync,
