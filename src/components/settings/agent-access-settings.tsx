@@ -50,6 +50,7 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
   const [error, setError] = useState<string | null>(null);
   const [mintedToken, setMintedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
   const [configCopied, setConfigCopied] = useState(false);
 
   async function handleMint() {
@@ -111,13 +112,17 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function mcpConfigJson(): string {
+  function mcpUrl(): string {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origin}/api/mcp`;
+  }
+
+  function mcpConfigJson(): string {
     return JSON.stringify(
       {
         mcpServers: {
           "finance-os": {
-            url: `${origin}/api/mcp`,
+            url: mcpUrl(),
             headers: { Authorization: `Bearer ${mintedToken}` },
           },
         },
@@ -125,6 +130,12 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
       null,
       2,
     );
+  }
+
+  async function handleCopyUrl() {
+    await navigator.clipboard.writeText(mcpUrl());
+    setUrlCopied(true);
+    setTimeout(() => setUrlCopied(false), 2000);
   }
 
   async function handleCopyConfig() {
@@ -296,6 +307,27 @@ export function AgentAccessSettings({ tokens }: { tokens: McpTokenMeta[] }) {
               </>
             )}
           </Button>
+
+          <div className="space-y-1.5 border-t border-border pt-4">
+            <p className="text-xs font-medium text-muted-foreground">Server URL</p>
+            <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-3 font-mono text-xs break-all">
+              {mcpUrl()}
+            </div>
+            <Button type="button" variant="outline" onClick={handleCopyUrl} className="w-full">
+              {urlCopied ? (
+                <>
+                  <Check className="size-4" /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="size-4" /> Copy URL
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              For MCP clients that take a URL and bearer token separately.
+            </p>
+          </div>
 
           <div className="space-y-1.5 border-t border-border pt-4">
             <p className="text-xs font-medium text-muted-foreground">
