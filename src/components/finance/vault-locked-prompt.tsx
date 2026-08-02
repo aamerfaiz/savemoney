@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { KeyRound, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { VaultUnlockFlow } from "@/components/vault/vault-unlock-flow";
 import { useVaultStatus } from "@/lib/vault/use-vault-status";
 import { useCurrentUserId } from "@/lib/vault/use-current-user-id";
 import { useVaultStore } from "@/lib/vault/store";
@@ -20,66 +20,41 @@ import {
 import { deriveKekFromSecret, fromBase64, unwrapDek } from "@/lib/vault/crypto";
 
 /**
- * Shared "you can't see this yet" gate for every encrypted-module page
- * (Phase 3.5.6) — replaces the old copy-pasted `if (!dek)` block. Fetches
- * `useVaultStatus()` to tell apart the two reasons a page has no DEK in
- * memory: no vault set up yet at all (setup prompt, deep-linking straight
- * to Settings → Vault & Encryption, with copy tailored for OAuth-only
- * accounts who have never typed a password into this app), vs. a vault
- * that exists but isn't unlocked in this session (unlock prompt — which
- * also checks this device's IndexedDB for a quick-unlock PIN wrap and, if
- * one exists, offers a PIN field right here instead of a trip to Settings).
- * Defaults to the "locked" copy while the status query is loading or if it
- * fails — the safer assumption, since it never tells an existing vault
- * owner their data is gone.
+ * Shared "you can't see this yet" gate for every encrypted-module page —
+ * replaces the old copy-pasted `if (!dek)` block. Rather than pointing
+ * the user to Settings (the original 3.5.6 version), this renders the
+ * actual setup/unlock/recover flow inline as an overlay
+ * (`VaultUnlockFlow`, shared with the Settings page itself), so nobody
+ * has to leave the page they were trying to use just to type a
+ * passphrase. Fetches `useVaultStatus()` to tell apart "no vault yet"
+ * (setup form, copy tailored for OAuth-only accounts) from "locked this
+ * session" (unlock form, plus this device's quick-unlock PIN if one's
+ * set up — see `QuickUnlockPin` below). Defaults to the "locked" copy
+ * while the status query is loading or if it fails — the safer
+ * assumption, since it never tells an existing vault owner their data is
+ * gone.
  */
-export function VaultLockedPrompt({
-  module,
-  maxWidth = "max-w-3xl",
-}: {
-  module: string;
-  maxWidth?: string;
-}) {
+export function VaultLockedPrompt({ module }: { module: string }) {
   const status = useVaultStatus();
   const hasVault = status.data?.hasVault ?? true;
   const isOAuthOnly = status.data?.isOAuthOnly ?? false;
 
-  if (!hasVault) {
-    return (
-      <div className={`mx-auto ${maxWidth}`}>
-        <div className="space-y-2.5 rounded-md border border-border bg-muted/40 p-4 text-sm">
-          <p className="flex items-center gap-1.5 font-medium text-warning">
-            <ShieldAlert className="size-4 shrink-0" />
-            Set up your Vault Passphrase to see {module}
-          </p>
-          <p className="text-muted-foreground">
-            {isOAuthOnly
-              ? "You signed in with Google, so you've never set a password for this app — the Vault Passphrase is a separate secret you create now. It encrypts your financial data end-to-end: not even we can read it without it."
-              : "This is separate from your login password. It encrypts your financial data end-to-end — not even we can read it without it."}
-          </p>
-          <Link
-            href="/settings#vault"
-            className="inline-flex items-center gap-1.5 font-medium text-brand hover:underline"
-          >
-            <KeyRound className="size-4" />
-            Set up your vault
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`mx-auto ${maxWidth} space-y-3`}>
-      <p className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 p-4 text-sm text-warning">
-        <ShieldAlert className="size-4 shrink-0" />
-        <Link href="/settings#vault" className="hover:underline">
-          Unlock your vault in Settings → Vault & Encryption
-        </Link>
-        &nbsp;to see {module}.
-      </p>
-      <QuickUnlockPin />
-    </div>
+    <Dialog
+      open
+      onClose={() => {}}
+      title={hasVault ? "Unlock your vault" : "Set up your vault"}
+      description={
+        hasVault
+          ? `Unlock your vault to see ${module}.`
+          : `Set up your Vault Passphrase to see ${module}.`
+      }
+    >
+      <div className="space-y-4">
+        {hasVault && <QuickUnlockPin />}
+        <VaultUnlockFlow hasVault={hasVault} isOAuthOnly={isOAuthOnly} />
+      </div>
+    </Dialog>
   );
 }
 
@@ -157,6 +132,7 @@ function QuickUnlockPin() {
         </Button>
       </div>
       {error && <p className="text-xs text-negative">{error}</p>}
+      <p className="text-xs text-muted-foreground">or use your full passphrase below</p>
     </div>
   );
 }

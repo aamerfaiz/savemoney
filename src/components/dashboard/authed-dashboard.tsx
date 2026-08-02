@@ -21,7 +21,7 @@ export function AuthedDashboard({
   const side = useSideData(currency);
 
   if (!dek) {
-    return <VaultLockedPrompt module="your dashboard" maxWidth="max-w-6xl" />;
+    return <VaultLockedPrompt module="your dashboard" />;
   }
 
   if (finance.isLoading || side.isLoading) {

@@ -51,7 +51,7 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
   });
 
   if (!dek) {
-    return <VaultLockedPrompt module="your notifications" maxWidth="max-w-2xl" />;
+    return <VaultLockedPrompt module="your notifications" />;
   }
 
   if (finance.isLoading || extras.isLoading) {

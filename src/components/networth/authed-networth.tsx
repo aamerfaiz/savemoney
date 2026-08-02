@@ -15,7 +15,7 @@ export function AuthedNetWorth({ currency }: { currency: CurrencyCode }) {
   const side = useSideData(currency);
 
   if (!dek) {
-    return <VaultLockedPrompt module="your net worth" maxWidth="max-w-2xl" />;
+    return <VaultLockedPrompt module="your net worth" />;
   }
 
   if (finance.isLoading || side.isLoading) {

@@ -52,7 +52,7 @@ export default async function SettingsPage() {
           <CardTitle>Vault & Encryption</CardTitle>
         </CardHeader>
         <CardContent>
-          <VaultSettings hasVault={vaultStatus.hasVault} />
+          <VaultSettings hasVault={vaultStatus.hasVault} isOAuthOnly={vaultStatus.isOAuthOnly} />
         </CardContent>
       </Card>
 
