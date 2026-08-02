@@ -287,7 +287,7 @@ of all rows for a batch plus `status = 'rolled_back'` (`src/lib/import/actions.t
 `kind|amount|date|description`. UI is a 4-step wizard in
 `src/components/import/`. Route: `/import`.
 
-## AI providers & user API keys (BYOK) — required, Phase 3
+## AI providers & user API keys (BYOK) — live, Phase 3 + 3.5
 
 Finance OS is **bring-your-own-key**: each user stores their own AI provider
 API key(s) and the app uses them to run AI features. DeepSeek R1 Flash is the
@@ -295,24 +295,26 @@ first provider; OpenAI, Gemini and Claude follow via the same abstraction. This
 is a first-class product requirement, not an afterthought — the spec calls for
 an "extensible plugin architecture for AI providers."
 
-Implementation is deferred to **Phase 3**, but design to this shape so nothing
-has to be retrofitted:
-
-**Security model (non-negotiable — these are user secrets):**
-- Keys are **never readable by the browser.** Store them in a **private schema
-  that is NOT exposed to PostgREST** (e.g. `private.ai_provider_keys`), so the
+**Security model (non-negotiable — these are user secrets), as it actually
+runs today:**
+- Keys are **never readable by the browser.** Stored in a **private schema
+  that is NOT exposed to PostgREST** (`private.ai_provider_keys`), so the
   anon/authenticated Supabase API cannot `SELECT` them at all.
-- **Encrypt at rest with app-level AES-256-GCM** (envelope encryption) using a
-  server-only `AI_KEYS_ENCRYPTION_KEY` env secret. Even a leaked row is
-  ciphertext. Never log plaintext keys.
-- Plaintext is decrypted **only** in trusted server code (Server Actions /
-  Route Handlers / Edge Functions) at call time, and used immediately.
-- The client only ever receives non-secret metadata:
-  `provider · model · ••••last4 · is_active · createdAt`.
+- **Wrapped under the user's own vault DEK** (Phase 3.5.2 — see
+  `docs/e2ee-path-b-plan.md`), not a server-held key: `encrypted_key`/`key_iv`
+  are AES-256-GCM ciphertext only the account owner's unlocked vault can
+  decrypt. The original Phase 3.1 design (a server-only
+  `AI_KEYS_ENCRYPTION_KEY` env secret, real protection against a DB leak but
+  decryptable by anyone with server access) was superseded and its code path
+  deleted in 3.5.7 — don't reintroduce it.
+- Plaintext is decrypted **only client-side**, transiently, immediately before
+  a relayed API call (`src/lib/ai/client-key.ts`) — never in server memory at
+  rest. Never logged.
+- The client only ever receives non-secret metadata over the wire in list
+  views: `provider · model · ••••last4 · is_active · createdAt`.
 
-**Intended table** (add in the Phase 3 migration, with RLS `user_id =
-auth.uid()`, in the private schema; do not expose via the API):
-`private.ai_provider_keys(id, user_id → auth.users, provider, label,
+**Table** (private schema, RLS `user_id = auth.uid()`, not exposed via the
+API): `private.ai_provider_keys(id, user_id → auth.users, provider, label,
 encrypted_key, key_iv, key_last4, model, is_active, createdAt, updatedAt,
 deletedAt)`.
 
@@ -384,7 +386,11 @@ module behind "user has a valid active key" (it is an optional module).
 - **Phase 3**: AI Assistant with **user-provided API keys (BYOK)** — see the
   "AI providers & user API keys" section above — pluggable providers
   (DeepSeek first), What-if Simulator, Receipt OCR, CSV intelligence,
-  auto-categorization.
+  auto-categorization. **Phase 3.5, end-to-end encryption ("not even
+  me"), is live** for every finance table plus AI provider keys — see
+  `docs/e2ee-path-b-plan.md`. Only 3.5.9 (an MCP server exposing this
+  data to external agents) remains unbuilt, on hold pending a scope
+  decision.
 - **Phase 4**: SMS/Bank/Email sync (one shared import pipeline), shared family
   accounts.
 - **Phase 5**: Native mobile (Expo) via a shared Turborepo, offline sync,

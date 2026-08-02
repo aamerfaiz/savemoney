@@ -6,14 +6,26 @@ points here. Internally numbered **3.5.0–3.5.9** below, following the same
 `3.x` convention that doc uses for its own sub-phases. Also referred to as
 "Path B" earlier in the design discussion that produced this doc.
 
-Status: **design only, nothing in this doc is implemented yet.**
+Status: **live for 3.5.0–3.5.7.** Vault infrastructure, the transient
+AI-key relay, every finance table's client-side field encryption (income
+through recurring rules and AI provider keys), the passphrase/recovery-
+code/quick-unlock/vault-rotation UX, and automatic backfill of
+pre-migration plaintext rows are all shipped and running against the live
+database. **3.5.9 (the actual MCP server: tool handlers, transport,
+`get_capabilities`) is not started** — the token infrastructure landed
+early alongside 3.5.1, but building the tools themselves is on hold
+pending a locked decision on write access and scope granularity (see
+"Still open" below). This section (3.5.8) is the rollout/documentation
+pass tying 3.5.0–3.5.7 off; 3.5.9 remains open work.
 
-This is deliberately a different, stronger bar than the AI provider key
-encryption already shipped (`src/lib/ai/crypto.ts`). That's envelope
-encryption with a server-held key — real protection against a DB-level
-leak, but decryptable by anyone with server access. Phase 3.5 removes the
-server (and its operator) from the trust boundary entirely for the fields
-it covers.
+This was deliberately a different, stronger bar than the AI provider key
+encryption Phase 3 originally shipped with — envelope encryption under a
+server-held key (`AI_KEYS_ENCRYPTION_KEY`), real protection against a
+DB-level leak, but decryptable by anyone with server access. Phase 3.5.2
+migrated `private.ai_provider_keys` to the vault DEK instead, and 3.5.7
+deleted the now-dead `src/lib/ai/crypto.ts`/`AI_KEYS_ENCRYPTION_KEY` path
+entirely — every table in scope now removes the server (and its operator)
+from the trust boundary, not just this one.
 
 Extend this file rather than starting a new one as design decisions get
 made or increments land, same convention as `docs/phase-3-ai-assistant-plan.md`.
@@ -1436,11 +1448,37 @@ folded into generic "connect an agent" copy.
         the detection/recovery logic itself was verified standalone (see
         above), just not the end-to-end write-back against a real
         session.
-- [ ] **3.5.8 — Rollout & documentation.**
-  - [ ] Flip this doc's Status line from "design only" once shipped.
-  - [ ] Mark Phase 3.5 in `docs/phase-3-ai-assistant-plan.md`.
-  - [ ] Update the financeos skill's roadmap section (Phase 3 entry) to
-        note E2EE is live.
+- [x] **3.5.8 — Rollout & documentation.** Done, all three sub-items —
+      note this only covers 3.5.0–3.5.7; 3.5.9 is explicitly called out
+      as still open everywhere it's mentioned below, not silently implied
+      as done.
+  - [x] Flipped this doc's Status line (top of file) from "design only" to
+        an accurate "live for 3.5.0–3.5.7, 3.5.9 not started" summary;
+        also corrected its neighboring paragraph, which still described
+        `src/lib/ai/crypto.ts` as the current AI-key encryption model —
+        that file was deleted in 3.5.7.
+  - [x] Marked Phase 3.5 in `docs/phase-3-ai-assistant-plan.md`: its
+        Phase 3.5 entry now splits into "live for 3.5.0–3.5.7" (checked)
+        and "3.5.9 not started" (unchecked, with the write-access/scope
+        blocker noted) instead of one blanket "design only, not started."
+        Also corrected its "Rollout note" section, which said
+        `AI_KEYS_ENCRYPTION_KEY` "is set in Vercel" as if still load-
+        bearing — now notes it's safe to remove from the deployment's env
+        vars since 3.5.7 deleted the only code that read it.
+  - [x] Updated the financeos skill's roadmap Phase 3 bullet to note E2EE
+        is live (`docs/e2ee-path-b-plan.md` reference, 3.5.9 flagged as
+        the one open piece). Also fixed the skill's "AI providers & user
+        API keys" section above it, which still documented the original
+        `AI_KEYS_ENCRYPTION_KEY` server-secret model as current, forward-
+        looking design guidance ("Implementation is deferred to Phase 3,
+        but design to this shape") — corrected to describe the vault-DEK
+        model that's actually live, since this section is the skill's own
+        stated "ground truth for how things are built" and a future agent
+        reading it literally would have reintroduced the deleted pattern.
+  - [x] **Verify**: no code changed this sub-item — docs only. `npm run
+        build`/`npm run lint` re-run anyway for consistency with every
+        other sub-item's verification, both clean (unaffected, as
+        expected).
 - [ ] **3.5.9 — MCP agent access.** Depends on 3.5.1 (vault infra) and the
       relay pattern proven in 3.5.2; independent of 3.5.3–3.5.7 (can land
       before or after the rest of the finance-table rollout, but tools
