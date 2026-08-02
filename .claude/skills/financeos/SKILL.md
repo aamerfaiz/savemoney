@@ -63,6 +63,9 @@ src/
       dashboard/page.tsx # the MagicBento dashboard (server component)
       <module>/page.tsx  # transactions, budget, goals, loans, investments,
                          # net-worth, analytics, settings
+    api/
+      mcp/route.ts       # Phase 3.5.9: bearer-token MCP server (see below)
+      v1/ai/{extract,commit,ask}/  # Smart Entry + Ask relay Route Handlers
     login/               # auth screen (auth-form.tsx is the client form)
     auth/callback/route.ts  # OAuth / magic-link code exchange
     layout.tsx           # root: fonts, <Providers>, metadata, viewport
@@ -73,6 +76,7 @@ src/
     dashboard/           # dashboard cards (stat-tile, health-gauge, charts…)
     nav/                 # sidebar, bottom-nav, top-bar, nav-config
     ui/                  # shadcn-style primitives (button, card, input…)
+    vault/                # vault-unlock-flow.tsx (setup/locked/recover UI)
     icon.tsx             # string-name → lucide icon resolver
     providers.tsx        # TanStack Query provider
     coming-soon.tsx      # placeholder for unbuilt modules
@@ -84,6 +88,11 @@ src/
                          # net-worth (PURE engines)
     investments/         # Phase 2 module (types/queries/actions/mock)
     networth/            # Phase 2 module (buildNetWorth + captureSnapshot)
+    vault/                # Phase 3.5: client crypto, unlock/rotation/reset
+                         # Server Actions, in-memory DEK store (see below)
+    mcp/                  # Phase 3.5.9: MCP server session/crypto/tools
+                         # (see "End-to-end encryption ... & MCP" below)
+    ai/                   # BYOK provider abstraction (see "AI providers")
     supabase/            # client.ts, server.ts, middleware.ts (session)
     format.ts            # formatCurrency / formatPercent / dates
     utils.ts             # cn() classname merge
@@ -287,6 +296,96 @@ of all rows for a batch plus `status = 'rolled_back'` (`src/lib/import/actions.t
 `kind|amount|date|description`. UI is a 4-step wizard in
 `src/components/import/`. Route: `/import`.
 
+## End-to-end encryption (the vault) & MCP agent access — live, Phase 3.5
+
+Every money and free-text field across every finance table (income, expenses,
+budgets, goals, loans, investments, recurring rules, net-worth snapshots, plus
+AI provider keys) is **encrypted client-side under a per-user key the server
+never holds in plaintext-decryptable form** — "not even me" ("Path B"; full
+design + rationale in `docs/e2ee-path-b-plan.md`, referred to everywhere as
+the "vault"). This is the single biggest architectural fact about this
+codebase after RLS — internalize it before touching any finance table.
+
+**The mechanics:**
+- A per-user **DEK** (data-encryption key, AES-256-GCM) encrypts every
+  sensitive field. Numeric/text columns that used to be `numeric(14,2)` or
+  plain `text` are now `text` columns holding a **packed ciphertext string**
+  (`iv:base64ciphertext`, see `packPayload`/`encryptPacked` in
+  `src/lib/vault/crypto.ts`). The DB can no longer sum, filter, or sort these
+  columns — that's the point, not a bug; anything needing that math happens
+  client-side after decrypt (see each module's pure `compute.ts`).
+- The DEK itself is **wrapped** (never stored raw) under three independent,
+  swappable KEKs: the user's **vault passphrase** (Argon2id), a one-time
+  **recovery code** (HKDF — already full-entropy), and per-device **quick-
+  unlock PIN** wraps. A fourth, optional wrap exists per **MCP agent token**
+  (below). Revoking any one path (device, token) never requires touching the
+  others — that's why they're wrapped independently instead of derived from
+  one root secret.
+- **Every write encrypts client-side before the Server Action ever sees the
+  value; every read decrypts client-side after fetch.** The `actions.ts` in
+  each module (e.g. `src/lib/goals/actions.ts`) only validates *shape*
+  (ciphertext is a non-empty string) — it cannot validate the real value
+  because it can't read it. Real validation (positive amount, max length,
+  etc.) happens client-side *before* encrypting, in each module's
+  `client-actions.ts`, against the same Zod schema the UI form uses. **Never
+  add a server-side decrypt path for these fields** — that defeats the entire
+  design; if a feature seems to need one, it needs to run client-side or via
+  the MCP token-unwrap pattern below instead.
+- The DEK lives **only in memory**, in a Zustand store (`useVaultStore`,
+  `src/lib/vault/store.ts`) — never persisted, cleared on lock/logout.
+  `VaultUnlockFlow` (`src/components/vault/vault-unlock-flow.tsx`) is the
+  reusable setup/locked/recover UI; `VaultLockedPrompt`
+  (`src/components/finance/vault-locked-prompt.tsx`) is the page-level gate a
+  module renders when `!dek` — a "Set Encryption"/"Unlock vault" button opens
+  it in a closable `Dialog` overlay rather than forcing a trip to Settings.
+  Settings → "Vault & Encryption" (`vault-settings.tsx`) owns passphrase
+  change, device revocation/rotation, and lock; Settings' "Danger Zone"
+  (`reset-account-settings.tsx`) can wipe a forgotten-passphrase account back
+  to fresh (deletes all vault-encrypted rows + every wrap, never the account
+  itself).
+- Code layout: `src/lib/vault/` — `crypto.ts` (`"client-only"`, every WebCrypto
+  primitive: derive/wrap/unwrap/encrypt/decrypt/hash, Crockford Base32 for
+  recovery codes + MCP tokens), `actions.ts`/`schemas.ts` (setup/unlock/
+  change-passphrase Server Actions — schemas live in a separate file because a
+  `"use server"` file may only export async functions), `queries.ts`,
+  `backfill-actions.ts` (encrypts any pre-migration plaintext rows found on
+  next unlock), `rotation-actions.ts`/`rotation-queries.ts` (device
+  revocation → full DEK rotation + re-wrap), `reset-actions.ts`.
+
+**MCP agent access (Phase 3.5.9)** — external agents (Claude Desktop, Claude
+Code, Cursor) can read and, with explicit opt-in, write this data through
+`src/app/api/mcp/route.ts`, a stateless, bearer-token-authenticated Route
+Handler (fresh `McpServer` + Web Standard transport per request — **not**
+OAuth; a static token only, so claude.ai's OAuth-based custom-connector UI
+doesn't apply here, Claude Desktop/Code's `url`+`headers` JSON config does).
+The token itself is a fourth DEK-unwrap path, minted in Settings → Agent
+Access (`agent-access-settings.tsx`): scope (`read_summary`/`read_full`) ×
+`canWrite` (opt-in, requires `read_full`). Code layout:
+`src/lib/mcp/server-crypto.ts` (a deliberate, documented duplicate of the
+client crypto primitives — `"server-only"`, since an MCP call has no browser
+to unwrap the DEK in; verified byte-for-byte interoperable with the client
+implementation), `session.ts` (`resolveMcpSession` turns the bearer token into
+a transient `{userId, dek, scope, canWrite}` — there is **no Supabase/RLS
+session on an MCP call**, so `tools/read.ts`/`tools/write.ts` scope every
+query explicitly by `userId`, and every write's `WHERE` clause by both `id`
+**and** `userId`, same IDOR discipline as `rotation-actions.ts`), `tools/
+shared.ts` (`toolResult()` — every tool response must include `content[].
+text` JSON, not `structuredContent`-only, for cross-client compatibility).
+Every write tool implements a **stateless confirm-gate**: called without
+`confirm: true` it previews the change (real decrypted numbers) without
+writing; called again with `confirm: true` and the same arguments, it
+commits — no pending-drafts table. `/api/mcp` is listed in `PUBLIC_PATHS`
+(`src/lib/supabase/middleware.ts`) since it has no Supabase session cookie to
+check — don't remove it from there, that broke the route entirely once
+already.
+
+**When extending**: adding a money/text field to an existing encrypted table,
+or a new sensitive table, follow this pattern exactly — encrypt client-side,
+store packed ciphertext in a `text` column, validate before encrypting, never
+decrypt server-side. `docs/e2ee-path-b-plan.md` is the definitive reference,
+including the full phase-by-phase build log and every locked decision's
+rationale.
+
 ## AI providers & user API keys (BYOK) — live, Phase 3 + 3.5
 
 Finance OS is **bring-your-own-key**: each user stores their own AI provider
@@ -300,13 +399,13 @@ runs today:**
 - Keys are **never readable by the browser.** Stored in a **private schema
   that is NOT exposed to PostgREST** (`private.ai_provider_keys`), so the
   anon/authenticated Supabase API cannot `SELECT` them at all.
-- **Wrapped under the user's own vault DEK** (Phase 3.5.2 — see
-  `docs/e2ee-path-b-plan.md`), not a server-held key: `encrypted_key`/`key_iv`
-  are AES-256-GCM ciphertext only the account owner's unlocked vault can
-  decrypt. The original Phase 3.1 design (a server-only
-  `AI_KEYS_ENCRYPTION_KEY` env secret, real protection against a DB leak but
-  decryptable by anyone with server access) was superseded and its code path
-  deleted in 3.5.7 — don't reintroduce it.
+- **Wrapped under the user's own vault DEK** (see "End-to-end encryption (the
+  vault)" above), not a server-held key: `encrypted_key`/`key_iv` are
+  AES-256-GCM ciphertext only the account owner's unlocked vault can decrypt.
+  The original Phase 3.1 design (a server-only `AI_KEYS_ENCRYPTION_KEY` env
+  secret, real protection against a DB leak but decryptable by anyone with
+  server access) was superseded and its code path deleted in 3.5.7 — don't
+  reintroduce it.
 - Plaintext is decrypted **only client-side**, transiently, immediately before
   a relayed API call (`src/lib/ai/client-key.ts`) — never in server memory at
   rest. Never logged.
