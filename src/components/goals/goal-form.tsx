@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/goals/actions";
 import { encryptedCreateGoal, encryptedUpdateGoal } from "@/lib/goals/client-actions";
 import {
@@ -25,6 +26,7 @@ export function GoalForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const action = existing
     ? encryptedUpdateGoal.bind(null, dek, existing.id)
     : encryptedCreateGoal.bind(null, dek);
@@ -35,10 +37,11 @@ export function GoalForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const err = state?.fieldErrors ?? {};
 

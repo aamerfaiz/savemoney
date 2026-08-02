@@ -11,6 +11,7 @@ import { LoanForm } from "./loan-form";
 import { PaymentForm } from "./payment-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteLoan } from "@/lib/loans/actions";
 import type { LoansData } from "@/lib/loans/compute";
 import { LOAN_TYPE_ICON, type LoanWithProjection } from "@/lib/loans/types";
@@ -27,6 +28,7 @@ export function LoansView({
   failedCount?: number;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<LoanWithProjection | null>(null);
@@ -51,6 +53,7 @@ export function LoansView({
     startTransition(async () => {
       removeLoan(l.id);
       await deleteLoan(l.id);
+      invalidateFinanceData();
       router.refresh();
     });
   };

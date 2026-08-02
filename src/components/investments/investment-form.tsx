@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/investments/actions";
 import {
   encryptedCreateInvestment,
@@ -30,6 +31,7 @@ export function InvestmentForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const action = existing
     ? encryptedUpdateInvestment.bind(null, dek, existing.id)
     : encryptedCreateInvestment.bind(null, dek);
@@ -40,10 +42,11 @@ export function InvestmentForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const err = state?.fieldErrors ?? {};
 

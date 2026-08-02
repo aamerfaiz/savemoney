@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/budgets/actions";
 import {
   encryptedCreateBudget,
@@ -29,6 +30,7 @@ export function BudgetForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const action = existing
     ? encryptedUpdateBudget.bind(null, dek, existing.id)
     : encryptedCreateBudget.bind(null, dek);
@@ -39,10 +41,11 @@ export function BudgetForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const fieldErr = state?.fieldErrors ?? {};
   const expenseCategories = categories.filter((c) => c.kind === "expense");

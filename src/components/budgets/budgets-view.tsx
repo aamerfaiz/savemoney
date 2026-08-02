@@ -12,6 +12,7 @@ import { BudgetCard } from "@/components/dashboard/budget-card";
 import { BudgetForm } from "./budget-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteBudget } from "@/lib/budgets/actions";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { BudgetWithProgress } from "@/lib/budgets/types";
@@ -31,6 +32,7 @@ export function BudgetsView({
   failedCount?: number;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<BudgetWithProgress | null>(null);
@@ -47,6 +49,7 @@ export function BudgetsView({
     startTransition(async () => {
       removeBudget(b.id);
       await deleteBudget(b.id);
+      invalidateFinanceData();
       router.refresh();
     });
   };

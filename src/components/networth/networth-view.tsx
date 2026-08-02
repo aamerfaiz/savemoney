@@ -15,6 +15,7 @@ import {
   type CurrencyCode,
 } from "@/lib/format";
 import { encryptedCaptureSnapshot } from "@/lib/networth/client-actions";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { NetWorthData } from "@/lib/networth/types";
 import type { NetWorthComponent } from "@/lib/finance/net-worth";
 
@@ -26,6 +27,7 @@ export function NetWorthView({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const { result, trend, change, changePct, fromSnapshots, snapshots, currency } =
@@ -36,8 +38,12 @@ export function NetWorthView({
     setError(null);
     startTransition(async () => {
       const res = await encryptedCaptureSnapshot(dek, result);
-      if (!res.ok) setError(res.error ?? "Couldn't capture snapshot.");
-      else router.refresh();
+      if (!res.ok) {
+        setError(res.error ?? "Couldn't capture snapshot.");
+      } else {
+        invalidateFinanceData();
+        router.refresh();
+      }
     });
   };
 

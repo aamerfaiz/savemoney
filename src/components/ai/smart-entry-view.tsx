@@ -11,12 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { DraftCard } from "./draft-card";
 import type { DraftItemState, SmartEntryReference } from "./smart-entry-types";
 import { resolveActiveKey } from "@/lib/ai/client-key";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useVaultStore } from "@/lib/vault/store";
 
 type Phase = "idle" | "loading" | "results" | "empty" | "error";
 
 export function SmartEntryView({ reference }: { reference: SmartEntryReference }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const dek = useVaultStore((s) => s.dek);
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -146,6 +148,7 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
       }
       return next;
     });
+    invalidateFinanceData();
     router.refresh();
   }
 

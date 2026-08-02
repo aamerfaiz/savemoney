@@ -15,6 +15,7 @@ import {
   formatDateShort,
   type CurrencyCode,
 } from "@/lib/format";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteTransaction, type ActionResult } from "@/lib/transactions/actions";
 import type {
   Transaction,
@@ -68,6 +69,7 @@ export function TransactionsView({
   deleteAction?: typeof deleteTransaction;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -97,6 +99,7 @@ export function TransactionsView({
     startTransition(async () => {
       removeItem(t.id);
       await deleteAction(t.id, t.kind);
+      invalidateFinanceData();
       router.refresh();
     });
   };
