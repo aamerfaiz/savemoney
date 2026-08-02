@@ -3,9 +3,11 @@
 import { ShieldAlert } from "lucide-react";
 
 import { TransactionsView } from "./transactions-view";
-import { RowsSkeleton, StatTilesSkeleton, PageHeaderSkeleton } from "@/components/skeletons";
+import { DecryptProgress } from "@/components/finance/decrypt-progress";
 import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
+import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
+import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { summarize } from "@/lib/transactions/compute";
 import {
   encryptedCreateTransaction,
@@ -33,19 +35,15 @@ export function AuthedTransactionsView({
 }) {
   const dek = useVaultStore((s) => s.dek);
   const { data, isLoading, isError, error } = useFinanceData(currency);
+  const showLoading = useDelayedLoading(isLoading);
+  const progress = useDecryptProgress(["finance-data"]);
 
   if (!dek) {
     return <VaultLockedPrompt module="your transactions" />;
   }
 
-  if (isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-5">
-        <PageHeaderSkeleton />
-        <StatTilesSkeleton count={3} />
-        <RowsSkeleton />
-      </div>
-    );
+  if (showLoading) {
+    return <DecryptProgress percent={progress.percent} indeterminate={!progress.known} />;
   }
 
   if (isError || !data) {

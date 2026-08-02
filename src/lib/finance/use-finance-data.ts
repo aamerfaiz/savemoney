@@ -31,6 +31,7 @@ import {
   backfillIncomeRows,
   backfillInvestmentContributionRows,
 } from "@/lib/vault/backfill-actions";
+import { useDecryptProgressStore, withProgress } from "./decrypt-progress";
 import { computeBudgetsData, type BudgetsData } from "@/lib/budgets/compute";
 import { computeAnalyticsData } from "@/lib/analytics/compute";
 import { computeTransactionsList } from "@/lib/transactions/compute";
@@ -67,6 +68,22 @@ export function useFinanceData(currency: CurrencyCode) {
       const raw = await fetchFinanceRawData();
       if ("error" in raw) throw new Error(raw.error);
 
+      // Row-weighted decrypt progress (Phase 3.5.10) — total is known the
+      // instant ciphertext arrives; each dataset ticks its own row count
+      // in as it finishes, so a 300-row expenses list moves the bar
+      // proportionally more than a 3-row budgets list.
+      useDecryptProgressStore.getState().startChunk(
+        "finance-data",
+        raw.income.length +
+          raw.expenses.length +
+          raw.budgets.length +
+          raw.activeGoals.length +
+          raw.loans.length +
+          raw.investmentMonthlyContributions.length +
+          raw.contributions.length +
+          raw.investmentContributions.length,
+      );
+
       const [
         incomeResult,
         expenseResult,
@@ -77,14 +94,30 @@ export function useFinanceData(currency: CurrencyCode) {
         contributionsResult,
         investmentContributionsResult,
       ] = await Promise.all([
-        decryptIncomeRows(raw.income, dek),
-        decryptExpenseRows(raw.expenses, dek),
-        decryptBudgetRows(raw.budgets, dek),
-        decryptActiveGoals(raw.activeGoals, dek),
-        decryptLoanAmounts(raw.loans, dek),
-        decryptInvestmentMonthlyContributions(raw.investmentMonthlyContributions, dek),
-        decryptContributionRows(raw.contributions, dek),
-        decryptInvestmentContributionRows(raw.investmentContributions, dek),
+        withProgress("finance-data", raw.income.length, decryptIncomeRows(raw.income, dek)),
+        withProgress("finance-data", raw.expenses.length, decryptExpenseRows(raw.expenses, dek)),
+        withProgress("finance-data", raw.budgets.length, decryptBudgetRows(raw.budgets, dek)),
+        withProgress(
+          "finance-data",
+          raw.activeGoals.length,
+          decryptActiveGoals(raw.activeGoals, dek),
+        ),
+        withProgress("finance-data", raw.loans.length, decryptLoanAmounts(raw.loans, dek)),
+        withProgress(
+          "finance-data",
+          raw.investmentMonthlyContributions.length,
+          decryptInvestmentMonthlyContributions(raw.investmentMonthlyContributions, dek),
+        ),
+        withProgress(
+          "finance-data",
+          raw.contributions.length,
+          decryptContributionRows(raw.contributions, dek),
+        ),
+        withProgress(
+          "finance-data",
+          raw.investmentContributions.length,
+          decryptInvestmentContributionRows(raw.investmentContributions, dek),
+        ),
       ]);
 
       // Phase 3.5.7 "Backfill" — fire-and-forget re-encryption of any

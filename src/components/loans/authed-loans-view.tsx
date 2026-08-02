@@ -1,9 +1,11 @@
 "use client";
 
 import { LoansView } from "./loans-view";
-import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { DecryptProgress } from "@/components/finance/decrypt-progress";
 import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useSideData } from "@/lib/finance/use-side-data";
+import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
+import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@/lib/format";
 
@@ -13,18 +15,15 @@ import type { CurrencyCode } from "@/lib/format";
 export function AuthedLoansView({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const side = useSideData(currency);
+  const showLoading = useDelayedLoading(side.isLoading);
+  const progress = useDecryptProgress(["finance-side-data"]);
 
   if (!dek) {
     return <VaultLockedPrompt module="your loans" />;
   }
 
-  if (side.isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-5">
-        <PageHeaderSkeleton />
-        <RowsSkeleton />
-      </div>
-    );
+  if (showLoading) {
+    return <DecryptProgress percent={progress.percent} indeterminate={!progress.known} />;
   }
 
   if (side.isError || !side.data) {
