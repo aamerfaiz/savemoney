@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/loans/actions";
 import { encryptedRecordPayment } from "@/lib/loans/client-actions";
 import { formatCurrency } from "@/lib/format";
@@ -23,6 +24,7 @@ export function PaymentForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [isExtra, setIsExtra] = useState(false);
   const action = encryptedRecordPayment.bind(null, dek, loan);
   const [state, formAction, pending] = useActionState<
@@ -32,10 +34,11 @@ export function PaymentForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const err = state?.fieldErrors ?? {};
 

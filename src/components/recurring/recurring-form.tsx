@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/recurring/actions";
 import {
   encryptedCreateRecurringRule,
@@ -41,6 +42,7 @@ export function RecurringForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [kind, setKind] = useState<RecurringKind>(existing?.kind ?? "expense");
 
   const action = existing
@@ -53,10 +55,11 @@ export function RecurringForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const fieldErr = state?.fieldErrors ?? {};
   const kindCategories = categories.filter((c) => c.kind === kind);

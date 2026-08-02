@@ -22,6 +22,7 @@ import { formatCurrency } from "@/lib/format";
 import { rollbackImport } from "@/lib/import/actions";
 import { commitImportClientSide, previewImportClientSide } from "@/lib/import/client-actions";
 import { detectMapping } from "@/lib/import/pipeline";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type {
   ColumnMapping,
   CommitResult,
@@ -51,6 +52,7 @@ const SAMPLE_CSV = `Date,Description,Category,Amount,Type
 
 export function ImportWizard() {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const dek = useVaultStore((s) => s.dek);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -122,6 +124,7 @@ export function ImportWizard() {
       }
       setResult(r);
       setStep("done");
+      invalidateFinanceData();
       router.refresh();
     });
   }
@@ -130,6 +133,7 @@ export function ImportWizard() {
     if (!result?.batchId) return;
     startTransition(async () => {
       await rollbackImport(result.batchId!);
+      invalidateFinanceData();
       router.refresh();
       reset();
     });

@@ -1,10 +1,12 @@
 "use client";
 
 import { ReportsView } from "./reports-view";
-import { PageHeaderSkeleton, CardSkeleton } from "@/components/skeletons";
+import { DecryptProgress } from "@/components/finance/decrypt-progress";
 import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { useSideData } from "@/lib/finance/use-side-data";
+import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
+import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import { computeReportsData } from "@/lib/reports/compute";
 import type { CurrencyCode } from "@/lib/format";
@@ -13,18 +15,15 @@ export function AuthedReports({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const finance = useFinanceData(currency);
   const side = useSideData(currency);
+  const showLoading = useDelayedLoading(finance.isLoading || side.isLoading);
+  const progress = useDecryptProgress(["finance-data", "finance-side-data"]);
 
   if (!dek) {
     return <VaultLockedPrompt module="your reports" />;
   }
 
-  if (finance.isLoading || side.isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-4">
-        <PageHeaderSkeleton />
-        <CardSkeleton className="h-64" />
-      </div>
-    );
+  if (showLoading) {
+    return <DecryptProgress percent={progress.percent} indeterminate={!progress.known} />;
   }
 
   if (finance.isError || side.isError || !finance.data || !side.data) {

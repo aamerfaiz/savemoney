@@ -11,6 +11,8 @@ import { GoalForm } from "./goal-form";
 import { ContributionForm } from "./contribution-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteGoal } from "@/lib/goals/actions";
 import type { GoalsData } from "@/lib/goals/compute";
 import type { GoalWithProgress } from "@/lib/goals/types";
@@ -27,8 +29,9 @@ export function GoalsView({
   failedCount?: number;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<GoalWithProgress | null>(null);
   const [contributing, setContributing] = useState<GoalWithProgress | null>(null);
   const { currency } = data;
@@ -53,6 +56,7 @@ export function GoalsView({
     startTransition(async () => {
       removeGoal(g.id);
       await deleteGoal(g.id);
+      invalidateFinanceData();
       router.refresh();
     });
   };

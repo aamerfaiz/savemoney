@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/transactions/actions";
 import {
   FREQUENCIES,
@@ -52,6 +53,7 @@ export function TransactionForm({
   updateAction: UpdateAction;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [kind, setKind] = useState<TransactionKind>(existing?.kind ?? "expense");
   const [isRecurring, setIsRecurring] = useState(existing?.isRecurring ?? false);
 
@@ -65,10 +67,11 @@ export function TransactionForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const fieldErr = state?.fieldErrors ?? {};
   const kindCategories = categories.filter((c) => c.kind === kind);

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatDateShort } from "@/lib/format";
 import { rollbackImport } from "@/lib/import/actions";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ImportBatchSummary } from "@/lib/import/queries";
 
 export function ImportHistory({ batches }: { batches: ImportBatchSummary[] }) {
@@ -29,6 +30,7 @@ export function ImportHistory({ batches }: { batches: ImportBatchSummary[] }) {
 
 function BatchRow({ b, divider }: { b: ImportBatchSummary; divider: boolean }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [pending, startTransition] = useTransition();
   const rolledBack = b.status === "rolled_back";
 
@@ -36,6 +38,7 @@ function BatchRow({ b, divider }: { b: ImportBatchSummary; divider: boolean }) {
     if (!confirm("Undo this import? Its rows will be removed.")) return;
     startTransition(async () => {
       await rollbackImport(b.id);
+      invalidateFinanceData();
       router.refresh();
     });
   };

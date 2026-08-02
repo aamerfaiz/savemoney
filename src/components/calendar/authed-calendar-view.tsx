@@ -3,10 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { BillCalendarView } from "./bill-calendar-view";
-import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { DecryptProgress } from "@/components/finance/decrypt-progress";
 import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { fetchBillCalendarAction } from "@/lib/finance/side-data";
 import { useSideData } from "@/lib/finance/use-side-data";
+import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
+import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@/lib/format";
 
@@ -24,17 +26,15 @@ export function AuthedCalendarView({ currency }: { currency: CurrencyCode }) {
       fetchBillCalendarAction(side.data!.loansData.loans, side.data!.recurringData.rules),
   });
 
+  const showLoading = useDelayedLoading(side.isLoading || calendar.isLoading);
+  const progress = useDecryptProgress(["finance-side-data"]);
+
   if (!dek) {
     return <VaultLockedPrompt module="your bill calendar" />;
   }
 
-  if (side.isLoading || calendar.isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl space-y-5">
-        <PageHeaderSkeleton />
-        <RowsSkeleton />
-      </div>
-    );
+  if (showLoading) {
+    return <DecryptProgress percent={progress.percent} indeterminate={!progress.known} />;
   }
 
   if (side.isError || calendar.isError || !calendar.data) {

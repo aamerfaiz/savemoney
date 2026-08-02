@@ -35,6 +35,7 @@ import {
   backfillRecurringRuleRows,
   backfillSnapshotRows,
 } from "@/lib/vault/backfill-actions";
+import { useDecryptProgressStore, withProgress } from "./decrypt-progress";
 import { computeGoalsData } from "@/lib/goals/compute";
 import { computeLoansData } from "@/lib/loans/compute";
 import { computeInvestmentsData } from "@/lib/investments/compute";
@@ -61,6 +62,17 @@ export function useSideData(currency: CurrencyCode) {
           fetchNetWorthSnapshotsAction(),
         ]);
 
+      // Row-weighted decrypt progress — see use-finance-data.ts's identical
+      // comment.
+      useDecryptProgressStore.getState().startChunk(
+        "finance-side-data",
+        rawGoals.length +
+          rawLoans.length +
+          rawInvestments.length +
+          rawRecurring.length +
+          rawSnapshots.length,
+      );
+
       const [
         goalRowsResult,
         loanRowsResult,
@@ -68,11 +80,23 @@ export function useSideData(currency: CurrencyCode) {
         recurringRowsResult,
         snapshotRowsResult,
       ] = await Promise.all([
-        decryptGoalRows(rawGoals, dek),
-        decryptLoanRows(rawLoans, dek),
-        decryptInvestmentRows(rawInvestments, dek),
-        decryptRecurringRows(rawRecurring, dek),
-        decryptSnapshotRows(rawSnapshots, dek),
+        withProgress("finance-side-data", rawGoals.length, decryptGoalRows(rawGoals, dek)),
+        withProgress("finance-side-data", rawLoans.length, decryptLoanRows(rawLoans, dek)),
+        withProgress(
+          "finance-side-data",
+          rawInvestments.length,
+          decryptInvestmentRows(rawInvestments, dek),
+        ),
+        withProgress(
+          "finance-side-data",
+          rawRecurring.length,
+          decryptRecurringRows(rawRecurring, dek),
+        ),
+        withProgress(
+          "finance-side-data",
+          rawSnapshots.length,
+          decryptSnapshotRows(rawSnapshots, dek),
+        ),
       ]);
 
       // Phase 3.5.7 "Backfill" — see use-finance-data.ts's identical

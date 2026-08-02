@@ -12,15 +12,15 @@ export function Sidebar({ isGuest = false }: { isGuest?: boolean }) {
   const items = visibleNavItems(navItems, isGuest);
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/40 lg:flex">
-      <div className="flex h-16 items-center gap-2 px-6">
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-card/40 lg:flex">
+      <div className="flex h-16 shrink-0 items-center gap-2 px-6">
         <span className="flex size-8 items-center justify-center rounded-md bg-brand text-brand-foreground font-semibold shadow-[0_0_20px_-4px_var(--color-brand)]">
           F
         </span>
         <span className="text-lg font-semibold tracking-tight">Finance OS</span>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Primary">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Primary">
         {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
@@ -44,7 +44,7 @@ export function Sidebar({ isGuest = false }: { isGuest?: boolean }) {
         })}
       </nav>
 
-      <div className="border-t border-border p-4 text-xs text-muted-foreground">
+      <div className="shrink-0 border-t border-border p-4 text-xs text-muted-foreground">
         Finance OS · Phase 1
       </div>
     </aside>

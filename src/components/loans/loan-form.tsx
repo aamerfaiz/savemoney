@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/loans/actions";
 import { encryptedCreateLoan, encryptedUpdateLoan } from "@/lib/loans/client-actions";
 import { LOAN_TYPES, type LoanWithProjection } from "@/lib/loans/types";
@@ -23,6 +24,7 @@ export function LoanForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const action = existing
     ? encryptedUpdateLoan.bind(null, dek, existing.id)
     : encryptedCreateLoan.bind(null, dek);
@@ -33,10 +35,11 @@ export function LoanForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const err = state?.fieldErrors ?? {};
 

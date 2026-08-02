@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { NotificationsView } from "./notifications-view";
-import { PageHeaderSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { DecryptProgress } from "@/components/finance/decrypt-progress";
 import { VaultLockedPrompt } from "@/components/finance/vault-locked-prompt";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import {
@@ -13,6 +13,8 @@ import {
   fetchRecurringDataAction,
 } from "@/lib/finance/side-data";
 import { decryptGoalRows, decryptLoanRows, decryptRecurringRows } from "@/lib/finance/decrypt";
+import { useDecryptProgress, useDecryptProgressStore, withProgress } from "@/lib/finance/decrypt-progress";
+import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { fetchNotificationStateAction } from "@/lib/notifications/actions";
 import { computeNotificationsData } from "@/lib/notifications/compute";
 import { computeGoalsData } from "@/lib/goals/compute";
@@ -37,10 +39,17 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
         fetchRecurringDataAction(),
         fetchNotificationStateAction(),
       ]);
+      useDecryptProgressStore
+        .getState()
+        .startChunk("notifications-extras", rawGoals.length + rawLoans.length + rawRecurring.length);
       const [goalRowsResult, loanRowsResult, recurringRowsResult] = await Promise.all([
-        decryptGoalRows(rawGoals, dek),
-        decryptLoanRows(rawLoans, dek),
-        decryptRecurringRows(rawRecurring, dek),
+        withProgress("notifications-extras", rawGoals.length, decryptGoalRows(rawGoals, dek)),
+        withProgress("notifications-extras", rawLoans.length, decryptLoanRows(rawLoans, dek)),
+        withProgress(
+          "notifications-extras",
+          rawRecurring.length,
+          decryptRecurringRows(rawRecurring, dek),
+        ),
       ]);
       const goals = computeGoalsData(goalRowsResult.rows, currency);
       const loans = computeLoansData(loanRowsResult.rows, currency);
@@ -50,17 +59,15 @@ export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
     },
   });
 
+  const showLoading = useDelayedLoading(finance.isLoading || extras.isLoading);
+  const progress = useDecryptProgress(["finance-data", "notifications-extras"]);
+
   if (!dek) {
     return <VaultLockedPrompt module="your notifications" />;
   }
 
-  if (finance.isLoading || extras.isLoading) {
-    return (
-      <div className="mx-auto max-w-2xl space-y-4">
-        <PageHeaderSkeleton />
-        <RowsSkeleton />
-      </div>
-    );
+  if (showLoading) {
+    return <DecryptProgress percent={progress.percent} indeterminate={!progress.known} />;
   }
 
   if (finance.isError || extras.isError || !finance.data || !extras.data) {

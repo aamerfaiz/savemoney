@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/investments/actions";
 import { encryptedRecordContribution } from "@/lib/investments/client-actions";
 import { formatCurrency } from "@/lib/format";
@@ -23,6 +24,7 @@ export function ContributionForm({
   dek: CryptoKey;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [addToValue, setAddToValue] = useState(true);
   const action = encryptedRecordContribution.bind(null, dek, investment);
   const [state, formAction, pending] = useActionState<
@@ -32,10 +34,11 @@ export function ContributionForm({
 
   useEffect(() => {
     if (state?.ok) {
+      invalidateFinanceData();
       router.refresh();
       onSuccess();
     }
-  }, [state, onSuccess, router]);
+  }, [state, onSuccess, router, invalidateFinanceData]);
 
   const err = state?.fieldErrors ?? {};
 

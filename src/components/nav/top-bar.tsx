@@ -1,9 +1,9 @@
-import { Bell, Plus, Search } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
 import { MobileNav } from "./mobile-nav";
 import { ExitGuestButton } from "./exit-guest-button";
 import { LogoutButton } from "./logout-button";
+import { CommandPalette } from "./command-palette";
+import { McpNotificationsBell } from "./mcp-notifications-bell";
+import { AddShortcutsMenu } from "./add-shortcuts-menu";
 
 /** App header. On mobile the logo opens the full nav; on desktop the sidebar does. */
 export function TopBar({
@@ -38,21 +38,9 @@ export function TopBar({
           <ExitGuestButton />
         ) : (
           <>
-            <Button
-              variant="secondary"
-              size="icon"
-              aria-label="Search"
-              className="hidden sm:inline-flex"
-            >
-              <Search />
-            </Button>
-            <Button variant="secondary" size="icon" aria-label="Notifications">
-              <Bell />
-            </Button>
-            <Button size="sm" className="gap-1.5">
-              <Plus className="size-4" />
-              <span className="hidden sm:inline">Add</span>
-            </Button>
+            <CommandPalette />
+            <McpNotificationsBell />
+            <AddShortcutsMenu />
             <LogoutButton />
           </>
         )}

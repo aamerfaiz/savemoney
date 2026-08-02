@@ -10,6 +10,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { RecurringForm } from "./recurring-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDateShort, daysUntil } from "@/lib/format";
+import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import {
   deleteRecurringRule,
   toggleRecurringRule,
@@ -40,8 +42,9 @@ export function RecurringView({
   failedCount?: number;
 }) {
   const router = useRouter();
+  const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<RecurringRuleWithSchedule | null>(null);
   const { currency } = data;
 
@@ -71,6 +74,7 @@ export function RecurringView({
     startTransition(async () => {
       removeRule(r.id);
       await deleteRecurringRule(r.id);
+      invalidateFinanceData();
       router.refresh();
     });
   };
@@ -78,6 +82,7 @@ export function RecurringView({
   const onToggle = (r: RecurringRuleWithSchedule) => {
     startTransition(async () => {
       await toggleRecurringRule(r.id, !r.isActive);
+      invalidateFinanceData();
       router.refresh();
     });
   };
