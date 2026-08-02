@@ -17,6 +17,7 @@ import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 import { MCP_TOKEN_MAX_DURATION_DAYS } from "./constants";
 import { getVaultSetupStatus } from "./queries";
+import { kdfParamsSchema, wrappedPayloadSchema } from "./schemas";
 
 export interface ActionResult {
   ok: boolean;
@@ -35,18 +36,6 @@ async function requireUser() {
     return { error: "Couldn't verify your session. Try again." } as const;
   }
 }
-
-export const wrappedPayloadSchema = z.object({
-  ciphertext: z.string().min(1),
-  iv: z.string().min(1),
-});
-
-export const kdfParamsSchema = z.object({
-  iterations: z.number().int().positive(),
-  parallelism: z.number().int().positive(),
-  memorySize: z.number().int().positive(),
-  hashLength: z.number().int().positive(),
-});
 
 /** Client-callable wrapper around `getVaultSetupStatus` (Phase 3.5.6) — the
  * gate every encrypted-module page uses to tell "no vault yet, show setup"

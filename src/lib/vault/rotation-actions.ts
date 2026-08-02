@@ -26,7 +26,8 @@ import { z } from "zod";
 
 import { db, schema } from "@/db";
 import { createClient } from "@/lib/supabase/server";
-import { kdfParamsSchema, wrappedPayloadSchema, type ActionResult } from "./actions";
+import type { ActionResult } from "./actions";
+import { kdfParamsSchema, wrappedPayloadSchema } from "./schemas";
 import { getRotationRawData } from "./rotation-queries";
 
 /** Client-callable wrapper — see getRotationRawData's own doc comment. */
