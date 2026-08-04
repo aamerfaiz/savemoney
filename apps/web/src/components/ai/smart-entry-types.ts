@@ -40,6 +40,11 @@ export interface DraftItemState {
   sourceText?: string;
   destructive: boolean;
   actionLabel: "Add" | "Save" | "Delete";
+  /** Mirrors `AICapability.requiresClientEncryption` — true for every
+   * create/log-against capability, meaning this draft must commit via
+   * `client-commit.ts` (browser-side encrypt) rather than
+   * `POST /api/v1/ai/commit`. See `SmartEntryView`. */
+  requiresClientEncryption: boolean;
   selected: boolean;
   committing: boolean;
   commitError?: string;

@@ -44,6 +44,17 @@ export interface AICapability {
    * (contribution/payment), edit, and delete all need a resolved target id
    * before they can execute; plain creates don't. */
   requiresTarget: boolean;
+  /** True for capabilities whose fields include a vault-encrypted amount
+   * (every create/log-against capability except plain deletes). The server
+   * never holds the DEK, so `execute()` below is unreachable for these in
+   * practice — the real write happens in the browser, via
+   * `src/lib/ai/capabilities/client-commit.ts`, which calls the same
+   * `encryptedCreate*`/`encryptedRecord*` client-action wrapper the
+   * module's own manual form uses. `commit.ts` (the server-side
+   * `/api/v1/ai/commit` handler) refuses any item with this flag set,
+   * rather than accepting fields it would have to write as plaintext into
+   * an encrypted column — see docs/ai-smart-entry-plan.md. */
+  requiresClientEncryption: boolean;
   /** Drives the confirm UI: default selection (destructive actions are
    * opt-in, never opt-out) and the per-card action button's label/style. */
   destructive: boolean;
@@ -63,7 +74,10 @@ export interface AICapability {
     ref: ReferenceData,
   ) => Promise<ResolveOutcome & { targetId?: string; targetLabel?: string }>;
   /** Calls the real, unmodified Server Action. The only place a write
-   * happens for this capability. */
+   * happens for this capability server-side — for `requiresClientEncryption`
+   * capabilities this is never actually reached (see that flag's comment)
+   * and just returns a clear refusal, in case `/api/v1/ai/commit` is ever
+   * hit for one directly. */
   execute: (
     fields: Record<string, unknown>,
     targetId?: string,

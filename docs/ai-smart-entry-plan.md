@@ -7,9 +7,13 @@ language prompt and having the AI propose creating, editing, or deleting
 transactions, investments, loans, goals, budgets, or recurring rules — for
 the user to review and confirm, never auto-committed.**
 
-Status: the create/log half shipped in PR #14 (merged). This pass adds edit
-and delete. Branch: `claude/ai-smart-entry` (reused — see "Edit & delete"
-below for why a merged branch was restarted rather than reused as-is).
+Status: the create/log half shipped in PR #14 (merged); a later pass added
+edit and delete (below). End-to-end encryption (Phase 3.5.3/3.5.4) then made
+every one of those Server Actions expect a client-encrypted amount, which
+silently removed every capability except the five plain deletes — create
+and log-against capabilities are back as of "Client-side commit for
+encrypted capabilities" further down; edit stays unavailable for every
+module (see that section for why).
 
 ## Why this shape (incident research)
 
@@ -350,6 +354,88 @@ color-coding, grouping order) during a future design pass.
       (blocked the same way the first pass was — no logged-in session with
       an active AI key in this sandbox; verify via the Vercel preview once
       deployed).
+
+## Client-side commit for encrypted capabilities (this pass)
+
+**The bug this fixes.** Across Phase 3.5.3/3.5.4 (end-to-end encryption, see
+"End-to-end encryption (the vault)" in the financeos skill), every money
+field this registry used to write went from a plaintext `numeric(14,2)`
+column to a vault-encrypted `text` column the server can't read *or write* —
+so every create and log-against capability (`transaction.expense`,
+`transaction.income`, `investment.create`/`.contribution`, `loan.create`/
+`.payment`, `goal.create`/`.contribution`, `budget.create`,
+`recurring.create`) was deleted from `CAPABILITY_DEFINITIONS` rather than
+left broken, since `execute()` used to call the real Server Action directly
+from `/api/v1/ai/commit` with a plaintext amount — which would either fail
+validation (the Server Action now expects ciphertext) or, worse, succeed and
+write a plaintext value into a ciphertext column. Only the five capabilities
+with no amount at all (`investment.delete`, `loan.delete`, `goal.delete`,
+`budget.delete`, `recurring.delete`) survived. In practice this meant typing
+something as basic as "today I spent 300 on taxi" into Manage silently
+produced nothing — extraction still worked, but there was no capability left
+for the model to pick.
+
+**The fix.** `resolve()` was always safe to keep — it only validates and
+returns a plaintext draft for display, it never writes anything. What had to
+move was the *write*. Every restored capability now carries
+`requiresClientEncryption: true` (`AICapability`, `capabilities/types.ts`),
+and the actual write happens in the browser:
+`src/lib/ai/capabilities/client-commit.ts` (`"use client"`) maps each such
+capability to the exact same `encryptedCreate*`/`encryptedRecord*`/
+`encryptedAddContribution` client-action wrapper the module's own manual
+form already binds to `useActionState` — same validate-then-encrypt-with-
+the-unlocked-DEK-then-call-the-real-Server-Action path, just fed from a
+confirmed draft's fields instead of a form submit. Manual forms and AI
+drafts still share one real write path per module; there just isn't one
+`execute()` function doing it anymore for these ten.
+
+`SmartEntryView`'s `commitItems` splits a confirm batch by
+`requiresClientEncryption`: those items call `commitClientCapability`
+directly (no network round trip beyond what the Server Action itself makes);
+everything else (the five deletes) still POSTs to `/api/v1/ai/commit` as
+before. `commit.ts` additionally refuses any `requiresClientEncryption` item
+it receives — defense in depth against a stale client or a direct call,
+never a path that would silently write plaintext.
+
+**Contribution/payment capabilities need the target's current decrypted
+amount** (`investment.contribution` needs the holding's current invested/
+current value to compute a new total; `loan.payment` needs the balance and
+rate to split principal/interest; `goal.contribution` needs the current
+amount to compute a new total and status) — arithmetic the server has never
+been able to do since 3.5.4 (see the removed comment block this replaced).
+`client-commit.ts` gets these from `useSideData()`, the same decrypted-list
+hook the Investments/Loans/Goals pages already use, passed in from
+`SmartEntryView` as `ClientCommitContext`. Looking a `targetId` up in that
+list doubles as the ownership check for these two capabilities: the
+underlying reads are RLS-scoped, so an id that isn't in the list is refused
+the same way `commit.ts`'s `targetBelongsToUser()` refuses an unowned delete
+target.
+
+**Still deliberately out of scope**, same reasoning as before just now
+explicit: editing an existing transaction/investment/loan/goal/budget/
+recurring rule (as opposed to creating one, or logging a contribution/
+payment against one) through Smart Entry. An edit has to merge the user's
+requested changes onto the row's *current* values — for investments/loans/
+goals `useSideData()` already has that decrypted, but wiring the actual
+merge-and-encrypt-then-call-`encryptedUpdate*` flow through it, plus doing
+the same for budgets/recurring rules (no existing decrypted-list hook on
+this page) and transactions (no per-transaction decrypt path here at all —
+see `shared.ts`'s `ReferenceData.transactions` comment), is real follow-up
+work, not done here. `transaction.edit`/`transaction.delete` stay
+unavailable for that last reason specifically.
+
+**Mobile.** `apps/mobile` doesn't have a Smart Entry / Manage screen yet
+(see `docs/mobile-build-phase-plan.md` — the mobile module list is
+Dashboard/Transactions/Budget/Goals/Analytics/Loans/Investments/Net Worth,
+no AI Assistant in v1). Whenever that gets built, it must follow this same
+shape: extraction and `resolve()` can stay a shared `/api/v1/ai/extract`
+call (already bearer-token-authenticated, mobile-ready), but the commit
+step for every `requiresClientEncryption` capability has to run on-device
+against the mobile vault DEK (`apps/mobile/src/lib/vault/crypto.ts`) and
+call each module's own mobile `client-actions.ts` — mirroring
+`client-commit.ts` here, not a new server-side write path. Don't build a
+mobile Smart Entry that posts plaintext amounts to `/api/v1/ai/commit`
+expecting the server to encrypt them; it can't.
 
 ## Out of scope for this pass
 
