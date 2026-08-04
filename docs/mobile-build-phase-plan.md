@@ -101,13 +101,37 @@ numbers inside the monorepo, not by separate repos:**
    client internally instead of accepting an injected one. Has to be fixed
    before any mobile-callable API is real — this is a hard v1 blocker, not
    deferrable.
-3. **Vault crypto portability is unproven — still a hard v1 blocker.**
-   Dropping automation doesn't remove this: the vault unlock step is in v1
-   (§0), so `src/lib/vault/crypto.ts`'s `crypto.subtle` (AES-GCM, HKDF) +
-   `hash-wasm`'s Argon2id (WASM) must run acceptably on Hermes before any
-   screen can show real data. Resolve via polyfill
-   (`react-native-quick-crypto` covers AES-GCM/HKDF) or a native Argon2
-   module — spike this first, before UI work.
+3. **Vault crypto portability — spiked (2026-08-04), one item still open.**
+   `apps/mobile/src/lib/vault/crypto.ts` is a third runtime-specific
+   duplicate (same precedent as `apps/web/src/lib/mcp/server-crypto.ts`
+   for Node): `react-native-quick-crypto`'s `install()` polyfills
+   `global.crypto.subtle`/`getRandomValues`, confirmed (its own
+   implementation-coverage doc) to support AES-GCM encrypt/decrypt, HKDF
+   deriveKey, and wrapKey/unwrapKey — every Web Crypto call this module
+   needs, so that half ports close to verbatim. Argon2id is the genuine
+   open question: Hermes only gained WebAssembly support (WASM
+   precompiled to Hermes bytecode) as of Expo SDK 55 / RN 0.83+, as an
+   **opt-in** Hermes v1 feature — whether `hash-wasm` (the same package
+   the web app already uses) actually runs depends on the Hermes
+   build/config a given device ends up on, and this repo has no Android/
+   iOS toolchain to check that on a real device or emulator. Mitigated,
+   not resolved: `deriveArgon2Hash()` tries `hash-wasm` first and falls
+   back to `react-native-argon2` (a native, non-WASM Argon2id binding) if
+   it throws, logging a warning either way so the fallback path is
+   visible rather than silent. A minimal spike screen at
+   `apps/mobile/App.tsx` runs this end-to-end and prints PASS/FAIL plus
+   any fallback warning — whoever gets Android device/EAS access next
+   should run it and report which path actually executed. Separately,
+   `scripts/vault-crypto-vectors.mjs` (run: `node
+   scripts/vault-crypto-vectors.mjs`) validates the *algorithm/wire-format
+   design* — Argon2id → wrap/unwrap DEK → AES-GCM round trip, wrong-
+   passphrase rejection, the HKDF path, and the packed-payload format —
+   against Node's built-in spec-compliant WebCrypto; all 4 vectors pass.
+   That proves the design is sound wherever WebCrypto is spec-compliant;
+   it does not prove `react-native-quick-crypto`'s or
+   `react-native-argon2`'s native bindings actually load under Hermes —
+   that's the one remaining gate before Phase 5.4 (mobile auth/vault
+   unlock) can build on top of this with confidence.
 4. **Full UI rebuild.** MagicBento (GSAP), Tailwind v4, shadcn primitives,
    Recharts are all web-only. Layout/IA can be mirrored; none of the code
    ports. v1 port = re-implement each screen's current web behavior in
@@ -160,6 +184,24 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
 2. **Spike vault crypto portability** (§2, blocker #3) — the real gate.
    Prove Argon2id + AES-GCM + HKDF work on a real Android device via
    `react-native-quick-crypto` (or equivalent) before anything else.
+   **Code done, device verification still open (2026-08-04):** see §2
+   blocker #3 above for the full writeup. Summary: `apps/mobile` scaffolded
+   (Expo SDK ~57 / RN 0.86, `blank-typescript` template,
+   `@savemoney/mobile`); `react-native-quick-crypto` + `react-native-argon2`
+   + `hash-wasm` added; `apps/mobile/src/lib/vault/crypto.ts` written with
+   an Argon2id WASM-first/native-fallback strategy; `apps/mobile/App.tsx`
+   is a throwaway spike screen (not real navigation — that's Phase 5.5)
+   that runs it and prints PASS/FAIL + any fallback warning; the whole
+   package type-checks clean (`cd apps/mobile && npx tsc --noEmit`); and
+   `node scripts/vault-crypto-vectors.mjs` (repo root) validates the
+   algorithm/wire-format design against Node's built-in WebCrypto, 4/4
+   vectors passing. **Not done: running any of this on an actual Android
+   device/emulator or via EAS Build** — no Android/iOS toolchain exists in
+   the sandbox that built this. Also note: this app can no longer run in
+   plain **Expo Go** once these native modules are linked — it needs a
+   custom dev client (`expo prebuild` + `expo run:android`, or an EAS
+   development build), which lines up with EAS Build already being step 6
+   below.
 3. **Generalize the bearer-token Route Handler pattern** from `/api/mcp`
    across the modules the v1 port needs (§2, blockers #1/#2): vault
    setup/unlock, transactions, budgets, goals, loans, investments, net
@@ -194,3 +236,12 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
   aggregation in v1" call from the first pass both still stand for
   whenever automation work resumes (§3/§4) — not reopened, just not
   relevant until then.
+- **2026-08-04**: build-order steps 1–2 done in this build sandbox (no
+  device/EAS access here — see §5 step 2). `packages/finance-engine`
+  extracted; `packages/schemas` deliberately deferred (see §5 step 1,
+  dependency on `apps/web/src/lib/format.ts`'s `CurrencyCode`). Vault
+  crypto ported to `apps/mobile` with an Argon2id WASM-first/native-
+  fallback strategy and validated at the algorithm level via
+  `scripts/vault-crypto-vectors.mjs`; real Hermes/device validation is
+  the explicit handoff item for whoever picks this up next with a phone
+  or EAS Build access.
