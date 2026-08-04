@@ -3,7 +3,7 @@ import "server-only";
 import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import type { AIProviderId } from "./types";
 
 export interface ProviderKeyMeta {
@@ -17,11 +17,8 @@ export interface ProviderKeyMeta {
 }
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  const auth = await requireUser();
+  return "error" in auth ? null : auth.userId;
 }
 
 /**

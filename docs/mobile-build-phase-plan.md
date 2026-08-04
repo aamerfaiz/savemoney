@@ -207,7 +207,64 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
    setup/unlock, transactions, budgets, goals, loans, investments, net
    worth at minimum. → `packages/api-client` as the typed client both apps
    could theoretically share (web keeps using Server Actions directly;
-   mobile uses this client).
+   mobile uses this client). **Auth-layer generalization done
+   (2026-08-04); per-module Route Handlers done for vault only, rest
+   deferred — see below.**
+   - `apps/web/src/lib/supabase/server.ts`'s `createClient()` now checks
+     for an `Authorization: Bearer <supabase-access-token>` header first
+     (via `next/headers`) and, if present, returns a token-scoped client
+     (`createBearerClient`, plain `@supabase/supabase-js` +
+     `Authorization` header override, no cookies) instead of the cookie-
+     bound one — PostgREST/RLS evaluates that JWT exactly like a cookie
+     session's, so **every existing `queries.ts`/`actions.ts` function
+     that just calls `createClient()` and trusts RLS got bearer-token
+     support for free, no per-file changes needed.** Falls back to the
+     cookie path byte-for-byte unchanged when there's no bearer header —
+     every existing web request, since browsers never send this custom
+     header on a normal same-origin call.
+   - The 13 files that each hand-rolled their own `requireUser()` (get
+     the caller's `userId`, cookie-only) — `transactions/goals/budgets/
+     loans/investments/recurring/import/notifications/ai` `actions.ts`,
+     `vault/actions.ts`/`backfill-actions.ts`/`reset-actions.ts`/
+     `rotation-actions.ts` — now share one implementation,
+     `apps/web/src/lib/supabase/require-user.ts`. Real dedup, not just
+     the bearer-token fix's side effect. `networth/actions.ts` and
+     `profile/actions.ts` inlined the same pattern without a named
+     function; same fix applied there. `ai/api-auth.ts`'s
+     `requireApiUser` (the file that originally documented this whole
+     gap) now just delegates to it.
+   - **Important finding, fixed alongside this:** `src/lib/supabase/
+     middleware.ts` (the `proxy`) redirected *any* unauthenticated
+     request without a session cookie to `/login` — including
+     `/api/v1/*` — which would have silently defeated bearer-token auth
+     entirely (a mobile client sending only a bearer token, no cookie,
+     would get an HTML redirect before ever reaching a Route Handler's
+     own auth check). Added `/api/v1` to the proxy's exemption list
+     (same reasoning already applied to `/api/mcp`: these routes
+     authenticate themselves, the proxy shouldn't pre-empt that with a
+     cookie-only gate). Verified live: `curl` against
+     `/api/v1/vault/status` with no cookie now returns a JSON 401, not a
+     redirect.
+   - **Route Handlers built:** `/api/v1/vault/{status,setup,unlock,
+     rotate}`, mirroring `/api/v1/ai/*`'s existing convention
+     (`requireUser()`/`requireApiUser()` → 401 JSON, zod-shaped body →
+     400 JSON, thin wrappers around the existing `vault/actions.ts`/
+     `queries.ts` functions). Vault first because Phase 5.4 (mobile
+     auth) needs it immediately.
+   - **Deliberately not built yet:** `/api/v1/{transactions,budgets,
+     goals,loans,investments,net-worth}` Route Handlers. The hard part
+     (auth) is done and already covers these modules' `actions.ts`/
+     `queries.ts` — building the actual REST endpoints is mechanical at
+     this point, so it's deferred to land alongside each module's own
+     Phase 5.5 screen port (Transactions first, per that step's own
+     ordering) rather than speculatively now, per the "design for these
+     seams, don't build ahead of the current phase" rule in the
+     financeos skill.
+   - `packages/api-client` created: a plain `fetch` wrapper (no React
+     Native or web-specific dependency, genuinely shareable), covering
+     `vault.status/setup/unlock/rotate` so far. Added as an
+     `apps/mobile` dependency now since Phase 5.4 needs it next; extend
+     it one module at a time as each Route Handler above lands.
 4. **Mobile auth**: Supabase PKCE + deep link + AsyncStorage session
    persistence, then the ported vault-unlock screen (passphrase → DEK, same
    flow as web today).
@@ -236,12 +293,24 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
   aggregation in v1" call from the first pass both still stand for
   whenever automation work resumes (§3/§4) — not reopened, just not
   relevant until then.
-- **2026-08-04**: build-order steps 1–2 done in this build sandbox (no
+- **2026-08-04**: build-order steps 1–3 done in this build sandbox (no
   device/EAS access here — see §5 step 2). `packages/finance-engine`
   extracted; `packages/schemas` deliberately deferred (see §5 step 1,
   dependency on `apps/web/src/lib/format.ts`'s `CurrencyCode`). Vault
   crypto ported to `apps/mobile` with an Argon2id WASM-first/native-
   fallback strategy and validated at the algorithm level via
   `scripts/vault-crypto-vectors.mjs`; real Hermes/device validation is
+  the explicit handoff item for whoever picks this up next with a phone
+  or EAS Build access. Step 3 (bearer-token generalization) also done:
+  `createClient()` itself now resolves bearer-vs-cookie so every
+  existing query got mobile support for free, the 13 duplicated
+  `requireUser()` copies were consolidated to one shared
+  implementation, and — the one genuinely surprising find — the proxy
+  middleware was silently redirecting every unauthenticated `/api/v1/*`
+  request to `/login` regardless of intent, which would have defeated
+  bearer-token auth entirely had it shipped unnoticed; fixed alongside
+  the rest. Only vault's Route Handlers are built (Phase 5.4 needs them
+  next); transactions/budgets/goals/loans/investments/net-worth Route
+  Handlers are deferred to land with each module's Phase 5.5 screen.
   the explicit handoff item for whoever picks this up next with a phone
   or EAS Build access.

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import type { TransactionKind } from "./types";
 
@@ -60,15 +60,6 @@ const encryptedTransactionInputSchema = z
   });
 
 export type EncryptedTransactionInput = z.infer<typeof encryptedTransactionInputSchema>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 /** Create an income or expense row. Every secret field arrives pre-encrypted. */
 export async function createTransaction(input: EncryptedTransactionInput): Promise<ActionResult> {

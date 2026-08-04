@@ -2,7 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { toCurrencyCode, type CurrencyCode } from "@/lib/format";
 
 export interface UserProfile {
@@ -25,11 +26,9 @@ const GUEST: UserProfile = {
  * every route this is called from, so `user` is only ever null defensively.
  */
 export const getProfile = cache(async (): Promise<UserProfile> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return GUEST;
+  const auth = await requireUser();
+  if ("error" in auth) return GUEST;
+  const { supabase, user } = auth;
 
   const { data } = await supabase
     .from("profiles")
@@ -63,7 +62,7 @@ export async function getDisplayCurrency(): Promise<CurrencyCode> {
  * client so create actions don't spin up a second one.
  */
 export async function baseCurrencyFor(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseClient,
   userId: string,
 ): Promise<CurrencyCode> {
   const { data } = await supabase

@@ -5,7 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { getProvider } from "./registry";
 import { PROVIDER_META } from "./meta";
 import type { AIProviderId } from "./types";
@@ -13,15 +13,6 @@ import type { AIProviderId } from "./types";
 export interface ActionResult {
   ok: boolean;
   error?: string;
-}
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." } as const;
-  return { userId: user.id } as const;
 }
 
 const providerIds = PROVIDER_META.map((p) => p.id) as [

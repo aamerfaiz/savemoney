@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { CURRENCY_CODES } from "@/lib/format";
 
 export interface ActionResult {
@@ -37,15 +37,13 @@ export async function updateProfile(
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "You need to sign in first." };
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
 
   // The profile row is created on signup; upsert keeps this resilient.
   const { error } = await supabase.from("profiles").upsert({
-    id: user.id,
+    id: userId,
     full_name: parsed.data.fullName,
     base_currency: parsed.data.baseCurrency,
   });

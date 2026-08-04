@@ -2,21 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import type { TransactionKind } from "@/lib/transactions/types";
 import type { CommitResult } from "./types";
 
 const MAX_ROWS = 5000;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 export interface RawImportRow {
   kind: TransactionKind;

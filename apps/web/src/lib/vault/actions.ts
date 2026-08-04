@@ -14,7 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { MCP_TOKEN_MAX_DURATION_DAYS } from "./constants";
 import { getVaultSetupStatus } from "./queries";
 import { kdfParamsSchema, wrappedPayloadSchema } from "./schemas";
@@ -22,19 +22,6 @@ import { kdfParamsSchema, wrappedPayloadSchema } from "./schemas";
 export interface ActionResult {
   ok: boolean;
   error?: string;
-}
-
-async function requireUser() {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { error: "You need to sign in first." } as const;
-    return { userId: user.id } as const;
-  } catch {
-    return { error: "Couldn't verify your session. Try again." } as const;
-  }
 }
 
 /** Client-callable wrapper around `getVaultSetupStatus` (Phase 3.5.6) — the

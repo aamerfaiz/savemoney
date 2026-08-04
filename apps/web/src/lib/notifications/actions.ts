@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ActionResult {
   ok: boolean;
@@ -23,16 +24,7 @@ const payloadSchema = z.object({
 
 export type NotificationPayload = z.infer<typeof payloadSchema>;
 
-type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
+type SupabaseServer = SupabaseClient;
 
 /**
  * Persist state for a derived alert. Because alerts are generated live, the

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { BUDGET_PERIODS } from "./types";
 
@@ -29,15 +29,6 @@ const encryptedBudgetInputSchema = z.object({
 });
 
 export type EncryptedBudgetInput = z.infer<typeof encryptedBudgetInputSchema>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 export async function createBudget(input: EncryptedBudgetInput): Promise<ActionResult> {
   const parsed = encryptedBudgetInputSchema.safeParse(input);

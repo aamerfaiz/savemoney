@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@savemoney/api-client": "*",
     "expo": "~57.0.9",
     "expo-crypto": "~57.0.1",
     "expo-status-bar": "~57.0.1",

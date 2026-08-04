@@ -32,21 +32,8 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import type { ActionResult } from "./actions";
-
-async function requireUser() {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { error: "You need to sign in first." } as const;
-    return { userId: user.id } as const;
-  } catch {
-    return { error: "Couldn't verify your session. Try again." } as const;
-  }
-}
 
 export async function resetAccount(): Promise<ActionResult> {
   if (!db) return { ok: false, error: "Database isn't configured in this environment." };

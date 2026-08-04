@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { INVESTMENT_TYPES } from "./types";
 
@@ -53,15 +53,6 @@ const encryptedContributionInputSchema = z.object({
 });
 
 export type EncryptedContributionInput = z.infer<typeof encryptedContributionInputSchema>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 export async function createInvestment(
   input: EncryptedInvestmentInput,

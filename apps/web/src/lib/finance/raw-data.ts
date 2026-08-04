@@ -10,7 +10,7 @@
  * decrypt.ts, rather than each re-implementing its own fetch.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 
 export interface RawIncomeRow {
   id: string;
@@ -160,11 +160,9 @@ type ContributionSel = {
 };
 
 export async function fetchFinanceRawData(): Promise<FinanceRawData | { error: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
+  const auth = await requireUser();
+  if ("error" in auth) return { error: auth.error };
+  const { supabase } = auth;
 
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - WINDOW_MONTHS_BACK, 1);

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 
 export interface ActionResult {
@@ -40,15 +40,13 @@ export async function captureSnapshot(
   const parsed = encryptedSnapshotInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid snapshot." };
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "You need to sign in first." };
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
 
   const v = parsed.data;
   const today = new Date().toISOString().slice(0, 10);
-  const currency = await baseCurrencyFor(supabase, user.id);
+  const currency = await baseCurrencyFor(supabase, userId);
   const row = {
     total_assets: v.totalAssets,
     total_liabilities: v.totalLiabilities,
@@ -69,7 +67,7 @@ export async function captureSnapshot(
     ? await supabase.from("net_worth_snapshots").update(row).eq("id", existing.id)
     : await supabase.from("net_worth_snapshots").insert({
         ...row,
-        user_id: user.id,
+        user_id: userId,
         captured_at: today,
       });
 

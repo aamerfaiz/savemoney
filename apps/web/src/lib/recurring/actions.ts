@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { RECURRING_FREQUENCIES } from "./types";
 
@@ -45,15 +45,6 @@ const encryptedRecurringInputSchema = z
   });
 
 export type EncryptedRecurringInput = z.infer<typeof encryptedRecurringInputSchema>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 function revalidate() {
   revalidatePath("/recurring");

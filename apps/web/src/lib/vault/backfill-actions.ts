@@ -28,21 +28,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import type { ActionResult } from "./actions";
-
-async function requireUser() {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { error: "You need to sign in first." } as const;
-    return { userId: user.id } as const;
-  } catch {
-    return { error: "Couldn't verify your session. Try again." } as const;
-  }
-}
 
 const idRow = { id: z.string().uuid() };
 const required = z.string().min(1);

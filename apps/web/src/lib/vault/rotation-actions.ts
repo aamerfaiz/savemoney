@@ -25,7 +25,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db, schema } from "@/db";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import type { ActionResult } from "./actions";
 import { kdfParamsSchema, wrappedPayloadSchema } from "./schemas";
 import { getRotationRawData } from "./rotation-queries";
@@ -33,19 +33,6 @@ import { getRotationRawData } from "./rotation-queries";
 /** Client-callable wrapper — see getRotationRawData's own doc comment. */
 export async function fetchRotationRawData() {
   return getRotationRawData();
-}
-
-async function requireUser() {
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { error: "You need to sign in first." } as const;
-    return { userId: user.id } as const;
-  } catch {
-    return { error: "Couldn't verify your session. Try again." } as const;
-  }
 }
 
 const idRow = { id: z.string().uuid() };

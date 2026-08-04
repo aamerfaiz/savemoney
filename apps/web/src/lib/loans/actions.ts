@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
 import { LOAN_TYPES } from "./types";
 
@@ -57,15 +57,6 @@ const encryptedPaymentInputSchema = z.object({
 });
 
 export type EncryptedPaymentInput = z.infer<typeof encryptedPaymentInputSchema>;
-
-async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-  return { supabase, userId: user.id };
-}
 
 export async function createLoan(input: EncryptedLoanInput): Promise<ActionResult> {
   const parsed = encryptedLoanInputSchema.safeParse(input);
