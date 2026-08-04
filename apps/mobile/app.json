@@ -3,6 +3,7 @@
     "name": "Finance OS",
     "slug": "savemoney-mobile",
     "version": "1.0.0",
+    "scheme": "savemoney",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

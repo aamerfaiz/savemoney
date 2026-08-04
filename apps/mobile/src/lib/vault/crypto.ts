@@ -268,4 +268,71 @@ export async function decryptPacked(packed: string, dek: CryptoKey): Promise<str
   return decryptField(unpackPayload(packed), dek);
 }
 
+/* ----------------------------------------------------------------------- */
+/* Recovery code — human-typeable encoding of a random secret, matching    */
+/* apps/web's format exactly (Crockford Base32, grouped in 5s).            */
+/* ----------------------------------------------------------------------- */
+
+const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+function base32Encode(bytes: Uint8Array<ArrayBuffer>): string {
+  let bits = 0;
+  let value = 0;
+  let output = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += CROCKFORD_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    output += CROCKFORD_ALPHABET[(value << (5 - bits)) & 31];
+  }
+  return output;
+}
+
+function groupCode(code: string, groupSize = 5): string {
+  const groups: string[] = [];
+  for (let i = 0; i < code.length; i += groupSize) {
+    groups.push(code.slice(i, i + groupSize));
+  }
+  return groups.join("-");
+}
+
+function base32Decode(input: string, byteLength: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(byteLength) as Uint8Array<ArrayBuffer>;
+  let bits = 0;
+  let value = 0;
+  let index = 0;
+  for (const raw of input.toUpperCase()) {
+    const ch = raw === "O" ? "0" : raw === "I" || raw === "L" ? "1" : raw;
+    const v = CROCKFORD_ALPHABET.indexOf(ch);
+    if (v === -1) continue;
+    value = (value << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      if (index < byteLength) bytes[index++] = (value >>> bits) & 0xff;
+    }
+  }
+  return bytes;
+}
+
+/** Decodes a recovery code the user typed back into the raw bytes
+ * `generateRecoveryCode` produced, so its KEK can be re-derived via
+ * `deriveKekFromHighEntropySecret`. */
+export function decodeRecoveryCode(display: string): Uint8Array<ArrayBuffer> {
+  return base32Decode(display, 32);
+}
+
+/** Generates a one-time, shown-once recovery code: 256 bits of entropy,
+ * human-typeable. Returns both the raw bytes (to derive the recovery KEK
+ * immediately) and the formatted display string (to show the user once). */
+export function generateRecoveryCode(): { bytes: Uint8Array<ArrayBuffer>; display: string } {
+  const bytes = randomBytes(32);
+  return { bytes, display: groupCode(base32Encode(bytes)) };
+}
+
 export { toBase64, fromBase64 };

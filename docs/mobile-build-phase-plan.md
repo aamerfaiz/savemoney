@@ -267,7 +267,54 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      it one module at a time as each Route Handler above lands.
 4. **Mobile auth**: Supabase PKCE + deep link + AsyncStorage session
    persistence, then the ported vault-unlock screen (passphrase → DEK, same
-   flow as web today).
+   flow as web today). **Email/password path done (2026-08-04); OAuth/
+   magic-link deliberately not wired yet — see below.**
+   - `apps/mobile/src/lib/supabase/client.ts`: `@supabase/supabase-js`
+     configured with `AsyncStorage` as the session store
+     (`persistSession`/`autoRefreshToken` true, `detectSessionInUrl`
+     false — no browser URL bar on native), `react-native-url-polyfill/
+     auto` loaded first (Hermes has no `URL`, which `supabase-js` needs
+     internally). Falls back to inert placeholder credentials rather
+     than throwing at import time when unconfigured (`createClient`
+     throws immediately on an empty string), matching the web app's
+     "runs without crashing when Supabase isn't configured" posture —
+     gated behind an `isSupabaseConfigured` check everywhere it matters.
+   - `apps/mobile/src/lib/api/client.ts`: the app's instance of
+     `packages/api-client`, its `getAccessToken` reading the current
+     Supabase session's access token (auto-refreshed by the client
+     above, so it's never stale).
+   - `apps/mobile/src/lib/vault/crypto.ts` gained `generateRecoveryCode`/
+     `decodeRecoveryCode` (Crockford Base32, byte-for-byte the same
+     format as `apps/web/src/lib/vault/crypto.ts`) — needed for vault
+     setup, not just the unlock path Phase 5.2's spike covered.
+   - `apps/mobile/src/screens/{auth,vault,unlocked}-screen.tsx` +
+     `App.tsx`: a plain state machine (no navigation library yet — that's
+     Phase 5.5) — signed out → `AuthScreen` (email/password only);
+     signed in, vault not yet unlocked → `VaultScreen` (setup **or**
+     unlock, mirroring `vault-unlock-flow.tsx`'s exact protocol: same
+     salts/KDF params, same HKDF `info` string `"vault-recovery-kek"`,
+     so a vault set up on either client unlocks on the other); vault
+     unlocked → `UnlockedScreen`, a confirmation + sign-out (real finance
+     screens are Phase 5.5, deliberately not pulled forward here). The
+     Phase 5.2 spike screen is gone — replaced by the real unlock flow
+     now exercising the same crypto module for real.
+   - **Deliberately not done:** Google OAuth and magic-link sign-in.
+     Both need PKCE + a deep-link redirect back into the app —
+     `app.json`'s `scheme: "savemoney"` is in place, but the
+     `expo-web-browser`/`expo-linking` round trip and
+     `supabase.auth.exchangeCodeForSession` on the returned URL aren't
+     wired. Email/password needs none of that (a direct API call), so
+     it's the v1 path that's actually complete; OAuth/magic-link parity
+     is an explicit, flagged gap for a follow-up pass — same honesty
+     pattern as the Argon2id native fallback in Phase 5.2. Also not
+     done: recovery-code-based unlock (forgotten passphrase) and
+     device PIN/biometric quick-unlock (the latter is explicitly a
+     later Phase 5 enhancement per §0, not v1).
+   - Verified: `apps/mobile` type-checks clean (`tsc --noEmit`);
+     `apps/web`'s build/lint and the crypto vector script are
+     unaffected. **Not verified: actually running this on a device/
+     emulator** — same sandbox limitation as Phase 5.2, still the open
+     handoff item.
 5. **Expo shell + navigation**; port screens in the same order the web
    build itself was built: Transactions first (the reference module), then
    Dashboard, Budget, Goals, Loans, Investments, Net Worth, Analytics.
@@ -312,5 +359,12 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
   the rest. Only vault's Route Handlers are built (Phase 5.4 needs them
   next); transactions/budgets/goals/loans/investments/net-worth Route
   Handlers are deferred to land with each module's Phase 5.5 screen.
+  Step 4 (mobile auth) also done for the email/password path: Supabase
+  client + AsyncStorage session persistence, `packages/api-client`
+  wired to the live session token, and a real auth → vault-setup/
+  unlock → unlocked flow exercising Phase 5.2's crypto module for real
+  instead of a throwaway spike. Google OAuth/magic-link (need PKCE +
+  deep link) and recovery-code unlock are explicit, flagged gaps —
+  not silently skipped, just not v1-blocking.
   the explicit handoff item for whoever picks this up next with a phone
   or EAS Build access.
