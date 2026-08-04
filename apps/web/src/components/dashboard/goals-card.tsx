@@ -1,6 +1,6 @@
 import { Icon } from "@/components/icon";
 import type { GoalSummary } from "@/data/mock-dashboard";
-import { formatCurrency, formatPercent, type CurrencyCode } from "@/lib/format";
+import { formatCurrency, formatPercent, type CurrencyCode } from "@savemoney/finance-engine/format";
 
 export function GoalsCard({
   goals,

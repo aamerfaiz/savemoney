@@ -4,7 +4,7 @@ import { cache } from "react";
 
 import { requireUser } from "@/lib/supabase/require-user";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { toCurrencyCode, type CurrencyCode } from "@/lib/format";
+import { toCurrencyCode, type CurrencyCode } from "@savemoney/finance-engine/format";
 
 export interface UserProfile {
   name: string;

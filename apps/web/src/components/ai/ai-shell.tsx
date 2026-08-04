@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { AiAssistantView } from "./ai-assistant-view";
 import { SmartEntryView } from "./smart-entry-view";
 import type { SmartEntryReference } from "./smart-entry-types";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 type Mode = "ask" | "manage";
 

@@ -10,7 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { LoanForm } from "./loan-form";
 import { PaymentForm } from "./payment-form";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency } from "@savemoney/finance-engine/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteLoan } from "@/lib/loans/actions";

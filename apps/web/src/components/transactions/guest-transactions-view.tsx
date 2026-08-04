@@ -15,7 +15,7 @@ import {
   guestUpdateTransaction,
 } from "@/lib/guest/transactions";
 import { loadGuestData } from "@/lib/guest/repo";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   Transaction,
   TransactionFilter,

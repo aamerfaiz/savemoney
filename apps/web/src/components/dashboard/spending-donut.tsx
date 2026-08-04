@@ -2,7 +2,7 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
-import { formatCurrency, type CurrencyCode } from "@/lib/format";
+import { formatCurrency, type CurrencyCode } from "@savemoney/finance-engine/format";
 
 interface Slice {
   category: string;

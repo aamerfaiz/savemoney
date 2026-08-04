@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency } from "@savemoney/finance-engine/format";
 import { rollbackImport } from "@/lib/import/actions";
 import { commitImportClientSide, previewImportClientSide } from "@/lib/import/client-actions";
 import { detectMapping } from "@/lib/import/pipeline";

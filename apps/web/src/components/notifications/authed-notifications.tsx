@@ -21,7 +21,7 @@ import { computeGoalsData } from "@/lib/goals/compute";
 import { computeLoansData } from "@/lib/loans/compute";
 import { computeRecurringData } from "@/lib/recurring/compute";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export function AuthedNotifications({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);

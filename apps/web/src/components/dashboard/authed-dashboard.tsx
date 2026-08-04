@@ -9,7 +9,7 @@ import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
 import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import { computeDashboardData } from "@/lib/dashboard/compute";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export function AuthedDashboard({
   userName,

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getDisplayCurrency } from "@/lib/profile/queries";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import { expandOccurrences } from "./build";
 import type { BillOccurrence } from "./types";
 import type { LoanWithProjection } from "@/lib/loans/types";

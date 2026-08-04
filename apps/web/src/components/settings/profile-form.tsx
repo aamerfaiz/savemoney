@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { updateProfile, type ActionResult } from "@/lib/profile/actions";
-import { CURRENCIES } from "@/lib/format";
+import { CURRENCIES } from "@savemoney/finance-engine/format";
 import type { UserProfile } from "@/lib/profile/queries";
 
 export function ProfileForm({ profile }: { profile: UserProfile }) {

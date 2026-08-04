@@ -1,5 +1,5 @@
 import type { BudgetResult } from "@savemoney/finance-engine/budget";
-import { formatCurrency, type CurrencyCode } from "@/lib/format";
+import { formatCurrency, type CurrencyCode } from "@savemoney/finance-engine/format";
 import { cn } from "@/lib/utils";
 
 /** "Safe to spend" summary with a utilisation meter. */

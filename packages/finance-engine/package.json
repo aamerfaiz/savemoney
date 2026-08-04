@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     "./budget": "./src/budget.ts",
+    "./format": "./src/format.ts",
     "./goals": "./src/goals.ts",
     "./health-score": "./src/health-score.ts",
     "./investment": "./src/investment.ts",

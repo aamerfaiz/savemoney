@@ -7,7 +7,7 @@
 
 import { computeHealthScore } from "@savemoney/finance-engine/health-score";
 import { computeGoalProjection } from "@savemoney/finance-engine/goals";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   DecryptedActiveGoal,
   DecryptedContributionRow,

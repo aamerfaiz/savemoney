@@ -14,7 +14,7 @@ import {
   encryptedUpdateTransaction,
 } from "@/lib/transactions/client-actions";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { TransactionFilter } from "@/lib/transactions/types";
 import type { AccountOption, CategoryOption } from "@/lib/transactions/reference";
 

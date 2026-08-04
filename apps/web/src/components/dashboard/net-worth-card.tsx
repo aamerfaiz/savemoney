@@ -9,7 +9,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCompact, formatCurrency, type CurrencyCode } from "@/lib/format";
+import { formatCompact, formatCurrency, type CurrencyCode } from "@savemoney/finance-engine/format";
 
 interface Point {
   month: string;

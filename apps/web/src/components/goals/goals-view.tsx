@@ -10,7 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { GoalForm } from "./goal-form";
 import { ContributionForm } from "./contribution-form";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@savemoney/finance-engine/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteGoal } from "@/lib/goals/actions";

@@ -6,7 +6,7 @@ import { FileText, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { formatDateShort } from "@/lib/format";
+import { formatDateShort } from "@savemoney/finance-engine/format";
 import { rollbackImport } from "@/lib/import/actions";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ImportBatchSummary } from "@/lib/import/queries";

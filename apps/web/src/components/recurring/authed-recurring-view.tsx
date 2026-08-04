@@ -7,7 +7,7 @@ import { useSideData } from "@/lib/finance/use-side-data";
 import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
 import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { AccountOption, CategoryOption } from "@/lib/transactions/reference";
 
 /** The real (non-guest) Recurring page's client boundary (Phase 3.5.4) —

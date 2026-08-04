@@ -11,7 +11,7 @@
  */
 
 import { computeInvestmentProjection } from "@savemoney/finance-engine/investment";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { DecryptedInvestmentRow } from "@/lib/finance/decrypt";
 import type { InvestmentWithProjection } from "./types";
 

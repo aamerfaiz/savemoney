@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@savemoney/finance-engine/format";
 import type { ScoreData } from "@/lib/score/compute";
 import type { HealthResult } from "@savemoney/finance-engine/health-score";
 import {

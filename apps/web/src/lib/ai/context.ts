@@ -11,7 +11,7 @@
  * unlocked.
  */
 
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@savemoney/finance-engine/format";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { AnalyticsData } from "@/lib/analytics/types";
 import type { GoalsData } from "@/lib/goals/compute";

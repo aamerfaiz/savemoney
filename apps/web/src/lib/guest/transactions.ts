@@ -1,6 +1,6 @@
 import type { ZodError } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import { setGuestTable } from "./db";
 import { loadGuestData } from "./repo";
 import {

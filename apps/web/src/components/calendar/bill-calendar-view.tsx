@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatDateShort, daysUntil } from "@/lib/format";
+import { formatCurrency, formatDateShort, daysUntil } from "@savemoney/finance-engine/format";
 import type { BillCalendarData } from "@/lib/calendar/queries";
 import type { BillOccurrence } from "@/lib/calendar/types";
 

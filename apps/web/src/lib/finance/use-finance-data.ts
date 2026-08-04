@@ -12,7 +12,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import { fetchFinanceRawData } from "./raw-data";
 import {
   decryptActiveGoals,

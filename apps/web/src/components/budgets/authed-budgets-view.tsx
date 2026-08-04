@@ -4,7 +4,7 @@ import { BudgetsView } from "./budgets-view";
 import { VaultGate } from "@/components/finance/vault-gate";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { CategoryOption } from "@/lib/transactions/reference";
 
 export function AuthedBudgetsView({

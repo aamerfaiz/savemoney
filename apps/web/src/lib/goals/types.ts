@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { GoalProjection } from "@savemoney/finance-engine/goals";
 
 export type GoalPriority = "low" | "medium" | "high";

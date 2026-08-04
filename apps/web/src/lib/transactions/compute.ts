@@ -4,7 +4,7 @@
  * already-decrypted income/expense rows instead of fetching them itself.
  */
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   DecryptedContributionRow,
   DecryptedExpenseRow,

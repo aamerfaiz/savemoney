@@ -5,7 +5,7 @@
  */
 
 import type { HealthResult } from "@savemoney/finance-engine/health-score";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { AnalyticsData } from "@/lib/analytics/types";
 
 export interface ScoreData {

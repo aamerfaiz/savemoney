@@ -4,7 +4,7 @@ import {
   formatCurrency,
   formatDateShort,
   type CurrencyCode,
-} from "@/lib/format";
+} from "@savemoney/finance-engine/format";
 import { cn } from "@/lib/utils";
 
 export function RecentTransactions({

@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { Transaction } from "@/lib/transactions/types";
 import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
 import type { RecurringRuleWithSchedule } from "@/lib/recurring/types";

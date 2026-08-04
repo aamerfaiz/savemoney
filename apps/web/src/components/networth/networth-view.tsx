@@ -13,7 +13,7 @@ import {
   formatPercent,
   formatDateShort,
   type CurrencyCode,
-} from "@/lib/format";
+} from "@savemoney/finance-engine/format";
 import { encryptedCaptureSnapshot } from "@/lib/networth/client-actions";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { NetWorthData } from "@/lib/networth/types";

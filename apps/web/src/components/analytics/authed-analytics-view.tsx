@@ -3,7 +3,7 @@
 import { AnalyticsView } from "./analytics-view";
 import { VaultGate } from "@/components/finance/vault-gate";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export function AuthedAnalyticsView({ currency }: { currency: CurrencyCode }) {
   const query = useFinanceData(currency);

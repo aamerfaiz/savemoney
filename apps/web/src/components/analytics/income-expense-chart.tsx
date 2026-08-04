@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCompact, formatCurrency, type CurrencyCode } from "@/lib/format";
+import { formatCompact, formatCurrency, type CurrencyCode } from "@savemoney/finance-engine/format";
 import type { MonthPoint } from "@/lib/analytics/types";
 
 export function IncomeExpenseChart({

@@ -10,7 +10,7 @@ import { useSideData } from "@/lib/finance/use-side-data";
 import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
 import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 /** The real (non-guest) Calendar page's client boundary (Phase 3.5.4) — bill
  * occurrences are built from loan EMIs, which are encrypted now, so this

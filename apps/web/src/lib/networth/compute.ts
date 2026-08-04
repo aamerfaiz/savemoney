@@ -5,7 +5,7 @@
  */
 
 import { computeNetWorth, trendChange } from "@savemoney/finance-engine/net-worth";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { NetWorthData, SnapshotSummary } from "./types";
 
 /** The three sources that make up net worth today (accounts land later). */

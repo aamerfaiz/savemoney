@@ -34,8 +34,8 @@ This repository currently contains the **Phase 1 foundation + dashboard shell**.
   financial health score, spending breakdown, goals, upcoming bills/EMI and
   recent transactions.
 - **Two core finance engines** as pure, testable functions:
-  - `apps/web/src/lib/finance/budget.ts` — the dynamic budgeting / safe-to-spend engine.
-  - `apps/web/src/lib/finance/health-score.ts` — the 0–100 Financial Health Score.
+  - `packages/finance-engine/src/budget.ts` — the dynamic budgeting / safe-to-spend engine.
+  - `packages/finance-engine/src/health-score.ts` — the 0–100 Financial Health Score.
 - **Auth wiring** — login page, Supabase browser/server clients, session
   `proxy` (middleware), and OAuth/magic-link callback route.
 - **Drizzle schema** for the Phase 1 tables + **RLS policies**, triggers and
@@ -65,11 +65,12 @@ apps/
         ui/                    # shadcn-style primitives
       db/                      # Drizzle schema + client
       lib/
-        finance/               # budget + health-score engines
         supabase/              # client / server / session helpers
-        format.ts              # currency / date formatting
       data/                    # mock dashboard snapshot
     drizzle/                   # generated migration + RLS/seed SQL
+packages/
+  finance-engine/              # pure finance engines + currency formatting,
+                                # shared with apps/mobile
 turbo.json                     # task pipeline (build/dev/lint/db:*)
 ```
 

@@ -14,7 +14,7 @@ import {
   formatCurrency,
   formatDateShort,
   type CurrencyCode,
-} from "@/lib/format";
+} from "@savemoney/finance-engine/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteTransaction, type ActionResult } from "@/lib/transactions/actions";

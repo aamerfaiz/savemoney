@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { LoanProjection } from "@savemoney/finance-engine/loan";
 
 export type LoanType =

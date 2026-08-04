@@ -8,7 +8,7 @@
  * hands the slim shapes here, keeping this testable.
  */
 
-import { formatCurrency, type CurrencyCode } from "@/lib/format";
+import { formatCurrency, type CurrencyCode } from "@savemoney/finance-engine/format";
 import type { BillOccurrence } from "@/lib/calendar/types";
 import type { NotificationDraft } from "./types";
 

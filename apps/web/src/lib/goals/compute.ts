@@ -9,7 +9,7 @@
  */
 
 import { computeGoalProjection } from "@savemoney/finance-engine/goals";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { DecryptedGoalRow } from "@/lib/finance/decrypt";
 import type { GoalPriority, GoalStatus, GoalWithProgress } from "./types";
 

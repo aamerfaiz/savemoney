@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatPercent } from "@/lib/format";
+import { formatPercent } from "@savemoney/finance-engine/format";
 import type { MonthPoint } from "@/lib/analytics/types";
 
 export function SavingsRateChart({ months }: { months: MonthPoint[] }) {

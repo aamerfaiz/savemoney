@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { RecurringForm } from "./recurring-form";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatDateShort, daysUntil } from "@/lib/format";
+import { formatCurrency, formatDateShort, daysUntil } from "@savemoney/finance-engine/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import {

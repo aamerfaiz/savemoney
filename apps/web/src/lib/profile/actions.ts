@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireUser } from "@/lib/supabase/require-user";
-import { CURRENCY_CODES } from "@/lib/format";
+import { CURRENCY_CODES } from "@savemoney/finance-engine/format";
 
 export interface ActionResult {
   ok: boolean;

@@ -9,7 +9,7 @@ import { SpendingDonut } from "@/components/dashboard/spending-donut";
 import { GoalsCard } from "@/components/dashboard/goals-card";
 import { UpcomingCard } from "@/components/dashboard/upcoming-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency } from "@savemoney/finance-engine/format";
 import type { DashboardData } from "@/data/mock-dashboard";
 
 /** The dashboard's bento layout. Shared by the real (server) page and the

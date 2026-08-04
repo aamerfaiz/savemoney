@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   NetWorthResult,
   TrendPoint,

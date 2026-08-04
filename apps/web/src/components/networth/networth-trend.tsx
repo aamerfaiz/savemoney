@@ -9,7 +9,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCompact, type CurrencyCode } from "@/lib/format";
+import { formatCompact, type CurrencyCode } from "@savemoney/finance-engine/format";
 import type { TrendPoint } from "@savemoney/finance-engine/net-worth";
 
 /** Net-worth area chart — shared visual language with the dashboard card. */

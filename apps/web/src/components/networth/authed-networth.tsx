@@ -9,7 +9,7 @@ import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
 import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import { buildNetWorth } from "@/lib/networth/compute";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export function AuthedNetWorth({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);

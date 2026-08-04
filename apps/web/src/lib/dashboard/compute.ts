@@ -6,7 +6,7 @@
 
 import { buildNetWorth } from "@/lib/networth/compute";
 import { expandOccurrences, toUpcomingItems } from "@/lib/calendar/build";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { BudgetsData } from "@/lib/budgets/compute";
 import type { AnalyticsData } from "@/lib/analytics/types";
 import type { Transaction as TxnRow } from "@/lib/transactions/types";

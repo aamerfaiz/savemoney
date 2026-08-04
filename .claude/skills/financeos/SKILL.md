@@ -41,7 +41,8 @@ this file plus the code it points to.
 2. **Dark-first, mobile-first.** Design for a 390px viewport first, then scale
    up. Never hard-code colors — use the design tokens (see Styling).
 3. **Money is `numeric(14,2)` + an ISO currency code per row.** Never store
-   money as float. Format for display only via `apps/web/src/lib/format.ts`.
+   money as float. Format for display only via
+   `packages/finance-engine/src/format.ts` (`@savemoney/finance-engine/format`).
 4. **Every user-owned row has `userId` → `auth.users(id)` and RLS.** Data
    isolation is a core requirement. New tables MUST get RLS policies.
 5. **Keep finance logic as pure functions** in `packages/finance-engine/src/`. They must be
@@ -108,7 +109,6 @@ apps/web/src/
                          # (see "End-to-end encryption ... & MCP" below)
     ai/                   # BYOK provider abstraction (see "AI providers")
     supabase/            # client.ts, server.ts, middleware.ts (session)
-    format.ts            # formatCurrency / formatPercent / dates
     utils.ts             # cn() classname merge
   data/mock-dashboard.ts # DashboardData shape + demo-mode fallback only
   lib/dashboard/queries.ts # REAL dashboard, composed from the module queries
@@ -130,8 +130,8 @@ apps/web/drizzle/
   meta/                       # drizzle snapshots — keep in sync via db:generate
 packages/
   finance-engine/src/  # budget, health-score, goals, loan, investment,
-                       # net-worth, recurring — pure, zero-dependency
-                       # engines shared with apps/mobile once it exists
+                       # net-worth, recurring, format — pure, zero-
+                       # dependency, shared with apps/mobile
 ```
 
 > Migrations `0003`–`0005` and manual RLS `0002`–`0005` are committed but may

@@ -8,7 +8,7 @@
  */
 
 import { computeBudget, type BudgetResult } from "@savemoney/finance-engine/budget";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   DecryptedActiveGoal,
   DecryptedBudgetRow,

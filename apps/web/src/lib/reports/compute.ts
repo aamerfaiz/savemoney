@@ -5,7 +5,7 @@
  */
 
 import { buildNetWorth } from "@/lib/networth/compute";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { AnalyticsData } from "@/lib/analytics/types";
 import type { HealthResult } from "@savemoney/finance-engine/health-score";
 import type { CategorySlice, MonthPoint } from "@/lib/analytics/types";

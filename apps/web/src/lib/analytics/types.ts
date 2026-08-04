@@ -1,4 +1,4 @@
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { HealthResult } from "@savemoney/finance-engine/health-score";
 
 export interface MonthPoint {

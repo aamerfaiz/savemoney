@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/loans/actions";
 import { encryptedRecordPayment } from "@/lib/loans/client-actions";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency } from "@savemoney/finance-engine/format";
 import type { LoanWithProjection } from "@/lib/loans/types";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);

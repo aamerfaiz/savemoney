@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 /** The kind of money movement. Income and expenses live in separate tables;
  *  `transfer` is a read-only reflection of a savings-goal contribution (money

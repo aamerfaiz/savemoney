@@ -10,7 +10,7 @@
  */
 
 import { computeLoanProjection } from "@savemoney/finance-engine/loan";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { DecryptedLoanRow } from "@/lib/finance/decrypt";
 import type { LoanWithProjection } from "./types";
 

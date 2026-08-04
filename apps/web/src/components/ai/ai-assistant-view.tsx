@@ -13,7 +13,7 @@ import { buildNetWorth } from "@/lib/networth/compute";
 import { useFinanceData } from "@/lib/finance/use-finance-data";
 import { useSideData } from "@/lib/finance/use-side-data";
 import { useVaultStore } from "@/lib/vault/store";
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 /** Phase 3.3 — ask-a-question shell. Under Phase 3.5 the server can't
  * decrypt a stored key (or income/expenses) itself, so asking a question

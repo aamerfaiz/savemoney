@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type { RecurringFrequency } from "@savemoney/finance-engine/recurring";
 
 export type RecurringKind = "income" | "expense";

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CurrencyCode } from "@/lib/format";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export type BudgetPeriod = "weekly" | "monthly" | "yearly";
 export type BudgetStatus = "ok" | "warning" | "over";

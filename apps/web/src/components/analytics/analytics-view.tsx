@@ -6,7 +6,7 @@ import { HealthGauge } from "@/components/dashboard/health-gauge";
 import { SpendingDonut } from "@/components/dashboard/spending-donut";
 import { IncomeExpenseChart } from "./income-expense-chart";
 import { SavingsRateChart } from "./savings-rate-chart";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@savemoney/finance-engine/format";
 import type { AnalyticsData } from "@/lib/analytics/types";
 
 export function AnalyticsView({ data }: { data: AnalyticsData }) {
