@@ -1,0 +1,30 @@
+diff --git a/node_modules/react-native-argon2/android/build.gradle b/node_modules/react-native-argon2/android/build.gradle
+index 6a928cd..859fb6f 100644
+--- a/node_modules/react-native-argon2/android/build.gradle
++++ b/node_modules/react-native-argon2/android/build.gradle
+@@ -4,16 +4,6 @@ def safeExtGet(prop, fallback) {
+     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+ }
+ 
+-buildscript {
+-    repositories {
+-        google()
+-        mavenCentral()
+-    }
+-    dependencies {
+-        classpath 'com.android.tools.build:gradle:4.1.0'
+-    }
+-}
+-
+ android {
+     compileSdkVersion safeExtGet('compileSdkVersion', 30)
+     buildToolsVersion safeExtGet('buildToolsVersion', '30.0.3')
+@@ -28,7 +18,7 @@ android {
+ 
+ repositories {
+     google()
+-    jcenter()
++    mavenCentral()
+ }
+ 
+ dependencies {
