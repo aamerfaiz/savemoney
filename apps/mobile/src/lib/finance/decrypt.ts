@@ -216,3 +216,38 @@ export async function decryptInvestmentMonthlyContributions(
   );
   return splitSettled(settled);
 }
+
+/* ----------------------------------------------------------------------- */
+/* Goals — Phase 5.5c, full row (the Goals page's own list, not the        */
+/* narrow DecryptedActiveGoal above).                                      */
+/* ----------------------------------------------------------------------- */
+
+export interface DecryptedGoalRow {
+  id: string;
+  name: string;
+  icon: string | null;
+  targetAmount: number;
+  currentAmount: number;
+  currency: string;
+  deadline: string | null;
+  priority: string;
+  monthlyContribution: number | null;
+  status: string;
+}
+
+export async function decryptGoalRows(
+  rows: import("@savemoney/api-client").RawGoalRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedGoalRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedGoalRow> => ({
+      ...r,
+      targetAmount: Number(await decryptPacked(r.targetAmount, dek)),
+      currentAmount: Number(await decryptPacked(r.currentAmount, dek)),
+      monthlyContribution: r.monthlyContribution
+        ? Number(await decryptPacked(r.monthlyContribution, dek))
+        : null,
+    })),
+  );
+  return splitSettled(settled);
+}

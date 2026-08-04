@@ -435,6 +435,29 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      — no category picker yet, same flagged gap as Transactions').
      Verified the same way: type-checks clean, `apps/web` build/lint
      green, vectors unaffected, live `curl` 401 check on the new routes.
+   - **Goals done (2026-08-04).** Goals gets its **own** full-list read
+     (`/api/v1/goals` GET → `fetchGoalsRaw()`), separate from the shared
+     `finance.raw()` boundary — mirroring web's own two-path structure
+     (the shared boundary feeds Dashboard/Budget's narrow aggregate
+     needs; each module's own page reads its full list here, same as
+     Transactions did with a dedicated route rather than reusing
+     `finance.raw()`'s output for its own list). New routes:
+     `/api/v1/goals` (GET/POST), `/api/v1/goals/[id]` (PATCH/DELETE),
+     `/api/v1/goals/[id]/contributions` (POST). `apps/mobile/src/lib/
+     finance/decrypt.ts` gained the full `decryptGoalRows` (with `id`,
+     unlike the narrow `decryptActiveGoals` Budget uses). `src/lib/
+     goals/{types,compute,client-actions}.ts` are direct ports,
+     including the contribution flow's client-computed running total
+     (the server can't read-modify-write ciphertext, so the new
+     `currentAmount`/`status` are computed from the already-decrypted
+     goal and sent pre-encrypted — same accepted single-user
+     concurrency tradeoff as web's version). `app/(tabs)/goals.tsx` +
+     `src/components/{goal-form,contribution-form}.tsx`: progress bars,
+     tap a goal to add a contribution (small modal), long-press to
+     delete, create form (name/target/saved-so-far/deadline — no icon
+     picker yet, same flagged-gap pattern). Verified the same way:
+     type-checks clean, `apps/web` build/lint green, vectors unaffected,
+     live `curl` 401 checks on the new routes.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.

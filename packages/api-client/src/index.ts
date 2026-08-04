@@ -181,6 +181,54 @@ export interface CategoryOption {
   icon: string | null;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Goals — Phase 5.5c. Own full-list read (fetchGoalsRaw), separate from   */
+/* the shared finance.raw() boundary, mirroring web's own two-path         */
+/* structure (shared boundary feeds Dashboard/Budget's aggregate needs;    */
+/* each module's own page reads its full list here).                       */
+/* ----------------------------------------------------------------------- */
+
+export type GoalPriority = "low" | "medium" | "high";
+export type GoalStatus = "active" | "paused" | "completed" | "cancelled";
+
+export interface RawGoalRow {
+  id: string;
+  name: string;
+  icon: string | null;
+  targetAmount: string;
+  currentAmount: string;
+  currency: string;
+  deadline: string | null;
+  priority: string;
+  monthlyContribution: string | null;
+  status: string;
+}
+
+export interface EncryptedGoalInput {
+  name: string;
+  icon?: string | null;
+  /** Packed ciphertext. */
+  targetAmount: string;
+  /** Packed ciphertext. */
+  currentAmount: string;
+  currency: string;
+  deadline?: string | null;
+  priority: GoalPriority;
+  /** Packed ciphertext, or null. */
+  monthlyContribution?: string | null;
+  status: GoalStatus;
+}
+
+export interface EncryptedContributionInput {
+  /** Packed ciphertext. */
+  amount: string;
+  contributedAt: string;
+  note?: string | null;
+  /** Packed ciphertext — the new running total, computed client-side. */
+  newCurrentAmount: string;
+  newStatus: GoalStatus;
+}
+
 export interface AccountOption {
   id: string;
   name: string;
@@ -291,6 +339,22 @@ export function createApiClient(config: ApiClientConfig) {
         }),
       delete: (id: string) =>
         request<ActionResult>(`/api/v1/budgets/${id}`, { method: "DELETE" }),
+    },
+    goals: {
+      list: () => request<{ ok: true; goals: RawGoalRow[] }>("/api/v1/goals"),
+      create: (input: EncryptedGoalInput) =>
+        request<ActionResult>("/api/v1/goals", { method: "POST", body: JSON.stringify(input) }),
+      update: (id: string, input: EncryptedGoalInput) =>
+        request<ActionResult>(`/api/v1/goals/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        }),
+      delete: (id: string) => request<ActionResult>(`/api/v1/goals/${id}`, { method: "DELETE" }),
+      addContribution: (goalId: string, input: EncryptedContributionInput) =>
+        request<ActionResult>(`/api/v1/goals/${goalId}/contributions`, {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
     },
   };
 }
