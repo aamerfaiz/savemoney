@@ -1,207 +1,181 @@
-# Phase 5 — Native mobile (Expo) build phase plan
+# Phase 5 — Mobile Build plan
 
-Status tracker for **Phase 5** of the financeos roadmap (see the `financeos`
-skill / `AGENTS.md`): native mobile via Expo, a shared Turborepo, offline
-sync, biometrics, and home-screen widgets. Nothing in this phase has shipped
-yet — the app today is a mobile-first **PWA** (Next.js 16 App Router,
-installable, works great in a phone browser) but has no native shell, no App
-Store/Play Store presence, no offline data, and no OS-level biometrics or
-widgets. This doc is the plan for closing that gap.
+Status tracker for native mobile (Expo/React Native), pulled forward ahead
+of Phase 4 per product decision. This doc is the plan of record for
+everything mobile — extend it as decisions land rather than starting a new
+file, same convention as `phase-3-ai-assistant-plan.md` / `docs/
+ai-smart-entry-plan.md`.
 
-Extend this file rather than starting a new one as design decisions get made
-or increments land — same convention as `docs/phase-3-ai-assistant-plan.md`
-and `docs/e2ee-path-b-plan.md`.
+Nothing in this plan is built yet. No Expo project, no monorepo/Turborepo
+scaffold exist in the repo today — this is analysis + decisions only.
 
-## Why native, given the app is already a mobile-first PWA
+---
 
-The web app already covers "usable on a phone." Phase 5 exists for what a
-PWA structurally cannot do on both iOS and Android today:
+## 0. V1 scope (revised 2026-08-04) — read this first
 
-- **Biometric unlock of the vault** (Face ID / Touch ID / Android biometric
-  prompt) tied to the OS keystore/keychain, not a browser-storage PIN.
-- **True offline** — read *and write* with no network at all, not just an
-  installable shell.
-- **Home-screen widgets** (Safe-to-Spend, next bill due) — no web equivalent.
-- **Push notifications** that work reliably on iOS (web push on iOS Safari is
-  limited) for the existing `buildNotifications` alerts (bill due, overspend,
-  low safe-to-spend, goal milestone, loan paid off).
-- **App Store / Play Store distribution**, which some users expect and trust
-  more than "install this website."
+Earlier drafts of this plan sequenced a PWA-first interim and pulled
+automatic-capture (NFC/SMS/notifications/email) into v1. **Revised:**
 
-## Locked decisions
+- **V1 is a straight feature-parity port of the current web app to React
+  Native (Expo) — no automatic capture, no NFC, no SMS/notifications, no
+  email parsing.** Those move to a later phase (kept as reference in §3/§4
+  below, not deleted, since the analysis still holds — just not v1).
+- **No PWA-first interim.** Go straight to the native Expo build.
+- **Auth for v1 = what the web app already does today:** Supabase login
+  (session) **plus** the existing vault unlock step (passphrase → DEK) —
+  ported as-is, not redesigned. No new biometric/PIN quick-unlock for v1;
+  that's still a later enhancement. (Login alone doesn't unlock any data —
+  every finance table is client-side encrypted, so the passphrase-unlock
+  screen is part of "current web version as-is," not an extra feature.)
+- **Build target: Android APK first.** The codebase is written once in
+  React Native (Expo) so iOS is the same codebase, not a separate build —
+  but the first deliverable is a sideloadable `.apk`, not a Play Store
+  submission and not an iOS build. iOS build follows once there's an Apple
+  Developer account + a Mac (or EAS Build's cloud iOS builder) in the loop.
+- Everything else already in this doc (automation channels, background
+  capture, store submissions) is **future scope**, revisit once the v1 port
+  ships.
 
-- **Expo** (React Native), not a bare RN project or a second framework —
-  Expo Router gives file-based routing close to Next's mental model, EAS
-  gives managed builds/OTA updates without a native toolchain in this
-  sandbox, and Expo's module ecosystem covers every native API this phase
-  needs (secure storage, biometrics, notifications, widgets via config
-  plugins).
-- **Shared Turborepo, not a separate repo.** The mobile app is a new
-  workspace inside *this* repository, not a fork or sibling repo — it must
-  reuse the pure finance engines and types verbatim, and drift is the
-  single biggest risk to a second client (see "What gets shared" below).
-- **Supabase stays the backend, unchanged.** Same Postgres/Auth project, same
-  RLS policies, same tables. The mobile app is a new *client* of the existing
-  API surface, not a new backend.
-- **The vault model (client-side E2EE, DEK never leaves the device
-  decrypted) is non-negotiable and must hold on mobile too** — see "Vault
-  crypto parity" below. A mobile build that weakens this (e.g. decrypting on
-  a server hop for convenience) is not acceptable.
-- **No new backend endpoints required to start.** `src/app/api/v1/ai/*` was
-  already deliberately built as plain JSON Route Handlers instead of Server
-  Actions *for this reason* (see `docs/ai-smart-entry-plan.md` and the
-  financeos skill's "Auth" section) — Phase 5 is the payoff of that seam.
-  Everything else the mobile app needs is Supabase's own client SDK
-  (`@supabase/supabase-js`) talking directly to Postgres/Auth through RLS,
-  exactly like the browser does.
+## 1. Repo & versioning strategy
 
-## Monorepo shape (target)
+**One repo, restructured into a monorepo — not a new git repo.** The
+roadmap already commits to "a shared Turborepo"; splitting into a second
+repo would mean publishing `src/lib/finance/*` and the Zod schemas as a
+versioned package just to share them with a separate mobile repo — extra
+ceremony, and it drifts. Target layout:
 
 ```
-savemoney/
-  apps/
-    web/                # today's Next.js app, moved here as-is (lift, not rewrite)
-    mobile/              # new: Expo Router app
-  packages/
-    finance-core/        # src/lib/finance/*, src/lib/analytics, src/lib/score,
-                         # src/lib/calendar, src/lib/reports — pure, no DOM/Node
-                         # APIs, already framework-agnostic today
-    vault-crypto/        # shared primitives (see "Vault crypto parity")
-    types/               # Drizzle-derived row types / Zod schemas used by both
-                         # clients (no drizzle-orm/postgres runtime dependency —
-                         # types + zod schemas only, so mobile never bundles a
-                         # Postgres driver)
-  turbo.json
-  package.json           # workspaces root
+apps/
+  web/       # current Next.js app, moves here as-is
+  mobile/    # new Expo app
+packages/
+  finance-engine/   # src/lib/finance/* — pure, framework-free, copy over first
+  schemas/          # per-module Zod schemas
+  api-client/        # typed client for the bearer-token Route Handlers (§2, blocker #1/#2)
 ```
+Migration is mechanical (`git mv src apps/web/src`, add `turbo.json` +
+workspace config) and should be its own PR before any mobile code lands, so
+the web app's history and CI keep working through the move.
 
-This is a **lift, not a rewrite**: `apps/web` starts as today's `src/` moved
-under a workspace with no behavior change, verified by a green
-`npm run build` before any mobile code is added. Only after that lands do the
-pure `src/lib/finance/*`, `analytics`, `score`, `calendar`, and `reports`
-modules move into `packages/finance-core` (they already have zero DOM/Node
-dependencies — that was a deliberate constraint from Phase 1 onward, see the
-financeos skill's "Keep finance logic as pure functions" golden rule, and it
-is exactly what makes this move mechanical instead of a rewrite).
+**Versioning web vs. mobile independently — achieved by per-app version
+numbers inside the monorepo, not by separate repos:**
+- `apps/web` — no meaningful version number; keeps deploying continuously to
+  Vercel on every push to `main`, same as today.
+- `apps/mobile` — real semver + native build numbers (`versionName`/
+  `versionCode` on Android, `CFBundleShortVersionString`/
+  `CFBundleVersion` on iOS once that build exists), bumped independently of
+  web. Git-tag mobile releases distinctly (`mobile-v1.0.0`) so they don't
+  collide with any future web release tags.
+- `packages/*` — internal workspace packages (`workspace:*` protocol), never
+  published to a registry, so no independent release process needed; a
+  change to `packages/finance-engine` just lands in whichever app's PR
+  touched it.
+- CI: path-filtered per app (Turborepo's affected-graph or simple path
+  filters) so a web-only change doesn't trigger a mobile build and vice
+  versa.
 
-## What gets shared vs. rebuilt per platform
+## 2. Current-state audit — what's reusable vs. blocking
 
-| Layer | Shared (`packages/`) | Rebuilt per platform |
+**Reusable as-is:**
+- DB schema + RLS (Postgres/Supabase) — transport-agnostic.
+- `src/lib/finance/*` — pure, framework-free finance engines. Directly
+  packageable as `packages/finance-engine`.
+- Per-module Zod schemas — already separated from UI. → `packages/schemas`.
+- `src/lib/import/pipeline.ts` — reusable later, once capture channels are
+  back in scope (§3).
+- The AI Smart Entry capability (`/api/v1/ai/{extract,commit}`) — reusable
+  later, same reason.
+
+**Blocking for the v1 port, in order of severity:**
+1. **Server Actions almost everywhere.** 19 files across nearly every
+   module (`goals/actions.ts`, `loans/actions.ts`, `vault/actions.ts`, …)
+   are `"use server"`, bound to Next's RSC action-id protocol — unreachable
+   from a React Native client. Two Route Handlers already exist as the
+   precedent (`/api/v1/ai/*`, `/api/mcp`) but that's 4 endpoints out of the
+   app's full mutation surface — **v1 needs this generalized across every
+   module the mobile port touches** (transactions, budgets, goals, loans,
+   investments, net worth, vault unlock/setup at minimum).
+2. **Bearer-token auth isn't finished even on the one Route Handler surface
+   that exists.** Logged as an open TODO in `ai-smart-entry-plan.md`: the
+   query/action layer still instantiates its own cookie-bound Supabase
+   client internally instead of accepting an injected one. Has to be fixed
+   before any mobile-callable API is real — this is a hard v1 blocker, not
+   deferrable.
+3. **Vault crypto portability is unproven — still a hard v1 blocker.**
+   Dropping automation doesn't remove this: the vault unlock step is in v1
+   (§0), so `src/lib/vault/crypto.ts`'s `crypto.subtle` (AES-GCM, HKDF) +
+   `hash-wasm`'s Argon2id (WASM) must run acceptably on Hermes before any
+   screen can show real data. Resolve via polyfill
+   (`react-native-quick-crypto` covers AES-GCM/HKDF) or a native Argon2
+   module — spike this first, before UI work.
+4. **Full UI rebuild.** MagicBento (GSAP), Tailwind v4, shadcn primitives,
+   Recharts are all web-only. Layout/IA can be mirrored; none of the code
+   ports. v1 port = re-implement each screen's current web behavior in
+   RN, not add anything new.
+5. **No monorepo yet** — see §1, first PR.
+
+## 3. Automatic capture channels — future scope, not v1 (kept for reference)
+
+| Channel | Platform | Verdict |
 |---|---|---|
-| Finance math (budget, health score, loan, investment, net worth, analytics, calendar, reports) | ✅ pure functions, zero platform APIs | — |
-| Zod schemas / row types | ✅ | — |
-| Vault crypto **primitives** (derive/wrap/unwrap/encrypt/decrypt, packed-payload format) | ✅ same algorithms, same wire format | Backing KDF/crypto library differs (Web Crypto vs. `expo-crypto`/`react-native-quick-crypto`) — see below |
-| UI components (MagicBento, cards, forms) | ❌ | Native equivalents in `apps/mobile` — Tailwind/shadcn/GSAP have no RN runtime; this is a real rebuild, not a port |
-| Data fetching | ❌ | Web: Server Components/Server Actions. Mobile: `@supabase/supabase-js` + TanStack Query directly against Supabase, same RLS-scoped tables |
-| Routing | ❌ | Web: Next App Router. Mobile: Expo Router (file-based, but a different framework) |
+| NFC (reading a tap-to-pay transaction) | — | **Not possible.** No OS exposes Apple Pay/Google Pay wallet transactions to third-party apps; EMV card chips don't expose customer-readable transaction history outside a certified terminal. |
+| NFC (physical tags as manual triggers) | Both | Real, but it's a manual quick-add convenience (tap a sticker → app opens pre-filled), not automatic capture. |
+| SMS reading | **Android only** | No public iOS API exists for reading arbitrary SMS content — a hard platform wall, not a workaround-able limitation. Android: `READ_SMS` + broadcast receiver works, but is a Play Store Restricted Permission requiring justification/review. |
+| Notification listener | **Android only** | `NotificationListenerService` reads content from any app's notifications (bank apps, UPI/wallet apps, not just SMS). iOS has no equivalent. Manual "special access" grant, not a runtime dialog. |
+| Email parsing | **Cross-platform, not mobile-dependent** | OAuth (Gmail API/IMAP) + polling/webhook. Could be built independent of the native app entirely, whenever it's back in scope. |
+| Bank aggregation / Open Banking | Cross-platform | Industry-correct, but needs an aggregator relationship (cost, KYC, regional coverage). Not planned for any near-term phase. |
 
-## Vault crypto parity (the hard part)
+**Net effect (unchanged):** automatic SMS/notification capture is
+Android-only. Revisit this whole section once v1 (the plain port) ships.
 
-This is the single biggest risk in this phase, on the same axis
-`src/lib/mcp/server-crypto.ts` already had to solve once: **the exact same
-wrap/unwrap and AES-256-GCM packed-payload format must be reproducible from a
-runtime other than the browser**, byte-for-byte, or a value encrypted on web
-can't be read on mobile (and vice versa).
+## 4. Background capture vs. the vault — future scope, not v1 (kept for reference)
 
-- `src/lib/vault/crypto.ts` runs on Web Crypto (`crypto.subtle`) +
-  hash-wasm's Argon2id, marked `"client-only"`.
-- `src/lib/mcp/server-crypto.ts` is already a **deliberate, documented
-  duplicate** of those primitives for Node (server-only, no browser) —
-  verified byte-for-byte interoperable with the client implementation. That
-  precedent is the template for mobile: **do not try to share the crypto
-  module directly** (React Native has no `crypto.subtle` or DOM), write a
-  third parity implementation (`packages/vault-crypto`'s RN entry point,
-  backed by `expo-crypto`/`react-native-quick-crypto` + a WASM or native
-  Argon2id binding) and add a cross-runtime test vector suite (fixed
-  passphrase/IV/plaintext → expected ciphertext) that all three
-  implementations (browser, Node/MCP, RN) must pass identically.
-- The DEK-wrap paths (passphrase, recovery code, per-device quick-unlock)
-  extend naturally to a fourth wrap kind: **device secure storage** (iOS
-  Keychain / Android Keystore via `expo-secure-store`), unlocked by
-  biometrics instead of a typed PIN — same "independent, revocable wrap"
-  design already used for quick-unlock, not a new architecture.
+A background SMS/notification listener can fire while the app isn't open,
+but the DEK only lives in an in-memory Zustand store, cleared on lock/
+logout, never persisted. When this comes back into scope: **defer until
+next unlock** — queue raw captured text locally, parse + encrypt only when
+the user next opens/unlocks the app. The DEK's in-memory-only guarantee
+stays as-is; no background DEK access, no PIN-wrap extension. (Decided
+2026-08-04, still the plan whenever capture work resumes.)
 
-## Offline sync
+## 5. Build order — v1 (straight port, Android APK first)
 
-Every finance value is E2EE ciphertext (see `docs/e2ee-path-b-plan.md`), so
-"offline" here means more than a read cache:
+1. **Monorepo migration** (§1) — its own PR, no behavior change, keeps web
+   CI green through the move.
+2. **Spike vault crypto portability** (§2, blocker #3) — the real gate.
+   Prove Argon2id + AES-GCM + HKDF work on a real Android device via
+   `react-native-quick-crypto` (or equivalent) before anything else.
+3. **Generalize the bearer-token Route Handler pattern** from `/api/mcp`
+   across the modules the v1 port needs (§2, blockers #1/#2): vault
+   setup/unlock, transactions, budgets, goals, loans, investments, net
+   worth at minimum. → `packages/api-client` as the typed client both apps
+   could theoretically share (web keeps using Server Actions directly;
+   mobile uses this client).
+4. **Mobile auth**: Supabase PKCE + deep link + AsyncStorage session
+   persistence, then the ported vault-unlock screen (passphrase → DEK, same
+   flow as web today).
+5. **Expo shell + navigation**; port screens in the same order the web
+   build itself was built: Transactions first (the reference module), then
+   Dashboard, Budget, Goals, Loans, Investments, Net Worth, Analytics.
+6. **Android APK build** via EAS Build (`eas build -p android --profile
+   preview` → `.apk`, sideloadable, no Play Store submission yet). This is
+   the v1 deliverable.
+7. iOS build — same codebase, no new screens — once an Apple Developer
+   account is in place. Not blocking v1's Android APK.
+8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
+   sync, biometrics, widgets, store submissions.
 
-- **Reads**: cache decrypted rows in an on-device store (`expo-sqlite`) keyed
-  by the same row IDs as Postgres, refreshed on reconnect. The decrypted
-  cache only ever exists after the vault is unlocked on-device — same trust
-  boundary as the in-memory web DEK, just persisted locally instead of
-  cleared on reload.
-- **Writes**: queue client-encrypted mutations (already-ciphertext payloads,
-  identical shape to what `actions.ts` expects today) locally when offline,
-  flush the queue in order on reconnect through the same Server Actions/
-  `/api/v1/ai/*` contract the web app uses. No new write path — offline just
-  delays submission of the same encrypted payload.
-- **Conflicts**: last-write-wins per row is acceptable to start (matches the
-  web app's current lack of optimistic-concurrency tokens); revisit only if
-  real multi-device conflicts show up.
+## 6. Decisions log
 
-## Build phases
-
-### Phase 5.0 — Monorepo lift (no new features)
-- [ ] Add Turborepo (`turbo.json`, root workspaces in `package.json`).
-- [ ] Move today's app to `apps/web` with zero behavior change; `npm run
-      build` green from the new location before anything else proceeds.
-- [ ] Extract `src/lib/finance/*`, `analytics`, `score`, `calendar`,
-      `reports`, and the shared Zod schemas/types into `packages/`, imported
-      back into `apps/web` — still zero behavior change, just relocated.
-- [ ] CI/build scripts updated for the workspace layout.
-
-### Phase 5.1 — Expo app shell
-- [ ] `apps/mobile`: Expo Router app, auth screens wired to
-      `@supabase/supabase-js` (AsyncStorage/SecureStore session persistence
-      instead of cookies).
-- [ ] Bottom tab nav mirroring `nav-config.ts`'s primary items.
-- [ ] Dashboard screen reading real Supabase data (no vault unlock yet —
-      demo-mode-equivalent numbers only) to prove the data path end to end.
-
-### Phase 5.2 — Vault crypto parity on RN
-- [ ] `packages/vault-crypto` RN implementation + cross-runtime test vector
-      suite (browser / Node-MCP / RN all pass the same fixtures).
-- [ ] Vault unlock flow on mobile (passphrase, recovery code) reusing the
-      shared primitives.
-- [ ] Biometric wrap path (`expo-secure-store` + `expo-local-authentication`)
-      as a new, independently-revocable DEK wrap, alongside — not replacing —
-      passphrase/recovery/PIN.
-
-### Phase 5.3 — Feature parity (read path)
-- [ ] Transactions, Budget, Goals, Loans, Investments, Net Worth, Analytics,
-      Notifications screens — decrypted read-only views using
-      `packages/finance-core` for all math (no logic re-implemented).
-
-### Phase 5.4 — Feature parity (write path) + offline queue
-- [ ] Create/edit/delete for the modules above via the same Server Actions/
-      `/api/v1/ai/*` contract, encrypted client-side before send.
-- [ ] Offline write queue (`expo-sqlite`-backed) with flush-on-reconnect.
-
-### Phase 5.5 — Push notifications
-- [ ] Expo push token registration, server-side dispatch triggered by the
-      same `buildNotifications` conditions the in-app notifications module
-      already computes — one alert source, two delivery channels.
-
-### Phase 5.6 — Home-screen widgets
-- [ ] iOS/Android widget (Safe-to-Spend, next bill due) via Expo config
-      plugins + native widget extensions; read from the offline cache so a
-      widget works without opening the app.
-
-### Phase 5.7 — Store distribution
-- [ ] EAS Build + EAS Submit pipelines for iOS/Android; app icons, splash,
-      store listings.
-
-## Gotchas anticipated
-
-- Tailwind v4 / shadcn/ui / GSAP MagicBento have no React Native runtime —
-  budget real design time for native equivalents, not a mechanical port.
-- Drizzle ORM and `postgres` (the driver) are server-only and must never
-  enter the mobile bundle — `packages/types` ships Zod schemas and inferred
-  types only, no runtime DB dependency.
-- `src/lib/mcp/server-crypto.ts`'s "byte-for-byte interoperable duplicate"
-  precedent is the proof this pattern works — lean on it rather than
-  inventing a new cross-runtime crypto strategy.
-- Keep this phase from starting before Phase 3/3.5/4 stabilize further —
-  the roadmap explicitly orders native mobile last so the shared core it
-  lifts is already correct and stable.
+- **2026-08-04, initial**: Phase 4 (general SMS/bank/email import) on hold;
+  mobile (Phase 5) prioritized next, automation folded into this plan.
+  *(Superseded by the same-day revision below — automation moved back out
+  of v1.)*
+- **2026-08-04, revision**: v1 = plain feature-parity port, no automation,
+  no PWA interim, Android APK as the first deliverable, iOS on the same RN
+  codebase to follow. Monorepo (not a new repo) with independently
+  versioned `apps/web` and `apps/mobile`. See §0–§1.
+- Background-capture model (defer-until-unlock) and the "no bank
+  aggregation in v1" call from the first pass both still stand for
+  whenever automation work resumes (§3/§4) — not reopened, just not
+  relevant until then.
