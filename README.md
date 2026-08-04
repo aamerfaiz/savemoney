@@ -34,8 +34,8 @@ This repository currently contains the **Phase 1 foundation + dashboard shell**.
   financial health score, spending breakdown, goals, upcoming bills/EMI and
   recent transactions.
 - **Two core finance engines** as pure, testable functions:
-  - `src/lib/finance/budget.ts` — the dynamic budgeting / safe-to-spend engine.
-  - `src/lib/finance/health-score.ts` — the 0–100 Financial Health Score.
+  - `packages/finance-engine/src/budget.ts` — the dynamic budgeting / safe-to-spend engine.
+  - `packages/finance-engine/src/health-score.ts` — the 0–100 Financial Health Score.
 - **Auth wiring** — login page, Supabase browser/server clients, session
   `proxy` (middleware), and OAuth/magic-link callback route.
 - **Drizzle schema** for the Phase 1 tables + **RLS policies**, triggers and
@@ -44,33 +44,42 @@ This repository currently contains the **Phase 1 foundation + dashboard shell**.
 
 ## Project structure
 
+This is a Turborepo monorepo (Phase 5.0 — see
+`docs/mobile-build-phase-plan.md`): the web app lives under `apps/web/`, and
+`apps/mobile/` (Expo) plus shared `packages/*` land as later Phase 5 steps
+extract them.
+
 ```
-src/
-  app/
-    (app)/                 # authed shell: dashboard + module routes
-    login/                 # auth screen + form
-    auth/callback/         # OAuth / magic-link handler
-    manifest.ts            # PWA manifest
-  components/
-    magic-bento/           # reusable BentoGrid / BentoCard (React Bits)
-    dashboard/             # dashboard cards (stat tiles, gauge, charts…)
-    nav/                   # sidebar, bottom nav, top bar
-    ui/                    # shadcn-style primitives
-  db/                      # Drizzle schema + client
-  lib/
-    finance/               # budget + health-score engines
-    supabase/              # client / server / session helpers
-    format.ts              # currency / date formatting
-  data/                    # mock dashboard snapshot
-drizzle/                   # generated migration + RLS/seed SQL
+apps/
+  web/
+    src/
+      app/
+        (app)/                 # authed shell: dashboard + module routes
+        login/                 # auth screen + form
+        auth/callback/         # OAuth / magic-link handler
+        manifest.ts            # PWA manifest
+      components/
+        magic-bento/           # reusable BentoGrid / BentoCard (React Bits)
+        dashboard/             # dashboard cards (stat tiles, gauge, charts…)
+        nav/                   # sidebar, bottom nav, top bar
+        ui/                    # shadcn-style primitives
+      db/                      # Drizzle schema + client
+      lib/
+        supabase/              # client / server / session helpers
+      data/                    # mock dashboard snapshot
+    drizzle/                   # generated migration + RLS/seed SQL
+packages/
+  finance-engine/              # pure finance engines + currency formatting,
+                                # shared with apps/mobile
+turbo.json                     # task pipeline (build/dev/lint/db:*)
 ```
 
 ## Getting started
 
 ```bash
-npm install
-cp .env.example .env.local   # fill in Supabase values
-npm run dev
+npm install                        # installs the whole workspace
+cp apps/web/.env.example apps/web/.env.local   # fill in Supabase values
+npm run dev                        # turbo run dev -> apps/web
 ```
 
 Without Supabase env vars the app runs in **demo mode**: auth is not enforced
@@ -78,17 +87,18 @@ and the dashboard renders from mock data.
 
 ### Database setup
 
-1. Fill `DATABASE_URL` in `.env.local` (Supabase → Database → Connection string).
+1. Fill `DATABASE_URL` in `apps/web/.env.local` (Supabase → Database →
+   Connection string).
 2. Apply the schema and policies:
 
    ```bash
-   npm run db:migrate            # applies drizzle/0000_init_phase1.sql
-   # then run drizzle/manual/0001_rls_and_seed.sql in the Supabase SQL editor
-   # (RLS policies, triggers, and seeded system categories)
+   npm run db:migrate            # applies apps/web/drizzle/0000_init_phase1.sql
+   # then run apps/web/drizzle/manual/0001_rls_and_seed.sql in the Supabase
+   # SQL editor (RLS policies, triggers, and seeded system categories)
    ```
 
    `npm run db:generate` regenerates migrations after editing
-   `src/db/schema.ts`; `npm run db:studio` opens Drizzle Studio.
+   `apps/web/src/db/schema.ts`; `npm run db:studio` opens Drizzle Studio.
 
 ## Roadmap (from the spec)
 

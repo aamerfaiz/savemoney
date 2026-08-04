@@ -1,0 +1,10 @@
+{
+  "name": "@savemoney/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed client for the bearer-token /api/v1/* Route Handlers, shared between apps/web (which normally uses Server Actions directly) and apps/mobile.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
