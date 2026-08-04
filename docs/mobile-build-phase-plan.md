@@ -141,7 +141,14 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
 ## 5. Build order — v1 (straight port, Android APK first)
 
 1. **Monorepo migration** (§1) — its own PR, no behavior change, keeps web
-   CI green through the move.
+   CI green through the move. **Done** (2026-08-04): `git mv src apps/web/
+   src` + the other root config files, root `package.json` (npm workspaces)
+   + `turbo.json` added, `apps/web/package.json` renamed to `@savemoney/web`.
+   `npm run build`/`lint` verified green from the new location via
+   `turbo run build|lint`. `packages/*` extraction (finance-engine, schemas)
+   deferred to its own follow-up pass rather than bundled into this PR, since
+   it touches import sites across most modules — mechanical but separable
+   from the zero-behavior-change lift itself.
 2. **Spike vault crypto portability** (§2, blocker #3) — the real gate.
    Prove Argon2id + AES-GCM + HKDF work on a real Android device via
    `react-native-quick-crypto` (or equivalent) before anything else.
