@@ -11,15 +11,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { DraftCard } from "./draft-card";
 import type { DraftItemState, SmartEntryReference } from "./smart-entry-types";
 import { resolveActiveKey } from "@/lib/ai/client-key";
+import { commitClientCapability, type ClientCommitResult } from "@/lib/ai/capabilities/client-commit";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
+import { useSideData } from "@/lib/finance/use-side-data";
 import { useVaultStore } from "@/lib/vault/store";
+import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 type Phase = "idle" | "loading" | "results" | "empty" | "error";
 
-export function SmartEntryView({ reference }: { reference: SmartEntryReference }) {
+export function SmartEntryView({
+  reference,
+  currency,
+}: {
+  reference: SmartEntryReference;
+  currency: CurrencyCode;
+}) {
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const dek = useVaultStore((s) => s.dek);
+  // Feeds investment.contribution/loan.payment/goal.contribution's need for
+  // the target's *current* decrypted amounts (see client-commit.ts) — the
+  // same query the Investments/Loans/Goals pages already run, so it's
+  // typically warm from TanStack Query's cache rather than a fresh fetch.
+  const sideData = useSideData(currency);
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +87,7 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
           // "confirm all" should never silently sweep up a delete.
           selected: d.ok && !d.destructive,
           committing: false,
+          requiresClientEncryption: d.requiresClientEncryption ?? false,
         }),
       );
       setDrafts(items);
@@ -105,44 +120,84 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
     setDrafts((ds) => ds.filter((d) => d.id !== id));
   }
 
+  /**
+   * Splits by `requiresClientEncryption`: create/log-against drafts commit
+   * right here in the browser (via `commitClientCapability`, which encrypts
+   * with the unlocked vault DEK before calling the real Server Action —
+   * see client-commit.ts), while plain deletes still go through
+   * `POST /api/v1/ai/commit` exactly as before. Results are matched back by
+   * draft id (a `Map`, not array position) since the two paths resolve
+   * independently and out of order relative to each other.
+   */
   async function commitItems(targets: DraftItemState[]) {
     setDrafts((ds) =>
       ds.map((d) => (targets.some((t) => t.id === d.id) ? { ...d, committing: true, commitError: undefined } : d)),
     );
 
-    let data: { ok: boolean; results?: { ok: boolean; error?: string }[]; error?: string };
-    try {
-      const res = await fetch("/api/v1/ai/commit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: targets.map((t) => ({ capability: t.capability, fields: t.fields, targetId: t.targetId })),
-        }),
-      });
-      data = await res.json();
-      if (!res.ok) data.ok = false;
-    } catch {
-      data = { ok: false, error: "Couldn't reach the server — check your connection and try again." };
+    const resultsById = new Map<string, { ok: boolean; error?: string }>();
+    const clientTargets = targets.filter((t) => t.requiresClientEncryption);
+    const serverTargets = targets.filter((t) => !t.requiresClientEncryption);
+
+    if (clientTargets.length > 0) {
+      if (!dek) {
+        for (const t of clientTargets) {
+          resultsById.set(t.id, { ok: false, error: "Unlock your vault in Settings → Vault & Encryption first." });
+        }
+      } else {
+        const ctx = {
+          dek,
+          investments: sideData.data?.investmentsData.investments ?? [],
+          loans: sideData.data?.loansData.loans ?? [],
+          goals: sideData.data?.goalsData.goals ?? [],
+        };
+        await Promise.all(
+          clientTargets.map(async (t) => {
+            let result: ClientCommitResult;
+            try {
+              result = await commitClientCapability(t.capability, t.fields, t.targetId, ctx);
+            } catch {
+              result = { ok: false, error: "Couldn't apply this — try again." };
+            }
+            resultsById.set(t.id, result);
+          }),
+        );
+      }
     }
 
-    if (!data.ok || !data.results) {
-      const msg = data.error ?? "Couldn't apply these — try again.";
-      setDrafts((ds) =>
-        ds.map((d) => (targets.some((t) => t.id === d.id) ? { ...d, committing: false, commitError: msg } : d)),
-      );
-      return;
+    if (serverTargets.length > 0) {
+      let data: { ok: boolean; results?: { ok: boolean; error?: string }[]; error?: string };
+      try {
+        const res = await fetch("/api/v1/ai/commit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: serverTargets.map((t) => ({ capability: t.capability, fields: t.fields, targetId: t.targetId })),
+          }),
+        });
+        data = await res.json();
+        if (!res.ok) data.ok = false;
+      } catch {
+        data = { ok: false, error: "Couldn't reach the server — check your connection and try again." };
+      }
+
+      if (!data.ok || !data.results) {
+        const msg = data.error ?? "Couldn't apply these — try again.";
+        for (const t of serverTargets) resultsById.set(t.id, { ok: false, error: msg });
+      } else {
+        serverTargets.forEach((t, i) => {
+          resultsById.set(t.id, data.results![i] ?? { ok: false, error: "Couldn't apply this." });
+        });
+      }
     }
 
-    const results = data.results;
     setDrafts((ds) => {
-      let i = 0;
       const next: DraftItemState[] = [];
       for (const d of ds) {
         if (!targets.some((t) => t.id === d.id)) {
           next.push(d);
           continue;
         }
-        const r = results[i++];
+        const r = resultsById.get(d.id);
         if (r?.ok) continue; // committed — drop it from the list
         next.push({ ...d, committing: false, commitError: r?.error ?? "Couldn't apply this." });
       }
@@ -164,10 +219,11 @@ export function SmartEntryView({ reference }: { reference: SmartEntryReference }
       <Card className="space-y-3 p-5">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Sparkles className="size-4 text-brand" />
-          Add, edit, or delete from a prompt
+          Add or delete from a prompt
         </div>
         <p className="text-xs text-muted-foreground">
-          Describe what happened, what changed, or what to remove — you&apos;ll review and confirm before anything is applied.
+          Describe what happened — a transaction, an investment, a loan payment, a goal contribution, or something to
+          remove — you&apos;ll review and confirm before anything is applied.
         </p>
         {!dek && (
           <p className="flex items-center gap-1.5 text-sm text-warning">

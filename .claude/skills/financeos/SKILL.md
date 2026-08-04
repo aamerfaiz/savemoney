@@ -579,6 +579,66 @@ deletedAt)`.
 connection** → save; rotate/delete; masked display. Gate the AI Assistant
 module behind "user has a valid active key" (it is an optional module).
 
+## Smart Entry (`/ai` → Manage) — natural-language create/log/delete
+
+Typing something like "spent 300 on taxi today" into `/ai`'s **Manage** tab
+(`SmartEntryView`, `AiShell`'s other mode besides **Ask**) should produce an
+editable draft card — never silently nothing. The full design (guardrails,
+capability registry shape, confirm-before-write flow) is
+`docs/ai-smart-entry-plan.md`; the load-bearing fact to internalize here is
+the **client-side commit split**, since it's the thing most likely to trip
+up a naive extension:
+
+- `POST /api/v1/ai/extract` (server) turns a prompt into draft items by
+  picking a `capability` key from the closed registry in
+  `apps/web/src/lib/ai/capabilities/definitions.ts` and validating/
+  resolving name references (category, account, investment, loan, goal…)
+  against the user's own rows. **Nothing is written here — this only
+  produces a plaintext draft for display**, which is safe even for
+  vault-encrypted fields since it's never persisted.
+- The actual write splits in two, per capability's `requiresClientEncryption`
+  flag (`AICapability`, `capabilities/types.ts`):
+  - **`false`** (the plain deletes — `investment.delete`, `loan.delete`,
+    `goal.delete`, `budget.delete`, `recurring.delete`): write server-side
+    via `POST /api/v1/ai/commit` (`smart-entry/commit.ts`), same as always.
+  - **`true`** (everything with an amount — `transaction.expense/income`,
+    `investment.create/.contribution`, `loan.create/.payment`,
+    `goal.create/.contribution`, `budget.create`, `recurring.create`):
+    the server never holds the vault DEK, so it **cannot** encrypt these
+    fields — `commit.ts` refuses them outright. The write instead happens
+    in the browser: `apps/web/src/components/ai/smart-entry-view.tsx` calls
+    `apps/web/src/lib/ai/capabilities/client-commit.ts` (`"use client"`),
+    which routes each capability to the exact same `encryptedCreate*`/
+    `encryptedRecord*`/`encryptedAddContribution` client-action wrapper the
+    module's own manual form already uses — one real write path per module,
+    shared by forms and AI drafts, same as the golden rule in "Add a new
+    feature module" above.
+- Contribution/payment capabilities (`investment.contribution`,
+  `loan.payment`, `goal.contribution`) need the target's *current*
+  decrypted amount to compute a new running total/split — `client-commit.ts`
+  gets that from `useSideData()` (the same decrypted-list hook the
+  Investments/Loans/Goals pages use), passed in by `SmartEntryView`.
+- **When adding a new create/log-against capability for an encrypted
+  module**: give it `requiresClientEncryption: true`, keep `resolve()`
+  server-side and plaintext-only (validate + resolve names, never write),
+  and add its write to `client-commit.ts`, not to the capability's
+  `execute()` (that stays a defensive "confirm from the browser" stub — see
+  its doc comment). Never make `execute()` call a Server Action with a
+  plaintext amount; that's exactly the bug this pattern fixes.
+- Editing an existing row (as opposed to creating one or logging a
+  contribution/payment) through Smart Entry is still unbuilt for every
+  module — a real follow-up, not an oversight; see
+  `docs/ai-smart-entry-plan.md` for why it's harder (needs the current row
+  decrypted first, to merge onto).
+- `apps/mobile` has no Manage/Smart Entry screen yet (not in the v1 module
+  list — see "The mobile app" above). Whenever it's built, it must follow
+  this same split: extraction can reuse the bearer-token
+  `/api/v1/ai/extract` call as-is, but the commit step for every
+  `requiresClientEncryption` capability has to run on-device against the
+  mobile vault DEK and call the mobile module's own `client-actions.ts`,
+  mirroring `client-commit.ts` — never posting a plaintext amount to
+  `/api/v1/ai/commit` expecting the server to encrypt it.
+
 ## Verifying changes
 
 - `npm run build` — type-check + prerender. Fix all errors before committing.

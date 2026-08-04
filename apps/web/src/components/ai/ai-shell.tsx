@@ -42,7 +42,7 @@ export function AiShell({
       {mode === "ask" ? (
         <AiAssistantView currency={currency} />
       ) : (
-        <SmartEntryView reference={reference} />
+        <SmartEntryView reference={reference} currency={currency} />
       )}
     </div>
   );

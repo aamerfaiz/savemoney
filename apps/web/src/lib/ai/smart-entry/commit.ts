@@ -39,6 +39,21 @@ export async function commitDraftItems(
       continue;
     }
 
+    // Amount fields on these are vault-encrypted, and this endpoint has no
+    // DEK — writing `item.fields` here would mean persisting a plaintext
+    // amount into a ciphertext column. The client is expected to route
+    // these through `client-commit.ts` instead (see `SmartEntryView`);
+    // refuse rather than silently corrupting the row if one lands here
+    // anyway (a stale client, a direct API call, etc.).
+    if (def.requiresClientEncryption) {
+      results.push({
+        capability: item.capability,
+        ok: false,
+        error: "This has an encrypted amount and can only be confirmed from the browser.",
+      });
+      continue;
+    }
+
     const parsed = def.schema.safeParse(item.fields);
     if (!parsed.success) {
       results.push({

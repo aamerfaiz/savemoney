@@ -15,6 +15,11 @@ export interface DraftResult {
   fields?: Record<string, unknown>;
   targetId?: string;
   targetLabel?: string;
+  /** Mirrors the capability's own flag — tells the client whether to
+   * commit this draft via the browser-side encrypt-and-call path
+   * (`client-commit.ts`) instead of `POST /api/v1/ai/commit`. See
+   * `AICapability.requiresClientEncryption` (capabilities/types.ts). */
+  requiresClientEncryption: boolean;
   /** Non-blocking notes: unresolved references, soft anomaly flags. */
   warnings: string[];
   error?: string;
@@ -56,6 +61,7 @@ export async function resolveDraftItems(items: ExtractedItem[]): Promise<DraftRe
           sourceText: item.sourceText,
           destructive: false,
           actionLabel: "Add" as const,
+          requiresClientEncryption: false,
         };
       }
 
@@ -79,6 +85,7 @@ export async function resolveDraftItems(items: ExtractedItem[]): Promise<DraftRe
         sourceText: item.sourceText,
         destructive: def.destructive,
         actionLabel: def.actionLabel,
+        requiresClientEncryption: def.requiresClientEncryption,
       };
     }),
   );
