@@ -538,8 +538,39 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      way: type-checks clean, `apps/web` build/lint green with the new
      routes, vectors unaffected, live `curl` 401 checks on both new
      routes.
-   - **Remaining: Dashboard**, the capstone (composes every module
-     above) — the only module left in this step.
+   - **Dashboard done (2026-08-04) — Phase 5.5c/step 5 complete.** Not a
+     port of `apps/web/src/lib/dashboard/compute.ts`'s
+     `computeDashboardData()` — that function hard-requires
+     `RecurringData` for the "upcoming bills" card, and Recurring/Bill
+     Calendar were never in the v1 mobile module list (only the 8 named
+     in this step). `app/(tabs)/index.tsx` instead composes the same
+     building blocks directly — `computeBudgetsData`,
+     `computeAnalyticsData`, `computeGoalsData`, `computeLoansData`,
+     `computeInvestmentsData`, `buildNetWorth`,
+     `computeTransactionsList`/`summarize` — pulling from
+     `finance.raw()` plus Goals/Loans/Investments/Net-Worth's own
+     routes (same composition `app/net-worth.tsx` already needed).
+     Shows monthly income/expenses, net worth, health score, safe-to-
+     spend, top 3 active goals, and the 5 most recent transactions.
+     **Upcoming bills is a flagged, explicit omission** — fabricating
+     fake recurring data just to satisfy a ported function's type
+     signature would be worse than composing honestly and noting the
+     gap; add it back if/when Recurring lands in a later phase. The
+     temporary sign-out button from Phase 5.5a's placeholder Dashboard
+     moved here to stay with the real screen. No new Route Handler —
+     verified: type-checks clean, `apps/web` build/lint unaffected,
+     vectors unaffected.
+   - **This closes out Phase 5.5c / build-order step 5's screen list**:
+     Transactions, Budget, Goals, Loans, Investments, Net Worth,
+     Analytics, Dashboard all ported. Remaining open items across this
+     whole build phase, tracked honestly rather than silently: OAuth/
+     magic-link sign-in, recovery-code unlock, device PIN/biometric
+     quick-unlock, category/account pickers on the forms that skip
+     them, a real drawer for `More` (vs. its current 6th-tab
+     placement), Recurring/Bill Calendar (and thus upcoming bills), and
+     — the biggest one — **on-device/EAS verification of everything in
+     this doc**, since this build sandbox never had Android/iOS
+     tooling.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.
