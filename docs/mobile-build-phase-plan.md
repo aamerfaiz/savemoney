@@ -148,7 +148,15 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
    `turbo run build|lint`. `packages/*` extraction (finance-engine, schemas)
    deferred to its own follow-up pass rather than bundled into this PR, since
    it touches import sites across most modules — mechanical but separable
-   from the zero-behavior-change lift itself.
+   from the zero-behavior-change lift itself. **Update (2026-08-04):**
+   `packages/finance-engine` done — the 7 pure engines (budget, goals,
+   health-score, investment, loan, net-worth, recurring) now live there as
+   a real npm workspace package (`@savemoney/finance-engine`, subpath
+   exports per module, `apps/web` transpiles it). `packages/schemas` stays
+   deferred — those `types.ts` files pull `CurrencyCode` from
+   `apps/web/src/lib/format.ts`, and moving that out touches ~75 call
+   sites for a package nothing consumes before Phase 5.3/5.4 exist. Build
+   it when `packages/api-client` or `apps/mobile` actually need it.
 2. **Spike vault crypto portability** (§2, blocker #3) — the real gate.
    Prove Argon2id + AES-GCM + HKDF work on a real Android device via
    `react-native-quick-crypto` (or equivalent) before anything else.
