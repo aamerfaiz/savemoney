@@ -1,6 +1,6 @@
 import { Link } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { ChevronRight, Landmark } from "lucide-react-native";
+import { ChevronRight, Landmark, TrendingUp } from "lucide-react-native";
 
 /** Secondary modules, matching web's drawer contents for the same
  * non-primary set (Loans/Investments/Net Worth) — see
@@ -14,6 +14,13 @@ export default function More() {
         <Pressable style={styles.row}>
           <Landmark color="#a78bfa" size={20} />
           <Text style={styles.rowLabel}>Loans</Text>
+          <ChevronRight color="#666" size={18} style={styles.chevron} />
+        </Pressable>
+      </Link>
+      <Link href="/investments" asChild>
+        <Pressable style={styles.row}>
+          <TrendingUp color="#a78bfa" size={20} />
+          <Text style={styles.rowLabel}>Investments</Text>
           <ChevronRight color="#666" size={18} style={styles.chevron} />
         </Pressable>
       </Link>

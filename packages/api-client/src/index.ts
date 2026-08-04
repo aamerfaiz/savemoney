@@ -281,6 +281,58 @@ export interface EncryptedPaymentInput {
   newRemainingMonths?: number | null;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Investments — Phase 5.5c. Own full-list read, same two-path structure   */
+/* as Goals/Loans.                                                          */
+/* ----------------------------------------------------------------------- */
+
+export type InvestmentType =
+  | "stocks"
+  | "mutual_fund"
+  | "etf"
+  | "bonds"
+  | "crypto"
+  | "real_estate"
+  | "gold"
+  | "retirement"
+  | "other";
+
+export interface RawInvestmentRow {
+  id: string;
+  name: string;
+  type: InvestmentType;
+  investedAmount: string;
+  currentValue: string;
+  monthlyContribution: string | null;
+  expectedReturn: number;
+  currency: string;
+  startDate: string;
+}
+
+export interface EncryptedInvestmentInput {
+  name: string;
+  type: InvestmentType;
+  /** Packed ciphertext. */
+  investedAmount: string;
+  /** Packed ciphertext. */
+  currentValue: string;
+  /** Packed ciphertext, or null. */
+  monthlyContribution?: string | null;
+  expectedReturn: number;
+  currency: string;
+  startDate: string;
+}
+
+export interface EncryptedInvestmentContributionInput {
+  /** Packed ciphertext. */
+  amount: string;
+  addToValue: boolean;
+  contributedAt: string;
+  /** Packed ciphertext — new running totals, computed client-side. */
+  newInvestedAmount: string;
+  newCurrentValue: string;
+}
+
 export interface AccountOption {
   id: string;
   name: string;
@@ -420,6 +472,22 @@ export function createApiClient(config: ApiClientConfig) {
       delete: (id: string) => request<ActionResult>(`/api/v1/loans/${id}`, { method: "DELETE" }),
       recordPayment: (loanId: string, input: EncryptedPaymentInput) =>
         request<ActionResult>(`/api/v1/loans/${loanId}/payments`, {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+    },
+    investments: {
+      list: () => request<{ ok: true; investments: RawInvestmentRow[] }>("/api/v1/investments"),
+      create: (input: EncryptedInvestmentInput) =>
+        request<ActionResult>("/api/v1/investments", { method: "POST", body: JSON.stringify(input) }),
+      update: (id: string, input: EncryptedInvestmentInput) =>
+        request<ActionResult>(`/api/v1/investments/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        }),
+      delete: (id: string) => request<ActionResult>(`/api/v1/investments/${id}`, { method: "DELETE" }),
+      recordContribution: (id: string, input: EncryptedInvestmentContributionInput) =>
+        request<ActionResult>(`/api/v1/investments/${id}/contributions`, {
           method: "POST",
           body: JSON.stringify(input),
         }),

@@ -479,6 +479,26 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      list is long enough to justify it. Verified the same way:
      type-checks clean, `apps/web` build/lint green, vectors unaffected,
      live `curl` 401 checks on the new routes.
+   - **Investments done (2026-08-04).** Same two-path structure again:
+     `/api/v1/investments` (GET/POST), `/api/v1/investments/[id]`
+     (PATCH/DELETE), `/api/v1/investments/[id]/contributions` (POST).
+     `apps/mobile/src/lib/finance/decrypt.ts` gained the full
+     `decryptInvestmentRows`; `src/lib/investments/{types,compute,
+     client-actions}.ts` are direct ports, including the contribution
+     flow's client-computed new invested/current totals (same reasoning
+     as goals'/loans' equivalents). `app/investments.tsx` (a second
+     non-tab route, joining `app/loans.tsx`) + `src/components/
+     {investment-form,investment-contribution-form}.tsx`: total value/
+     gain summary, per-holding return %, tap to add a contribution
+     (amount + an "also bump current value" toggle, since a SIP top-up
+     and a value-only bump are different things here), long-press to
+     delete. Along the way, renamed `ContributionForm`'s `goalName` prop
+     to the generic `label` (Goals already used it; Investments needed
+     its own variant anyway for the addToValue toggle, but the rename
+     keeps the shared one honestly generic instead of goal-specific in
+     name only). `More` now lists both Loans and Investments. Verified
+     the same way: type-checks clean, `apps/web` build/lint green,
+     vectors unaffected, live `curl` 401 checks on the new routes.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.

@@ -160,7 +160,7 @@ export default function GoalsScreen() {
       />
       <ContributionForm
         visible={!!contributing}
-        goalName={contributing?.name ?? ""}
+        label={contributing?.name ?? ""}
         busy={contribBusy}
         error={contribError}
         onSubmit={handleContribute}

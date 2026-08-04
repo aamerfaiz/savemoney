@@ -285,3 +285,36 @@ export async function decryptLoanRows(
   );
   return splitSettled(settled);
 }
+
+/* ----------------------------------------------------------------------- */
+/* Investments — Phase 5.5c, full row.                                     */
+/* ----------------------------------------------------------------------- */
+
+export interface DecryptedInvestmentRow {
+  id: string;
+  name: string;
+  type: import("@savemoney/api-client").InvestmentType;
+  investedAmount: number;
+  currentValue: number;
+  monthlyContribution: number | null;
+  expectedReturn: number;
+  currency: string;
+  startDate: string;
+}
+
+export async function decryptInvestmentRows(
+  rows: import("@savemoney/api-client").RawInvestmentRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedInvestmentRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedInvestmentRow> => ({
+      ...r,
+      investedAmount: Number(await decryptPacked(r.investedAmount, dek)),
+      currentValue: Number(await decryptPacked(r.currentValue, dek)),
+      monthlyContribution: r.monthlyContribution
+        ? Number(await decryptPacked(r.monthlyContribution, dek))
+        : null,
+    })),
+  );
+  return splitSettled(settled);
+}
