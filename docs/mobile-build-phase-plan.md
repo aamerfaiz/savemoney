@@ -703,6 +703,23 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      fresh commit on top of `main` rather than stacked on the merged
      history) and pushed; awaiting the next CI run to confirm the fix
      actually gets the build past this step.
+   - **Second CI run, 2026-08-04 (PR #24 merged)**: got past
+     `:react-native-argon2` cleanly. New problem: the `Build release APK`
+     step ran for 2+ hours without finishing, stuck compiling
+     `react-native-quick-crypto`'s native code — it bundles a real
+     OpenSSL-based crypto implementation (`ncrypto`), not a thin wrapper,
+     and by default Gradle compiles that from scratch for all 4 Android
+     ABIs (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`) on a 2 vCPU
+     runner with no compiler cache. Cancelled the stuck run. Fix: pass
+     `-PreactNativeArchitectures=arm64-v8a` to the `gradlew assembleRelease`
+     step in `.github/workflows/android-apk.yml` — arm64-v8a alone covers
+     virtually every phone since ~2017, and dropping the other 3 ABIs
+     (2 of which are emulator-only anyway) should cut native-compile work
+     to roughly a quarter. Add `armeabi-v7a` back (comma-separated) later
+     if 32-bit device support is ever needed. Branch was restarted from
+     `main` again first (PR #24 had merged, same policy as before).
+     Not yet re-run/confirmed — next step is opening a new PR and
+     watching the resulting build's timing.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
