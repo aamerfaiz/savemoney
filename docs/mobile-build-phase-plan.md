@@ -627,6 +627,21 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      the GitHub integration likely already auto-created) so it can be
      hand-written into `app.json` without any network call from this
      sandbox.
+   - **Resolved, 2026-08-04**: user's Expo project is
+     `https://expo.dev/accounts/aamers-apps/projects/finance-os`
+     (`expo.dev` is blocked by the same network policy as `api.expo.dev`
+     — confirmed, so this had to come from the user reading their own
+     dashboard, not a fetch from here). Hand-wrote into
+     `apps/mobile/app.json`: `owner: "aamers-apps"`, `slug` changed from
+     `savemoney-mobile` → `finance-os` (now matches the dashboard
+     project exactly, since `eas init` never ran to do this
+     automatically), and `extra.eas.projectId:
+     "14d4694d-79c1-4f6c-b9a3-9817f1bdf82b"` (the UUID from the
+     dashboard's project settings). Verified with `npx expo config
+     --type public` — resolves cleanly, `owner`/`slug`/`projectId` all
+     present. This should be enough for the next GitHub-triggered EAS
+     build to skip the "EAS project not configured" failure and proceed
+     straight to `build:internal`.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
