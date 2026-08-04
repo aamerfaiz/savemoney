@@ -1,170 +1,181 @@
 # Phase 5 — Mobile Build plan
 
-Status tracker for native mobile (Expo), pulled forward ahead of Phase 4 per
-product decision. This doc is the plan of record for everything mobile —
-extend it as decisions land rather than starting a new file, same convention
-as `phase-3-ai-assistant-plan.md` / `docs/ai-smart-entry-plan.md`.
-
-**Decision (2026-08-04): Phase 4 (SMS/bank/email import as a general
-feature) is on hold. Mobile (Phase 5) is next**, specifically because the
-mobile app needs automatic transaction capture (NFC / SMS / notifications /
-email) as a core feature, not a later add-on — so parts of what the roadmap
-called "Phase 4" now live inside this plan instead of a separate phase.
+Status tracker for native mobile (Expo/React Native), pulled forward ahead
+of Phase 4 per product decision. This doc is the plan of record for
+everything mobile — extend it as decisions land rather than starting a new
+file, same convention as `phase-3-ai-assistant-plan.md` / `docs/
+ai-smart-entry-plan.md`.
 
 Nothing in this plan is built yet. No Expo project, no monorepo/Turborepo
-scaffold exist in the repo today — this is analysis + open questions only.
+scaffold exist in the repo today — this is analysis + decisions only.
 
 ---
 
-## 1. What "mobile build" covers
+## 0. V1 scope (revised 2026-08-04) — read this first
 
-From the original roadmap (`AGENTS.md`): native mobile via Expo, a shared
-Turborepo, offline sync, biometrics, widgets. Expanded per this round of
-analysis to explicitly include **automatic transaction capture** — reading
-signals the phone already receives (SMS, notifications, email) or can
-trigger on (NFC) so the user doesn't have to manually log every expense/
-income.
+Earlier drafts of this plan sequenced a PWA-first interim and pulled
+automatic-capture (NFC/SMS/notifications/email) into v1. **Revised:**
+
+- **V1 is a straight feature-parity port of the current web app to React
+  Native (Expo) — no automatic capture, no NFC, no SMS/notifications, no
+  email parsing.** Those move to a later phase (kept as reference in §3/§4
+  below, not deleted, since the analysis still holds — just not v1).
+- **No PWA-first interim.** Go straight to the native Expo build.
+- **Auth for v1 = what the web app already does today:** Supabase login
+  (session) **plus** the existing vault unlock step (passphrase → DEK) —
+  ported as-is, not redesigned. No new biometric/PIN quick-unlock for v1;
+  that's still a later enhancement. (Login alone doesn't unlock any data —
+  every finance table is client-side encrypted, so the passphrase-unlock
+  screen is part of "current web version as-is," not an extra feature.)
+- **Build target: Android APK first.** The codebase is written once in
+  React Native (Expo) so iOS is the same codebase, not a separate build —
+  but the first deliverable is a sideloadable `.apk`, not a Play Store
+  submission and not an iOS build. iOS build follows once there's an Apple
+  Developer account + a Mac (or EAS Build's cloud iOS builder) in the loop.
+- Everything else already in this doc (automation channels, background
+  capture, store submissions) is **future scope**, revisit once the v1 port
+  ships.
+
+## 1. Repo & versioning strategy
+
+**One repo, restructured into a monorepo — not a new git repo.** The
+roadmap already commits to "a shared Turborepo"; splitting into a second
+repo would mean publishing `src/lib/finance/*` and the Zod schemas as a
+versioned package just to share them with a separate mobile repo — extra
+ceremony, and it drifts. Target layout:
+
+```
+apps/
+  web/       # current Next.js app, moves here as-is
+  mobile/    # new Expo app
+packages/
+  finance-engine/   # src/lib/finance/* — pure, framework-free, copy over first
+  schemas/          # per-module Zod schemas
+  api-client/        # typed client for the bearer-token Route Handlers (§2, blocker #1/#2)
+```
+Migration is mechanical (`git mv src apps/web/src`, add `turbo.json` +
+workspace config) and should be its own PR before any mobile code lands, so
+the web app's history and CI keep working through the move.
+
+**Versioning web vs. mobile independently — achieved by per-app version
+numbers inside the monorepo, not by separate repos:**
+- `apps/web` — no meaningful version number; keeps deploying continuously to
+  Vercel on every push to `main`, same as today.
+- `apps/mobile` — real semver + native build numbers (`versionName`/
+  `versionCode` on Android, `CFBundleShortVersionString`/
+  `CFBundleVersion` on iOS once that build exists), bumped independently of
+  web. Git-tag mobile releases distinctly (`mobile-v1.0.0`) so they don't
+  collide with any future web release tags.
+- `packages/*` — internal workspace packages (`workspace:*` protocol), never
+  published to a registry, so no independent release process needed; a
+  change to `packages/finance-engine` just lands in whichever app's PR
+  touched it.
+- CI: path-filtered per app (Turborepo's affected-graph or simple path
+  filters) so a web-only change doesn't trigger a mobile build and vice
+  versa.
 
 ## 2. Current-state audit — what's reusable vs. blocking
 
 **Reusable as-is:**
 - DB schema + RLS (Postgres/Supabase) — transport-agnostic.
 - `src/lib/finance/*` — pure, framework-free finance engines. Directly
-  packageable.
-- Per-module Zod schemas — already separated from UI.
-- `src/lib/import/pipeline.ts` — already designed for this: pure
-  `detectMapping` / `normalizeRow` / `dedupeKey` / `buildPreview` over a
-  `Record<string,string>[]`, explicitly built so "SMS/email/bank feeds...
-  reuse the same functions." Any capture channel below should normalize
-  into this pipeline rather than getting its own write path.
-- The AI Smart Entry capability (`/api/v1/ai/{extract,commit}`,
-  `docs/ai-smart-entry-plan.md`) — free-text → structured draft via the
-  user's BYOK key, with a **human-confirm gate before anything writes**.
-  This is the natural parser for messy/varying SMS & email text instead of
-  hand-written per-bank regex (this app is not country-locked — defaults to
-  USD but supports any currency — so format diversity is real). The
-  confirm-gate matters even more for ambient/unprompted capture than for
-  typed prompts: it's also the defense against a phishing SMS crafted to
-  look like a bank debit.
+  packageable as `packages/finance-engine`.
+- Per-module Zod schemas — already separated from UI. → `packages/schemas`.
+- `src/lib/import/pipeline.ts` — reusable later, once capture channels are
+  back in scope (§3).
+- The AI Smart Entry capability (`/api/v1/ai/{extract,commit}`) — reusable
+  later, same reason.
 
-**Blocking, in order of severity:**
+**Blocking for the v1 port, in order of severity:**
 1. **Server Actions almost everywhere.** 19 files across nearly every
    module (`goals/actions.ts`, `loans/actions.ts`, `vault/actions.ts`, …)
    are `"use server"`, bound to Next's RSC action-id protocol — unreachable
    from a React Native client. Two Route Handlers already exist as the
    precedent (`/api/v1/ai/*`, `/api/mcp`) but that's 4 endpoints out of the
-   app's full mutation surface.
+   app's full mutation surface — **v1 needs this generalized across every
+   module the mobile port touches** (transactions, budgets, goals, loans,
+   investments, net worth, vault unlock/setup at minimum).
 2. **Bearer-token auth isn't finished even on the one Route Handler surface
    that exists.** Logged as an open TODO in `ai-smart-entry-plan.md`: the
    query/action layer still instantiates its own cookie-bound Supabase
    client internally instead of accepting an injected one. Has to be fixed
-   before any mobile-callable API is real.
-3. **Vault crypto portability is unproven.** `src/lib/vault/crypto.ts` is
-   `"client-only"`, built on browser `crypto.subtle` (AES-GCM, HKDF) +
-   `hash-wasm`'s Argon2id (WASM). Hermes (Expo's JS engine) has no native
-   `crypto.subtle` and inconsistent WASM support. Since every finance field
-   is encrypted client-side, the app cannot function on mobile until this is
-   proven — via polyfill (`react-native-quick-crypto` covers AES-GCM/HKDF)
-   or a native Argon2 module. `docs/e2ee-path-b-plan.md` explicitly scoped
-   mobile as undesigned ("inherits this design... but isn't being designed
-   here").
+   before any mobile-callable API is real — this is a hard v1 blocker, not
+   deferrable.
+3. **Vault crypto portability is unproven — still a hard v1 blocker.**
+   Dropping automation doesn't remove this: the vault unlock step is in v1
+   (§0), so `src/lib/vault/crypto.ts`'s `crypto.subtle` (AES-GCM, HKDF) +
+   `hash-wasm`'s Argon2id (WASM) must run acceptably on Hermes before any
+   screen can show real data. Resolve via polyfill
+   (`react-native-quick-crypto` covers AES-GCM/HKDF) or a native Argon2
+   module — spike this first, before UI work.
 4. **Full UI rebuild.** MagicBento (GSAP), Tailwind v4, shadcn primitives,
    Recharts are all web-only. Layout/IA can be mirrored; none of the code
-   ports.
-5. **No monorepo yet.** Single `npm` app today, not even a workspace. The
-   "shared Turborepo" from the roadmap is aspirational.
+   ports. v1 port = re-implement each screen's current web behavior in
+   RN, not add anything new.
+5. **No monorepo yet** — see §1, first PR.
 
-**In good shape already:** the vault's 4-independent-KEK-wrap design
-(passphrase / recovery code / device PIN / MCP token) anticipated this —
-`e2ee-path-b-plan.md` calls native "a particularly good fit later" since
-iOS Keychain / Android Keystore can hardware-back the device quick-unlock
-wrap, replacing the current PIN-only Argon2id wrap. Ready to extend once
-crypto portability (#3) is resolved.
-
-## 3. Automatic capture channels — technical reality
+## 3. Automatic capture channels — future scope, not v1 (kept for reference)
 
 | Channel | Platform | Verdict |
 |---|---|---|
 | NFC (reading a tap-to-pay transaction) | — | **Not possible.** No OS exposes Apple Pay/Google Pay wallet transactions to third-party apps; EMV card chips don't expose customer-readable transaction history outside a certified terminal. |
 | NFC (physical tags as manual triggers) | Both | Real, but it's a manual quick-add convenience (tap a sticker → app opens pre-filled), not automatic capture. |
 | SMS reading | **Android only** | No public iOS API exists for reading arbitrary SMS content — a hard platform wall, not a workaround-able limitation. Android: `READ_SMS` + broadcast receiver works, but is a Play Store Restricted Permission requiring justification/review. |
-| Notification listener | **Android only** | `NotificationListenerService` reads content from any app's notifications (bank apps, UPI/wallet apps, not just SMS) — arguably stronger than SMS since more confirmations are push-based now. iOS has no equivalent (Notification Service Extension only sees pushes sent to your own app). Manual "special access" grant, not a runtime dialog. |
-| Email parsing | **Cross-platform, not mobile-dependent** | OAuth (Gmail API/IMAP) + polling/webhook. Works identically from a server job, doesn't need the phone open, no OS permission, no store review risk. Could be built independent of the native app entirely. |
-| Bank aggregation / Open Banking (Plaid, TrueLayer, Salt Edge, regional AA/UPI frameworks) | Cross-platform | Industry-correct: structured, consented data, no scraping fragility. Requires an aggregator relationship (cost, KYC, regional coverage gaps) — genuinely Phase-4-shaped infra, independent of native vs. PWA. |
+| Notification listener | **Android only** | `NotificationListenerService` reads content from any app's notifications (bank apps, UPI/wallet apps, not just SMS). iOS has no equivalent. Manual "special access" grant, not a runtime dialog. |
+| Email parsing | **Cross-platform, not mobile-dependent** | OAuth (Gmail API/IMAP) + polling/webhook. Could be built independent of the native app entirely, whenever it's back in scope. |
+| Bank aggregation / Open Banking | Cross-platform | Industry-correct, but needs an aggregator relationship (cost, KYC, regional coverage). Not planned for any near-term phase. |
 
-**Net effect:** automatic SMS/notification capture is Android-only, full
-stop. If iOS parity matters, it has to come from email parsing, bank
-aggregation, or AI-assisted manual entry (Smart Entry) — not from
-replicating the Android mechanism.
+**Net effect (unchanged):** automatic SMS/notification capture is
+Android-only. Revisit this whole section once v1 (the plain port) ships.
 
-## 4. New architectural question: background capture vs. the vault
+## 4. Background capture vs. the vault — future scope, not v1 (kept for reference)
 
 A background SMS/notification listener can fire while the app isn't open,
 but the DEK only lives in an in-memory Zustand store, cleared on lock/
-logout, never persisted. Two directions, undecided:
-- Queue raw captured text locally (already plaintext PII by nature of what's
-  being read) and defer parsing + encryption until the user next opens/
-  unlocks the app; or
-- Extend the device quick-unlock PIN wrap (hardware-backed via Keychain/
-  Keystore on native) so a background service can unwrap the DEK without a
-  full interactive unlock.
+logout, never persisted. When this comes back into scope: **defer until
+next unlock** — queue raw captured text locally, parse + encrypt only when
+the user next opens/unlocks the app. The DEK's in-memory-only guarantee
+stays as-is; no background DEK access, no PIN-wrap extension. (Decided
+2026-08-04, still the plan whenever capture work resumes.)
 
-Either way this doesn't break the "server never sees plaintext" promise —
-capture and parsing stay on-device — but it does mean requesting very broad
-permissions (full SMS / full notification access), which is a real
-user-trust conversation and, on Android, real Play Store scrutiny.
+## 5. Build order — v1 (straight port, Android APK first)
 
-## 5. Build order (per §6 decisions)
+1. **Monorepo migration** (§1) — its own PR, no behavior change, keeps web
+   CI green through the move.
+2. **Spike vault crypto portability** (§2, blocker #3) — the real gate.
+   Prove Argon2id + AES-GCM + HKDF work on a real Android device via
+   `react-native-quick-crypto` (or equivalent) before anything else.
+3. **Generalize the bearer-token Route Handler pattern** from `/api/mcp`
+   across the modules the v1 port needs (§2, blockers #1/#2): vault
+   setup/unlock, transactions, budgets, goals, loans, investments, net
+   worth at minimum. → `packages/api-client` as the typed client both apps
+   could theoretically share (web keeps using Server Actions directly;
+   mobile uses this client).
+4. **Mobile auth**: Supabase PKCE + deep link + AsyncStorage session
+   persistence, then the ported vault-unlock screen (passphrase → DEK, same
+   flow as web today).
+5. **Expo shell + navigation**; port screens in the same order the web
+   build itself was built: Transactions first (the reference module), then
+   Dashboard, Budget, Goals, Loans, Investments, Net Worth, Analytics.
+6. **Android APK build** via EAS Build (`eas build -p android --profile
+   preview` → `.apk`, sideloadable, no Play Store submission yet). This is
+   the v1 deliverable.
+7. iOS build — same codebase, no new screens — once an Apple Developer
+   account is in place. Not blocking v1's Android APK.
+8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
+   sync, biometrics, widgets, store submissions.
 
-**Track A — PWA-first interim (ships first, lower risk):**
-1. PWA hardening: installability, WebAuthn biometric quick-unlock (extends
-   the existing PIN-wrap slot in `src/lib/vault/`), offline shell.
-2. Email-parsing capture (OAuth to Gmail/IMAP + polling/webhook) — not
-   mobile-dependent, built as a server job, funnels through
-   `src/lib/import/pipeline.ts` + the AI Smart Entry confirm-gate. Usable
-   from the PWA immediately.
-3. Generalize the bearer-token Route Handler pattern from `/api/mcp` across
-   the rest of the mutation surface; finish the bearer-auth TODO in §2.2 —
-   needed for Track B regardless, do it here so it's not blocking later.
+## 6. Decisions log
 
-**Track B — native Expo build (starts in parallel, ships once proven):**
-4. Spike vault crypto portability (§2.3: Argon2id/AES-GCM/HKDF on Hermes) —
-   the gate for committing further native effort. Runs in parallel with
-   Track A, not after it.
-5. Scaffold the Turborepo; extract `src/lib/finance/*` + Zod schemas into a
-   shared package — low-risk, independent of the spike's outcome.
-6. Mobile auth: Supabase PKCE + deep link + AsyncStorage session
-   persistence.
-7. Expo shell + navigation; port screens starting with Transactions
-   (already "the reference module" on web).
-8. NFC-tag manual-trigger quick-add.
-9. SMS + notification-listener capture (Android only) — the first
-   mobile-native-only feature, impossible in the PWA interim (browser
-   sandboxing blocks both). Captured text queues locally and defers
-   parsing/encryption until next unlock (§6).
-10. Offline queue/sync + Keychain/Keystore-backed biometric unlock last.
-
-## 6. Decisions (2026-08-04)
-
-- **Platform priority: both simultaneously, degraded iOS.** Android and iOS
-  are built together; iOS ships without SMS/notification capture (no API
-  exists for either — not a sequencing choice, a platform wall) and relies
-  on email parsing + NFC tags + Smart Entry instead. No Android-first or
-  iOS-first staging.
-- **v1 automation channels: SMS + notification listener (Android), email
-  parsing, NFC tags (manual trigger).** Bank aggregation (Plaid/Open
-  Banking/regional AA) is explicitly **not** in v1 — revisit later given its
-  cost/KYC/regional-coverage overhead.
-- **Background capture model: defer until next unlock.** A background
-  SMS/notification listener queues raw captured text locally; parsing +
-  vault encryption happen only when the user next opens/unlocks the app.
-  The DEK's in-memory-only guarantee is preserved as-is — no background
-  DEK access, no PIN-wrap extension for this.
-- **Native vs. PWA sequencing: PWA-first interim.** Ship a PWA-first push
-  (installable, WebAuthn biometrics) as a lower-risk stopgap while the vault
-  crypto-portability spike (Argon2id/AES-GCM/HKDF on Hermes) runs in
-  parallel. Move to the full Expo rebuild once that spike is proven. Note:
-  the PWA-first interim **cannot carry SMS/notification-listener capture**
-  (browser sandboxing blocks both) — that channel only exists once the
-  native Expo app ships, so it's out of scope for the interim phase and
-  becomes the first mobile-native-only feature once native lands.
+- **2026-08-04, initial**: Phase 4 (general SMS/bank/email import) on hold;
+  mobile (Phase 5) prioritized next, automation folded into this plan.
+  *(Superseded by the same-day revision below — automation moved back out
+  of v1.)*
+- **2026-08-04, revision**: v1 = plain feature-parity port, no automation,
+  no PWA interim, Android APK as the first deliverable, iOS on the same RN
+  codebase to follow. Monorepo (not a new repo) with independently
+  versioned `apps/web` and `apps/mobile`. See §0–§1.
+- Background-capture model (defer-until-unlock) and the "no bank
+  aggregation in v1" call from the first pass both still stand for
+  whenever automation work resumes (§3/§4) — not reopened, just not
+  relevant until then.
