@@ -405,6 +405,36 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
        routes 401 correctly (not a redirect) when unauthenticated. Not
        verified: the actual screen on a device (same sandbox
        limitation as every other mobile-runtime check in this plan).
+   - **Module order note (2026-08-04):** re-sequenced within this step —
+     built Budget next instead of Dashboard. Dashboard composes
+     *every* other module's engine (budgets, goals, loans, investments,
+     recurring, analytics, net-worth all feed `computeDashboardData`),
+     so it isn't actually a self-contained "first slice"; it's the
+     capstone that should come *after* the modules it depends on exist.
+     Doing it first would mean either a placeholder Dashboard anyway or
+     re-deriving most of the remaining modules' engines just to feed
+     it. Sticking to dependency order instead — same kind of judgment
+     call as deferring `packages/schemas`/OAuth, documented rather than
+     silently reordered. Remaining order: Goals, Loans, Investments, Net
+     Worth, Analytics, **then** Dashboard last.
+   - **Budget done (2026-08-04).** Reuses `finance.raw()` entirely for
+     reads (its `budgets`/`income`/`expenses`/`activeGoals`/`loans`/
+     `investmentMonthlyContributions` fields are exactly what
+     `computeBudgetsData()` needs) — only new routes are
+     `/api/v1/budgets` (POST) and `/api/v1/budgets/[id]` (PATCH/
+     DELETE), no separate read route. `apps/mobile/src/lib/finance/
+     decrypt.ts` gained the budget-feeding narrow decrypts
+     (`decryptBudgetRows`/`decryptActiveGoals`/`decryptLoanAmounts`/
+     `decryptInvestmentMonthlyContributions` — same narrower, no-
+     backfill pattern as Transactions). `apps/mobile/src/lib/budgets/
+     {types,period,compute,client-actions}.ts` are direct ports.
+     `app/(tabs)/budget.tsx` + `src/components/budget-form.tsx`: safe-
+     to-spend summary card, per-category budgets with a utilization bar
+     (color-coded ok/warning/over, matching web's `budgetStatus`),
+     long-press to delete, a minimal create form (period + amount only
+     — no category picker yet, same flagged gap as Transactions').
+     Verified the same way: type-checks clean, `apps/web` build/lint
+     green, vectors unaffected, live `curl` 401 check on the new routes.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.

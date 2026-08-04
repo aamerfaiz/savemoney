@@ -186,6 +186,24 @@ export interface AccountOption {
   name: string;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Budgets — Phase 5.5c. Reads reuse finance.raw() (its budgets/income/     */
+/* expenses/activeGoals/loans/investmentMonthlyContributions fields are     */
+/* exactly what computeBudgetsData() needs) — this is create/update/       */
+/* delete only, no separate read route.                                    */
+/* ----------------------------------------------------------------------- */
+
+export type BudgetPeriod = "weekly" | "monthly" | "yearly";
+
+export interface EncryptedBudgetInput {
+  categoryId?: string | null;
+  period: BudgetPeriod;
+  /** Packed ciphertext. */
+  amount: string;
+  currency: string;
+  startsOn: string;
+}
+
 export type ApiClientConfig = {
   /** e.g. "https://your-deployment.vercel.app" — no trailing slash. */
   baseUrl: string;
@@ -262,6 +280,17 @@ export function createApiClient(config: ApiClientConfig) {
         request<{ ok: true; categories: CategoryOption[]; accounts: AccountOption[] }>(
           "/api/v1/transactions/reference",
         ),
+    },
+    budgets: {
+      create: (input: EncryptedBudgetInput) =>
+        request<ActionResult>("/api/v1/budgets", { method: "POST", body: JSON.stringify(input) }),
+      update: (id: string, input: EncryptedBudgetInput) =>
+        request<ActionResult>(`/api/v1/budgets/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        }),
+      delete: (id: string) =>
+        request<ActionResult>(`/api/v1/budgets/${id}`, { method: "DELETE" }),
     },
   };
 }

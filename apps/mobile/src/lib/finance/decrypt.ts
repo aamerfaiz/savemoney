@@ -14,9 +14,12 @@
 
 import { decryptPacked } from "../vault/crypto";
 import type {
+  RawActiveGoalRow,
+  RawBudgetRow,
   RawContributionRow,
   RawExpenseRow,
   RawIncomeRow,
+  RawLoanAmountRow,
 } from "@savemoney/api-client";
 
 export interface DecryptedIncomeRow {
@@ -125,6 +128,91 @@ export async function decryptContributionRows(
       ...r,
       amount: Number(await decryptPacked(r.amount, dek)),
     })),
+  );
+  return splitSettled(settled);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Budget-feeding narrow shapes — Phase 5.5c. Mirrors DecryptedActiveGoal/  */
+/* DecryptedLoanAmounts on web: just the fields computeBudgetsData() needs, */
+/* not each module's full row (that's each module's own decrypt function,  */
+/* added alongside its own screen). No row `id` in these narrow raw shapes, */
+/* so — same as web — there's no backfill path for them either way.        */
+/* ----------------------------------------------------------------------- */
+
+export interface DecryptedBudgetRow {
+  id: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  period: string;
+  amount: number;
+  currency: string;
+}
+
+export interface DecryptedActiveGoal {
+  targetAmount: number;
+  currentAmount: number;
+  monthlyContribution: number | null;
+  deadline: string | null;
+}
+
+export interface DecryptedLoanAmounts {
+  emi: number;
+  extraEmi: number;
+  remainingAmount: number;
+}
+
+export async function decryptBudgetRows(
+  rows: RawBudgetRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedBudgetRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedBudgetRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptActiveGoals(
+  rows: RawActiveGoalRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedActiveGoal>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedActiveGoal> => ({
+      targetAmount: Number(await decryptPacked(r.targetAmount, dek)),
+      currentAmount: Number(await decryptPacked(r.currentAmount, dek)),
+      monthlyContribution: r.monthlyContribution
+        ? Number(await decryptPacked(r.monthlyContribution, dek))
+        : null,
+      deadline: r.deadline,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptLoanAmounts(
+  rows: RawLoanAmountRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedLoanAmounts>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedLoanAmounts> => ({
+      emi: Number(await decryptPacked(r.emi, dek)),
+      extraEmi: r.extraEmi ? Number(await decryptPacked(r.extraEmi, dek)) : 0,
+      remainingAmount: Number(await decryptPacked(r.remainingAmount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptInvestmentMonthlyContributions(
+  rows: (string | null)[],
+  dek: CryptoKey,
+): Promise<DecryptResult<number>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r) => (r ? Number(await decryptPacked(r, dek)) : 0)),
   );
   return splitSettled(settled);
 }
