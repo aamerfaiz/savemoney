@@ -10,7 +10,7 @@
  * pattern already applied to goals/loans.
  */
 
-import { computeInvestmentProjection } from "@/lib/finance/investment";
+import { computeInvestmentProjection } from "@savemoney/finance-engine/investment";
 import type { CurrencyCode } from "@/lib/format";
 import type { DecryptedInvestmentRow } from "@/lib/finance/decrypt";
 import type { InvestmentWithProjection } from "./types";

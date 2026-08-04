@@ -6,7 +6,7 @@
  * one source. No I/O — the server fetches the rows and hands them here.
  */
 
-import { occurrencesBetween } from "@/lib/finance/recurring";
+import { occurrencesBetween } from "@savemoney/finance-engine/recurring";
 import type { UpcomingItem } from "@/data/mock-dashboard";
 import type { RecurringRuleWithSchedule } from "@/lib/recurring/types";
 import type { LoanWithProjection } from "@/lib/loans/types";

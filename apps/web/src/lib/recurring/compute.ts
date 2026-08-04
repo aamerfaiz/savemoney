@@ -9,7 +9,7 @@
  * src/lib/investments/compute.ts.
  */
 
-import { monthlyAmount, nextOccurrence, type RecurringFrequency } from "@/lib/finance/recurring";
+import { monthlyAmount, nextOccurrence, type RecurringFrequency } from "@savemoney/finance-engine/recurring";
 import type { CurrencyCode } from "@/lib/format";
 import type { DecryptedRecurringRow } from "@/lib/finance/decrypt";
 import type { RecurringRuleWithSchedule } from "./types";

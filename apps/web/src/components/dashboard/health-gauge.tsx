@@ -1,4 +1,4 @@
-import type { HealthResult } from "@/lib/finance/health-score";
+import type { HealthResult } from "@savemoney/finance-engine/health-score";
 import { cn } from "@/lib/utils";
 
 const BAND_LABEL: Record<HealthResult["band"], string> = {

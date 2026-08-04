@@ -4,7 +4,7 @@
  * analytics instead of fetching it itself.
  */
 
-import type { HealthResult } from "@/lib/finance/health-score";
+import type { HealthResult } from "@savemoney/finance-engine/health-score";
 import type { CurrencyCode } from "@/lib/format";
 import type { AnalyticsData } from "@/lib/analytics/types";
 

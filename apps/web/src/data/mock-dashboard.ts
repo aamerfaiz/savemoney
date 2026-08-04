@@ -1,6 +1,6 @@
 import type { CurrencyCode } from "@/lib/format";
-import type { BudgetResult } from "@/lib/finance/budget";
-import type { HealthResult } from "@/lib/finance/health-score";
+import type { BudgetResult } from "@savemoney/finance-engine/budget";
+import type { HealthResult } from "@savemoney/finance-engine/health-score";
 
 /**
  * The dashboard data contract, shared by the real query (src/lib/dashboard/

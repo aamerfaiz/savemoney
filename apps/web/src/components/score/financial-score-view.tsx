@@ -4,7 +4,7 @@ import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { ScoreData } from "@/lib/score/compute";
-import type { HealthResult } from "@/lib/finance/health-score";
+import type { HealthResult } from "@savemoney/finance-engine/health-score";
 import {
   SIGNALS,
   signalStatus,

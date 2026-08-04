@@ -8,7 +8,7 @@
  * for the identical pattern already applied to budgets.
  */
 
-import { computeGoalProjection } from "@/lib/finance/goals";
+import { computeGoalProjection } from "@savemoney/finance-engine/goals";
 import type { CurrencyCode } from "@/lib/format";
 import type { DecryptedGoalRow } from "@/lib/finance/decrypt";
 import type { GoalPriority, GoalStatus, GoalWithProgress } from "./types";

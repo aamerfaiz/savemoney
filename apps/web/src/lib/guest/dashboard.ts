@@ -1,6 +1,6 @@
-import { computeBudget } from "@/lib/finance/budget";
-import { computeHealthScore } from "@/lib/finance/health-score";
-import { computeNetWorth, trendChange } from "@/lib/finance/net-worth";
+import { computeBudget } from "@savemoney/finance-engine/budget";
+import { computeHealthScore } from "@savemoney/finance-engine/health-score";
+import { computeNetWorth, trendChange } from "@savemoney/finance-engine/net-worth";
 import { expandOccurrences, toUpcomingItems } from "@/lib/calendar/build";
 import type {
   DashboardData,

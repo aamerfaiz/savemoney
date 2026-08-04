@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { CurrencyCode } from "@/lib/format";
-import type { GoalProjection } from "@/lib/finance/goals";
+import type { GoalProjection } from "@savemoney/finance-engine/goals";
 
 export type GoalPriority = "low" | "medium" | "high";
 export type GoalStatus = "active" | "paused" | "completed" | "cancelled";

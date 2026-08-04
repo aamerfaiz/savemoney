@@ -1,5 +1,5 @@
 import type { CurrencyCode } from "@/lib/format";
-import type { HealthResult } from "@/lib/finance/health-score";
+import type { HealthResult } from "@savemoney/finance-engine/health-score";
 
 export interface MonthPoint {
   key: string; // YYYY-MM

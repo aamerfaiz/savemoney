@@ -7,7 +7,7 @@
  * docs/e2ee-path-b-plan.md "Architecture shift."
  */
 
-import { computeBudget, type BudgetResult } from "@/lib/finance/budget";
+import { computeBudget, type BudgetResult } from "@savemoney/finance-engine/budget";
 import type { CurrencyCode } from "@/lib/format";
 import type {
   DecryptedActiveGoal,

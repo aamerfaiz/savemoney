@@ -2,7 +2,7 @@ import type { CurrencyCode } from "@/lib/format";
 import type {
   NetWorthResult,
   TrendPoint,
-} from "@/lib/finance/net-worth";
+} from "@savemoney/finance-engine/net-worth";
 
 /** A persisted point-in-time capture, shaped for the history list. */
 export interface SnapshotSummary {

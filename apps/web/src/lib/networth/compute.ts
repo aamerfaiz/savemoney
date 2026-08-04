@@ -4,7 +4,7 @@
  * I/O (fetchNetWorthSnapshots); this file has none.
  */
 
-import { computeNetWorth, trendChange } from "@/lib/finance/net-worth";
+import { computeNetWorth, trendChange } from "@savemoney/finance-engine/net-worth";
 import type { CurrencyCode } from "@/lib/format";
 import type { NetWorthData, SnapshotSummary } from "./types";
 

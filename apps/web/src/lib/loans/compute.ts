@@ -9,7 +9,7 @@
  * the identical pattern already applied to goals.
  */
 
-import { computeLoanProjection } from "@/lib/finance/loan";
+import { computeLoanProjection } from "@savemoney/finance-engine/loan";
 import type { CurrencyCode } from "@/lib/format";
 import type { DecryptedLoanRow } from "@/lib/finance/decrypt";
 import type { LoanWithProjection } from "./types";

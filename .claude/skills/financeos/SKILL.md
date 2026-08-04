@@ -44,7 +44,7 @@ this file plus the code it points to.
    money as float. Format for display only via `apps/web/src/lib/format.ts`.
 4. **Every user-owned row has `userId` → `auth.users(id)` and RLS.** Data
    isolation is a core requirement. New tables MUST get RLS policies.
-5. **Keep finance logic as pure functions** in `apps/web/src/lib/finance/`. They must be
+5. **Keep finance logic as pure functions** in `packages/finance-engine/src/`. They must be
    testable without a database or a browser. The dashboard, analytics, and the
    future what-if simulator all reuse them.
 6. **Verify with `npm run build`** before committing — it type-checks and
@@ -94,8 +94,12 @@ apps/web/src/
     schema.ts            # Drizzle schema (all tables + enums + types)
     index.ts             # server-side Drizzle client (postgres-js)
   lib/
-    finance/             # budget, health-score, goals, loan, investment,
-                         # net-worth (PURE engines)
+    finance/             # decrypt.ts/decrypt-progress.ts (client decrypt +
+                         # progress store), raw-data.ts/side-data.ts (Server
+                         # Action fetch boundary), use-*.ts (TanStack Query
+                         # hooks) — all app/framework-bound; the pure engines
+                         # (budget/health-score/goals/loan/investment/
+                         # net-worth/recurring) live in packages/finance-engine
     investments/         # Phase 2 module (types/queries/actions/mock)
     networth/            # Phase 2 module (buildNetWorth + captureSnapshot)
     vault/                # Phase 3.5: client crypto, unlock/rotation/reset
@@ -124,6 +128,10 @@ apps/web/drizzle/
     0004_recurring_rls.sql    # hand-written: RLS for recurring_rules
     0005_notifications_rls.sql# hand-written: RLS for notifications
   meta/                       # drizzle snapshots — keep in sync via db:generate
+packages/
+  finance-engine/src/  # budget, health-score, goals, loan, investment,
+                       # net-worth, recurring — pure, zero-dependency
+                       # engines shared with apps/mobile once it exists
 ```
 
 > Migrations `0003`–`0005` and manual RLS `0002`–`0005` are committed but may
@@ -267,18 +275,18 @@ Light theme is opt-in via `:root[data-theme="light"]`; the app ships dark-first.
 These are pure and must stay that way — CRUD is table-stakes, this logic is the
 differentiator.
 
-- `apps/web/src/lib/finance/budget.ts` — `computeBudget()`:
+- `packages/finance-engine/src/budget.ts` — `computeBudget()`:
   `Safe-to-Spend = Income − Fixed Expenses − Investments − Loan Payments −
   Goal contributions`, then daily/weekly slices, remaining, utilization,
   per-remaining-day, overspend flag.
-- `apps/web/src/lib/finance/health-score.ts` — `computeHealthScore()`: the weighted
+- `packages/finance-engine/src/health-score.ts` — `computeHealthScore()`: the weighted
   0–100 score from savings rate, emergency fund, debt ratio, investment rate,
   budget discipline, income stability, goal completion. Returns score, band,
   and per-signal breakdown.
-- `apps/web/src/lib/finance/investment.ts` — `computeInvestmentProjection()`: gain/loss,
+- `packages/finance-engine/src/investment.ts` — `computeInvestmentProjection()`: gain/loss,
   return %, annualized return, and a compounded future-value (SIP) projection
   from an expected annual return + monthly contribution.
-- `apps/web/src/lib/finance/net-worth.ts` — `computeNetWorth()`: composes already-summed
+- `packages/finance-engine/src/net-worth.ts` — `computeNetWorth()`: composes already-summed
   asset/liability components into totals, an ordered breakdown with per-side
   shares, and the debt-to-asset ratio; plus a `trendChange()` helper.
 
@@ -474,8 +482,8 @@ module behind "user has a valid active key" (it is an optional module).
   loan debt, debt-to-asset ratio, `captureSnapshot` action, trend from real
   snapshots or cash-flow reconstruction; route `/net-worth`). The dashboard net
   worth + trend are composed from `buildNetWorth` so they never diverge.
-  **Recurring transactions ✅** (`apps/web/src/lib/recurring/` + `apps/web/src/lib/finance/
-  recurring.ts`: `nextOccurrence`/`occurrencesBetween`/`monthlyAmount`;
+  **Recurring transactions ✅** (`apps/web/src/lib/recurring/` + `packages/
+  finance-engine/src/recurring.ts`: `nextOccurrence`/`occurrencesBetween`/`monthlyAmount`;
   `recurring_rules` table; rules that fire income/expense on a cadence with
   pause/resume; route `/recurring`).
   **Bill calendar ✅** (`apps/web/src/lib/calendar/`: `expandOccurrences` composes

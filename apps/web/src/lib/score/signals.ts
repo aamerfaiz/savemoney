@@ -1,4 +1,4 @@
-import { WEIGHTS, type HealthSignal } from "@/lib/finance/health-score";
+import { WEIGHTS, type HealthSignal } from "@savemoney/finance-engine/health-score";
 
 export interface SignalMeta {
   key: HealthSignal;

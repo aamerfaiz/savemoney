@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { CurrencyCode } from "@/lib/format";
-import type { InvestmentProjection } from "@/lib/finance/investment";
+import type { InvestmentProjection } from "@savemoney/finance-engine/investment";
 
 export type InvestmentType =
   | "stocks"

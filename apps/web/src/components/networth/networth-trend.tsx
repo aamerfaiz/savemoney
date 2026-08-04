@@ -10,7 +10,7 @@ import {
 } from "recharts";
 
 import { formatCompact, type CurrencyCode } from "@/lib/format";
-import type { TrendPoint } from "@/lib/finance/net-worth";
+import type { TrendPoint } from "@savemoney/finance-engine/net-worth";
 
 /** Net-worth area chart — shared visual language with the dashboard card. */
 export function NetWorthTrend({

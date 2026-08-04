@@ -1,4 +1,4 @@
-import type { BudgetResult } from "@/lib/finance/budget";
+import type { BudgetResult } from "@savemoney/finance-engine/budget";
 import { formatCurrency, type CurrencyCode } from "@/lib/format";
 import { cn } from "@/lib/utils";
 

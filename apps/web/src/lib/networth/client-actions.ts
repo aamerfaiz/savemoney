@@ -8,7 +8,7 @@
 
 import { encryptPacked } from "@/lib/vault/crypto";
 import { captureSnapshot, type ActionResult } from "./actions";
-import type { NetWorthResult } from "@/lib/finance/net-worth";
+import type { NetWorthResult } from "@savemoney/finance-engine/net-worth";
 
 /** `result` is today's already-computed, already-decrypted net worth (the
  * same `data.result` the page is rendering) — encrypted here and sent as

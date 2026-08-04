@@ -1,0 +1,16 @@
+{
+  "name": "@savemoney/finance-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure, framework-free finance calculation engines shared between apps/web and (Phase 5) apps/mobile.",
+  "type": "module",
+  "exports": {
+    "./budget": "./src/budget.ts",
+    "./goals": "./src/goals.ts",
+    "./health-score": "./src/health-score.ts",
+    "./investment": "./src/investment.ts",
+    "./loan": "./src/loan.ts",
+    "./net-worth": "./src/net-worth.ts",
+    "./recurring": "./src/recurring.ts"
+  }
+}

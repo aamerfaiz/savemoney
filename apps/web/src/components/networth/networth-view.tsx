@@ -17,7 +17,7 @@ import {
 import { encryptedCaptureSnapshot } from "@/lib/networth/client-actions";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { NetWorthData } from "@/lib/networth/types";
-import type { NetWorthComponent } from "@/lib/finance/net-worth";
+import type { NetWorthComponent } from "@savemoney/finance-engine/net-worth";
 
 export function NetWorthView({
   data,

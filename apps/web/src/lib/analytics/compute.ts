@@ -5,8 +5,8 @@
  * src/lib/budgets/compute.ts for why this has to be pure/client-callable.
  */
 
-import { computeHealthScore } from "@/lib/finance/health-score";
-import { computeGoalProjection } from "@/lib/finance/goals";
+import { computeHealthScore } from "@savemoney/finance-engine/health-score";
+import { computeGoalProjection } from "@savemoney/finance-engine/goals";
 import type { CurrencyCode } from "@/lib/format";
 import type {
   DecryptedActiveGoal,
