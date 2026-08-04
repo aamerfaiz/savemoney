@@ -357,6 +357,54 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      `apps/web`'s build/lint and the crypto vectors are unaffected. Not
      verified: running on a device/emulator (same sandbox limitation as
      Phase 5.2/5.4).
+   - **Transactions (the reference module) done (2026-08-04).**
+     - `packages/finance-engine/src/format.ts`: `format.ts` finally
+       extracted out of `apps/web` (deferred in Phase 5.0b — see that
+       entry above — until there was a real second consumer; there now
+       is one). Mechanical rewrite of all 75 `@/lib/format` call sites
+       in `apps/web`, same technique as the original extraction.
+     - `packages/api-client` gained `finance.raw()` (wraps
+       `fetchFinanceRawData()` — **one shared raw-fetch boundary**,
+       mirroring that function's own role on web; Dashboard/Budget/
+       Goals/Loans/Investments/Net Worth in Phase 5.5c reuse this same
+       method rather than getting a route each) and
+       `transactions.{create,update,delete,reference}`.
+     - New Route Handlers: `/api/v1/finance/raw` (GET),
+       `/api/v1/transactions` (POST), `/api/v1/transactions/[id]`
+       (PATCH/DELETE), `/api/v1/transactions/reference` (GET,
+       category/account options — plaintext, not encrypted). All thin
+       wrappers around the existing `transactions/actions.ts`/
+       `raw-data.ts`/`reference.ts` functions, same pattern as vault's
+       routes. Verified live via `curl`: all four return a JSON 401
+       when unauthenticated, not a redirect.
+     - `apps/mobile/src/lib/finance/decrypt.ts`: a narrower port of
+       `apps/web/src/lib/finance/decrypt.ts` — income/expenses/
+       contributions only, and **no backfill recovery** for pre-
+       migration plaintext rows (web's `decryptOrRecoverPacked`/
+       `UndecryptableError`). Backfill exists for rows written before
+       Phase 3.5.3 shipped, years before this port started, so a
+       genuinely undecryptable row here is a real failure, not a
+       legacy-plaintext one — flagged omission, not a silent gap.
+     - `apps/mobile/src/lib/transactions/{types,compute,client-actions}.ts`:
+       direct ports of the web equivalents (same Zod schema, same pure
+       flatten/sort/summarize logic, same encrypt-then-call-the-route
+       shape).
+     - `apps/mobile/app/(tabs)/transactions.tsx` +
+       `src/components/transaction-form.tsx`: real list (pull-to-
+       refresh, income/expense color-coded, tap to edit, long-press to
+       delete) + create/edit modal. **Deliberately minimal relative to
+       the web form**: plain YYYY-MM-DD text entry (no native date
+       picker) and no category/account picker UI yet (reference data
+       is fetched but not wired into a picker control) — both flagged
+       UI-polish gaps, additive later, not a rework, since
+       `categoryId`/`accountId` already flow through the create/update
+       calls untouched.
+     - Verified: `apps/mobile` type-checks clean, `apps/web`'s build/
+       lint pass with the new routes, the crypto vector script is
+       unaffected, and a live `curl` smoke test confirms all four new
+       routes 401 correctly (not a redirect) when unauthenticated. Not
+       verified: the actual screen on a device (same sandbox
+       limitation as every other mobile-runtime check in this plan).
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.

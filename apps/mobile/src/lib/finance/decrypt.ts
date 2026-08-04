@@ -1,0 +1,130 @@
+/**
+ * Client-side decryption of raw finance rows — Phase 5.5b, mobile's
+ * counterpart to apps/web/src/lib/finance/decrypt.ts. Deliberately
+ * narrower: only income/expenses/contributions (what Transactions
+ * needs), and **no backfill recovery** for pre-migration plaintext rows
+ * (`decryptOrRecoverPacked`/`UndecryptableError` on web). Backfill exists
+ * for rows written before Phase 3.5.3 shipped, years before this mobile
+ * port started — a genuinely undecryptable row here is a real failure,
+ * not a legacy-plaintext row, so a straight `decryptPacked` throw is the
+ * right behavior, not a gap. Extend this file the same way web's grew
+ * (one `decrypt<X>Rows` function per module) as Phase 5.5c ports more
+ * modules — don't invent a second pattern.
+ */
+
+import { decryptPacked } from "../vault/crypto";
+import type {
+  RawContributionRow,
+  RawExpenseRow,
+  RawIncomeRow,
+} from "@savemoney/api-client";
+
+export interface DecryptedIncomeRow {
+  id: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  receivedAt: string;
+  isRecurring: boolean;
+  frequency: string;
+  sourceType: string | null;
+}
+
+export interface DecryptedExpenseRow {
+  id: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  note: string | null;
+  tags: string[] | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  spentAt: string;
+  isRecurring: boolean;
+  frequency: string;
+}
+
+export interface DecryptedContributionRow {
+  id: string;
+  amount: number;
+  contributedAt: string;
+  note: string | null;
+  goalName: string | null;
+  goalIcon: string | null;
+  goalDeletedAt: string | null;
+}
+
+export interface DecryptResult<T> {
+  rows: T[];
+  failedCount: number;
+}
+
+async function decryptNullable(value: string | null, dek: CryptoKey): Promise<string | null> {
+  if (value === null) return null;
+  return decryptPacked(value, dek);
+}
+
+function splitSettled<T>(settled: PromiseSettledResult<T>[]): DecryptResult<T> {
+  const rows: T[] = [];
+  let failedCount = 0;
+  for (const r of settled) {
+    if (r.status === "fulfilled") rows.push(r.value);
+    else failedCount++;
+  }
+  return { rows, failedCount };
+}
+
+export async function decryptIncomeRows(
+  rows: RawIncomeRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedIncomeRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedIncomeRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+      description: await decryptNullable(r.description, dek),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptExpenseRows(
+  rows: RawExpenseRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedExpenseRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedExpenseRow> => {
+      const tags = await decryptNullable(r.tags, dek);
+      return {
+        ...r,
+        amount: Number(await decryptPacked(r.amount, dek)),
+        description: await decryptNullable(r.description, dek),
+        note: await decryptNullable(r.note, dek),
+        tags: tags ? (JSON.parse(tags) as string[]) : null,
+      };
+    }),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptContributionRows(
+  rows: RawContributionRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedContributionRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedContributionRow> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
