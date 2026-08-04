@@ -573,7 +573,32 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      tooling.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
-   the v1 deliverable.
+   the v1 deliverable. **Blocked on credentials this sandbox doesn't have
+   (2026-08-04) — everything that doesn't need them is done.**
+   - `apps/mobile/app.json` gained `android.package`/`ios.bundleIdentifier`
+     (`com.savemoney.financeos` — both platforms, EAS requires the
+     Android one to build at all and iOS will need its own before step 7).
+     `apps/mobile/eas.json` added: a `preview` profile
+     (`distribution: internal`, `android.buildType: apk` — exactly the
+     sideloadable artifact this step wants) and a bare `production`
+     profile as a placeholder for later.
+   - `npx expo config --type public` still resolves cleanly with both
+     new identifiers in place.
+   - **`eas build -p android --profile preview` genuinely cannot proceed
+     further here**: `eas-cli whoami` → "Not logged in"; running the
+     build non-interactively fails with "An Expo user account is
+     required to proceed" (log in via `eas login`, or `EXPO_TOKEN` for
+     CI). This sandbox has no Expo account and manufacturing one isn't
+     something to fake credentials for — same category of gate as
+     Phase 5.2/5.4/5.5's "needs a real device" items, just at the very
+     last step instead of mid-build. **Handoff**: whoever has (or
+     creates) an Expo account should run, from `apps/mobile/`:
+     `npx eas-cli login`, then `npx eas-cli build -p android --profile
+     preview`. First run will prompt to create/link an EAS project
+     (writes `extra.eas.projectId` into `app.json`) and generate an
+     Android keystore automatically — both fine to accept the defaults
+     on. The resulting `.apk` is the v1 deliverable this whole plan has
+     been building toward.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
