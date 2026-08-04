@@ -642,6 +642,36 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      present. This should be enough for the next GitHub-triggered EAS
      build to skip the "EAS project not configured" failure and proceed
      straight to `build:internal`.
+   - **Alternative added, 2026-08-04 — GitHub Actions APK build**: EAS's
+     free-tier queue was reported as slow. Investigated two faster
+     alternatives (`eas build --local` and a plain native Gradle build)
+     from this sandbox first: this sandbox has JDK 21 + Gradle 8.14.3 but
+     no Android SDK, and `npx expo prebuild --platform android` itself
+     succeeds, but the actual Gradle compile hits the same category of
+     network block as EAS — React Native's Gradle plugin requires JDK 17
+     specifically and Gradle's toolchain auto-download (`foojay`) got a
+     403 through the proxy, and separately `dl.google.com` (needed for
+     the Android SDK platform/build-tools) is blocked exactly like
+     `api.expo.dev`/`expo.dev` were. So neither local option works from
+     *this* sandbox — confirmed, not assumed. (The prebuild-generated
+     `apps/mobile/android/` directory is gitignored and was left
+     untracked; `expo prebuild` also flips `package.json`'s
+     `android`/`ios` scripts to bare-workflow variants — reverted that so
+     the managed-workflow/EAS scripts stay intact, since we aren't
+     committing to a bare workflow here.)
+     Added `.github/workflows/android-apk.yml` instead: runs entirely on
+     GitHub's runners (real network access, no proxy policy), doing
+     `expo prebuild` + `./gradlew assembleRelease` directly — same net
+     result as EAS's `preview` profile APK, but without EAS's queue.
+     Signs with the auto-generated debug keystore from prebuild's
+     template (matches EAS's own "no real release keystore yet"
+     posture at this stage — swap for a real one via GitHub Secrets
+     before any Play Store submission). Triggers: `workflow_dispatch`
+     (manual, any branch/ref) and `push` to `main` scoped to
+     mobile/package-relevant paths. Not run yet in this sandbox (can't
+     — no way to trigger/observe GitHub Actions runs without GitHub
+     write/Actions access from here); next real verification happens
+     when the user runs it from the Actions tab.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
