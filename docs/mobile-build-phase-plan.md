@@ -672,6 +672,37 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      — no way to trigger/observe GitHub Actions runs without GitHub
      write/Actions access from here); next real verification happens
      when the user runs it from the Actions tab.
+   - **Merged to `main`, 2026-08-04**: this whole branch went in via PR
+     #22 (needed anyway — GitHub Actions only indexes/dispatches
+     workflows that exist on the default branch, confirmed by a 404 when
+     trying to dispatch `android-apk.yml` while it only existed on this
+     branch). Verified beforehand that the web app's own behavior didn't
+     change (bearer-auth support and the `/api/v1` public-paths fix are
+     both additive; existing cookie-based web sessions are unaffected) —
+     the real risk flagged to the user was deployment config, since root
+     `package.json` no longer has `next` as a direct dependency now that
+     `apps/web` holds the actual Next.js app (any host with "Root
+     Directory" defaulted to `/` needs that updated to `apps/web`).
+   - **First real CI run, 2026-08-04**: failed on `:react-native-argon2`
+     — `Could not find method jcenter()`. That module's
+     `android/build.gradle` still called the long-removed `jcenter()`
+     repository method and pinned its own ancient `com.android.tools.
+     build:gradle:4.1.0` classpath, incompatible with the Gradle version
+     the RN/Expo template now pulls in. Fixed via `patch-package`
+     (`patches/react-native-argon2+4.0.0.patch`): dropped the module's
+     redundant `buildscript {}` block (it now inherits a modern,
+     compatible AGP from the root project, same as other well-maintained
+     RN native modules) and swapped `jcenter()` → `mavenCentral()`.
+     Wired `"postinstall": "patch-package"` into root `package.json` so
+     this reapplies automatically every time CI runs `npm ci` against a
+     fresh `node_modules`. Checked every other native module's
+     `android/build.gradle` for the same `jcenter()`/legacy-`compile`/
+     old-AGP-classpath patterns — none found, this was the only
+     offender. This branch was rebased onto `main` post-merge (per repo
+     policy: a merged PR can't take new commits, so this fix lands as a
+     fresh commit on top of `main` rather than stacked on the merged
+     history) and pushed; awaiting the next CI run to confirm the fix
+     actually gets the build past this step.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
