@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,11 +14,20 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+.next/
+out/
+
+# turborepo
+.turbo
 
 # production
-/build
+build/
+
+# expo / react native (apps/mobile, Phase 5.5+)
+.expo/
+*.orig.*
+android/app/build/
+ios/build/
 
 # misc
 .DS_Store
