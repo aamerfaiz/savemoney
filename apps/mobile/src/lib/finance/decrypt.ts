@@ -251,3 +251,37 @@ export async function decryptGoalRows(
   );
   return splitSettled(settled);
 }
+
+/* ----------------------------------------------------------------------- */
+/* Loans — Phase 5.5c, full row.                                           */
+/* ----------------------------------------------------------------------- */
+
+export interface DecryptedLoanRow {
+  id: string;
+  name: string;
+  type: import("@savemoney/api-client").LoanType;
+  principal: number;
+  interestRate: number;
+  emi: number;
+  remainingAmount: number;
+  remainingMonths: number | null;
+  extraEmi: number | null;
+  currency: string;
+  startDate: string;
+}
+
+export async function decryptLoanRows(
+  rows: import("@savemoney/api-client").RawLoanRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedLoanRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedLoanRow> => ({
+      ...r,
+      principal: Number(await decryptPacked(r.principal, dek)),
+      emi: Number(await decryptPacked(r.emi, dek)),
+      remainingAmount: Number(await decryptPacked(r.remainingAmount, dek)),
+      extraEmi: r.extraEmi ? Number(await decryptPacked(r.extraEmi, dek)) : null,
+    })),
+  );
+  return splitSettled(settled);
+}

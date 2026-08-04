@@ -458,6 +458,27 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      picker yet, same flagged-gap pattern). Verified the same way:
      type-checks clean, `apps/web` build/lint green, vectors unaffected,
      live `curl` 401 checks on the new routes.
+   - **Loans done (2026-08-04) — plus a navigation gap it exposed.**
+     Same two-path structure as Goals: `/api/v1/loans` (GET/POST),
+     `/api/v1/loans/[id]` (PATCH/DELETE), `/api/v1/loans/[id]/payments`
+     (POST). `apps/mobile/src/lib/finance/decrypt.ts` gained the full
+     `decryptLoanRows`; `src/lib/loans/{types,compute,client-actions}.ts`
+     are direct ports, including the payment-recording principal/
+     interest split computed client-side (same reasoning as goals'
+     contribution flow — the server can't do arithmetic on ciphertext).
+     **Loans isn't a primary tab on web either** (reached via the
+     drawer, same as Investments/Net Worth) — building it exposed that
+     Phase 5.5a's 5-tab shell had nowhere to put it. Added a 6th "More"
+     tab (`app/(tabs)/more.tsx`) linking to non-tab routes for the
+     secondary modules; `app/loans.tsx` (not under `(tabs)/`) is the
+     actual screen, pushed with a header via a new `Stack.Screen` in
+     the root layout's already-unlocked `Stack.Protected` group.
+     Explicitly flagged as a deviation from the "5 max, thumb reach"
+     rule, not a silent one — a real drawer (matching web's top-left
+     logo) is deferred until Investments/Net Worth join More and the
+     list is long enough to justify it. Verified the same way:
+     type-checks clean, `apps/web` build/lint green, vectors unaffected,
+     live `curl` 401 checks on the new routes.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.

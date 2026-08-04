@@ -229,6 +229,58 @@ export interface EncryptedContributionInput {
   newStatus: GoalStatus;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Loans — Phase 5.5c. Own full-list read, same two-path structure as      */
+/* Goals.                                                                   */
+/* ----------------------------------------------------------------------- */
+
+export type LoanType = "home" | "car" | "personal" | "education" | "credit_card" | "other";
+
+export interface RawLoanRow {
+  id: string;
+  name: string;
+  type: LoanType;
+  principal: string;
+  interestRate: number;
+  emi: string;
+  remainingAmount: string;
+  remainingMonths: number | null;
+  extraEmi: string | null;
+  currency: string;
+  startDate: string;
+}
+
+export interface EncryptedLoanInput {
+  name: string;
+  type: LoanType;
+  /** Packed ciphertext. */
+  principal: string;
+  interestRate: number;
+  /** Packed ciphertext. */
+  emi: string;
+  /** Packed ciphertext. */
+  remainingAmount: string;
+  remainingMonths?: number | null;
+  /** Packed ciphertext, or null. */
+  extraEmi?: string | null;
+  currency: string;
+  startDate: string;
+}
+
+export interface EncryptedPaymentInput {
+  /** Packed ciphertext. */
+  amount: string;
+  paidOn: string;
+  isExtra: boolean;
+  /** Packed ciphertext — split computed client-side. */
+  principalComponent: string;
+  /** Packed ciphertext — split computed client-side. */
+  interestComponent: string;
+  /** Packed ciphertext — new running balance, computed client-side. */
+  newRemainingAmount: string;
+  newRemainingMonths?: number | null;
+}
+
 export interface AccountOption {
   id: string;
   name: string;
@@ -352,6 +404,22 @@ export function createApiClient(config: ApiClientConfig) {
       delete: (id: string) => request<ActionResult>(`/api/v1/goals/${id}`, { method: "DELETE" }),
       addContribution: (goalId: string, input: EncryptedContributionInput) =>
         request<ActionResult>(`/api/v1/goals/${goalId}/contributions`, {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+    },
+    loans: {
+      list: () => request<{ ok: true; loans: RawLoanRow[] }>("/api/v1/loans"),
+      create: (input: EncryptedLoanInput) =>
+        request<ActionResult>("/api/v1/loans", { method: "POST", body: JSON.stringify(input) }),
+      update: (id: string, input: EncryptedLoanInput) =>
+        request<ActionResult>(`/api/v1/loans/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(input),
+        }),
+      delete: (id: string) => request<ActionResult>(`/api/v1/loans/${id}`, { method: "DELETE" }),
+      recordPayment: (loanId: string, input: EncryptedPaymentInput) =>
+        request<ActionResult>(`/api/v1/loans/${loanId}/payments`, {
           method: "POST",
           body: JSON.stringify(input),
         }),
