@@ -28,7 +28,7 @@ import { useVaultStore } from "../lib/vault/store";
  */
 type Mode = "checking" | "setup" | "showRecovery" | "unlock" | "error";
 
-export function VaultScreen({ onUnlocked }: { onUnlocked: () => void }) {
+export function VaultScreen({ onUnlocked }: { onUnlocked?: () => void }) {
   const [mode, setMode] = useState<Mode>("checking");
   const [passphrase, setPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
@@ -59,7 +59,7 @@ export function VaultScreen({ onUnlocked }: { onUnlocked: () => void }) {
 
   function finishUnlock(dek: CryptoKey) {
     unlockVault(dek);
-    onUnlocked();
+    onUnlocked?.();
   }
 
   async function handleSetup() {

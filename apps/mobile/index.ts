@@ -3,11 +3,9 @@
 import { install } from 'react-native-quick-crypto';
 install();
 
-import { registerRootComponent } from 'expo';
-
-import App from './App';
-
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-registerRootComponent(App);
+// Phase 5.5a: expo-router owns the root component now (it registers
+// itself against the `app/` directory's file-based routes) — App.tsx is
+// gone, replaced by app/_layout.tsx. Keeping this file (rather than
+// pointing "main" at "expo-router/entry" directly) is what lets the
+// crypto polyfill above run first, before expo-router mounts anything.
+import 'expo-router/entry';

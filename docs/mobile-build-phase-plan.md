@@ -318,6 +318,45 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
 5. **Expo shell + navigation**; port screens in the same order the web
    build itself was built: Transactions first (the reference module), then
    Dashboard, Budget, Goals, Loans, Investments, Net Worth, Analytics.
+   **Router shell done (2026-08-04); screens still placeholders — see
+   below.**
+   - `expo-router` added; `index.ts` still runs the
+     `react-native-quick-crypto` polyfill install first, then hands off
+     via `import 'expo-router/entry'` (kept `"main": "index.ts"` rather
+     than pointing straight at `expo-router/entry` — that ordering is
+     the whole reason `index.ts` still exists at all).
+   - `app/_layout.tsx` replaces the Phase 5.4 `App.tsx` state machine
+     with `Stack.Protected`, gating three top-level routes on the exact
+     same session/`useVaultStore` DEK state: `auth` (signed out),
+     `vault` (signed in, locked — same `VaultScreen` from Phase 5.4,
+     `onUnlocked` now optional since the guard itself reacts to the
+     store), `(tabs)` (both satisfied).
+   - `app/(tabs)/_layout.tsx`: 5 tabs — Dashboard, Transactions, Budget,
+     Goals, Analytics — the same primary set `nav-config.ts` uses on
+     web, **minus AI** (not in this build order's module list at all;
+     no AI Assistant for v1 mobile). Icons via `lucide-react-native` +
+     `react-native-svg`, same icon set as web's `lucide-react` for
+     visual consistency. Loans/Investments/Net Worth don't get a tab
+     yet — added when Phase 5.5c actually builds them, not as empty
+     placeholders ahead of that work.
+   - All 5 tab screens are `ComingSoon` placeholders (a direct RN port
+     of `apps/web/src/components/coming-soon.tsx`) except a temporary
+     sign-out button folded into the Dashboard tab (Settings, where
+     that control belongs long-term, isn't built yet either).
+   - **`npx expo-doctor` run for a sanity check** (17/20 passed in this
+     sandbox; the 2 failures beyond a network-blocked schema check were
+     both expected): a duplicate-`react`-version warning is real but
+     correct — `apps/mobile` pins `react@19.2.3` (Expo SDK 57's required
+     peer version) while `apps/web`/root resolve `react@19.2.4` (Next
+     16's), each nested/hoisted independently by npm workspaces exactly
+     as intended for two frameworks with different React peer
+     requirements. Not a bug; noted here so it isn't "fixed" into an
+     actual break later.
+   - Verified: `apps/mobile` type-checks clean, `npx expo config` and
+     `expo-doctor` resolve the project structure without error,
+     `apps/web`'s build/lint and the crypto vectors are unaffected. Not
+     verified: running on a device/emulator (same sandbox limitation as
+     Phase 5.2/5.4).
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.
