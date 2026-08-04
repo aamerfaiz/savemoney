@@ -2,10 +2,15 @@
 name: financeos
 description: >-
   Architecture guide and working conventions for the Finance OS codebase (the
-  "savemoney" repo) — an AI-powered personal finance app built with Next.js 16,
-  React 19, Tailwind v4, Supabase, and Drizzle ORM. Use this skill whenever you
-  are adding, changing, or debugging ANYTHING in this repository: new dashboard
-  cards or modules (income, expenses, budgets, goals, loans, analytics, etc.),
+  "savemoney" repo) — a Turborepo monorepo with an AI-powered personal finance
+  Next.js 16 / React 19 / Tailwind v4 / Supabase / Drizzle ORM web app
+  (`apps/web/`) and a feature-parity Expo/React Native mobile app
+  (`apps/mobile/`), sharing pure logic via `packages/finance-engine` and a
+  bearer-token REST layer (`apps/web/src/app/api/v1/*` + `packages/api-client`)
+  since Server Actions can't be called from a non-browser client. Use this
+  skill whenever you are adding, changing, or debugging ANYTHING in this
+  repository: web or mobile dashboard cards/screens or modules (income,
+  expenses, budgets, goals, loans, analytics, etc.), the `/api/v1` routes,
   database schema or migrations, Row Level Security policies, Supabase auth,
   the MagicBento UI grid, styling/theming, or the finance calculation engines.
   Read this before writing code here so your changes match the established
@@ -19,15 +24,18 @@ Finance OS is a mobile-first, AI-powered personal finance **operating system**
 and "How much can I safely spend this month?" from one dashboard. This skill
 tells you how the code is organized and how to extend it consistently.
 
-**Repo layout is a Turborepo monorepo (Phase 5.0, see
+**Repo layout is a Turborepo monorepo (Phase 5, see
 `docs/mobile-build-phase-plan.md`).** The Next.js web app lives under
 `apps/web/` (all paths below are relative to it unless stated otherwise);
-root-level `package.json`/`turbo.json` orchestrate it (and, once Phase 5.5
-lands, `apps/mobile/`, the Expo app) via npm workspaces — `npm run build`/
+**`apps/mobile/` is a real Expo (React Native) app now, not a future
+placeholder** — see "The mobile app" below. Root-level `package.json`/
+`turbo.json` orchestrate both apps via npm workspaces — `npm run build`/
 `dev`/`lint` at the repo root delegate through `turbo run <task>` to
-whichever app(s) are in scope. Shared, framework-free code (pure finance
-engines, Zod schemas) moves into `packages/*` as Phase 5 extracts it — see
-the mobile plan doc for what's shared vs. rebuilt per platform.
+whichever app(s) are in scope. Shared, framework-free code lives in
+`packages/*`: `packages/finance-engine/src/` (pure finance math, see below)
+and `packages/api-client/src/` (a typed fetch wrapper over `/api/v1/*`, see
+"The mobile app & the `/api/v1` REST layer" below) — both consumed by `apps/mobile` and, for
+`api-client`, available to any other non-browser client too.
 
 The full product spec lives in the repo history / issue that seeded it; the
 roadmap phases below summarize it. Ground truth for *how things are built* is
@@ -76,7 +84,17 @@ apps/web/src/
                          # net-worth, analytics, settings
     api/
       mcp/route.ts       # Phase 3.5.9: bearer-token MCP server (see below)
-      v1/ai/{extract,commit,ask}/  # Smart Entry + Ask relay Route Handlers
+      v1/                # Phase 5.3+: bearer-token REST layer for apps/mobile
+        ai/{extract,commit,ask}/          # Smart Entry + Ask relay
+        vault/{status,unlock,setup,rotate}/
+        finance/raw/     # shared raw-fetch boundary (mirrors lib/finance/raw-data.ts)
+        transactions/[+ [id], reference]/
+        budgets/[+ [id]]/
+        goals/[+ [id], [id]/contributions]/
+        loans/[+ [id], [id]/payments]/
+        investments/[+ [id], [id]/contributions]/
+        net-worth/[+ snapshots]/
+                         # see "The mobile app & the /api/v1 REST layer" below
     login/               # auth screen (auth-form.tsx is the client form)
     auth/callback/route.ts  # OAuth / magic-link code exchange
     layout.tsx           # root: fonts, <Providers>, metadata, viewport
@@ -132,6 +150,25 @@ packages/
   finance-engine/src/  # budget, health-score, goals, loan, investment,
                        # net-worth, recurring, format — pure, zero-
                        # dependency, shared with apps/mobile
+  api-client/src/index.ts  # typed fetch wrapper over /api/v1/* (see below)
+apps/mobile/           # Expo (React Native) app — see "The mobile app" below
+  app/                 # expo-router routes (file-based, like apps/web's app/)
+    (tabs)/             # bottom tab bar: index, transactions, budget, goals,
+                        # analytics, more
+    auth.tsx, vault.tsx # pre-tab gated routes (Stack.Protected in _layout.tsx)
+    investments.tsx, loans.tsx, net-worth.tsx  # secondary, reached via "More"
+  src/
+    lib/<module>/       # types.ts, compute.ts (re-exports the shared engine),
+                        # client-actions.ts (validate → encrypt → api-client
+                        # call) — mirrors apps/web/src/lib/<module>/ minus the
+                        # server-side pieces (no queries.ts/actions.ts; the
+                        # Route Handler is the server side now)
+    lib/vault/           # crypto.ts (WebCrypto-equivalent via expo-crypto +
+                        # react-native-quick-crypto/hash-wasm), store.ts
+    lib/supabase/client.ts # AsyncStorage-persisted session (mobile PKCE)
+    components/          # one form per mutating module, RN equivalents of
+                        # apps/web's dialogs
+    screens/              # auth-screen.tsx, vault-screen.tsx
 ```
 
 > Migrations `0003`–`0005` and manual RLS `0002`–`0005` are committed but may
@@ -170,13 +207,19 @@ is `apps/web/src/components/transactions/` (`transactions-view.tsx` client shell
 1. The route already exists as a `ComingSoon` stub under `apps/web/src/app/(app)/`.
    Replace the stub's body.
 2. Add the module to `apps/web/src/components/nav/nav-config.ts` if it's not there
-   (set `primary: true` to appear in the mobile bottom bar — keep that to ~5
-   items for thumb reach).
+   (set `primary: true` to appear in the mobile **web** bottom bar — keep that
+   to ~5 items for thumb reach). This is the Next.js bottom bar, unrelated to
+   the `apps/mobile` Expo tabs, which have their own `(tabs)/_layout.tsx`.
 3. Fetch data in a **server component** via `createClient()` from
    `@/lib/supabase/server`; RLS scopes rows to the user automatically. Use
    **Server Actions** for mutations. Validate all input with **Zod**.
 4. Reuse `ui/` primitives and the finance engines; don't recompute budgets or
    scores by hand.
+5. If the module also needs to exist on mobile, that's a separate follow-up
+   pass, not a required step of this one — see "The mobile app & the
+   `/api/v1` REST layer" below for the Route Handler + api-client + mobile
+   screen pattern. Web modules have shipped without mobile parity before
+   (e.g. AI Assistant is web-only by design).
 
 ### Change the database
 1. Edit `apps/web/src/db/schema.ts` (follow the existing table style: `defaultRandom()`
@@ -207,20 +250,40 @@ tokens — don't pass hard-coded RGB.
 ### Auth
 - Browser: `createClient()` from `@/lib/supabase/client`.
 - Server/Actions/Route Handlers: `createClient()` from `@/lib/supabase/server`.
+  As of Phase 5.3 this **resolves bearer-vs-cookie itself**: if the request
+  carries an `Authorization: Bearer <supabase-access-token>` header (the
+  mobile app's own Supabase session), it returns a token-scoped client via
+  `createBearerClient()`; otherwise it falls back to the cookie session,
+  byte-for-byte unchanged for every existing web request. Every existing
+  `queries.ts`/`actions.ts` that just calls `createClient()` and trusts RLS
+  got mobile support for free from this one change.
+- `requireUser()` (`@/lib/supabase/require-user`) is the **one place** every
+  module resolves "who is calling" — it wraps the above plus
+  `auth.getUser()`, and never throws (returns `{error}` on any failure).
+  This replaced 13 duplicated per-module copies in Phase 5.3 — always use
+  this rather than writing a new one. It's unrelated to `lib/mcp/session.ts`'s
+  `resolveMcpSession` (a separate, opaque per-agent token scheme with no
+  Supabase session at all).
 - Session refresh + route guard: `apps/web/src/proxy.ts` → `updateSession()` in
   `@/lib/supabase/middleware`. **Auth is only enforced when the Supabase env
   vars are set** — absent them the app runs in demo mode on mock data. Keep
-  that graceful fallback so the UI is always runnable.
-- **Mutations default to Server Actions — one deliberate exception.** The
-  `/api/v1/ai/*` Route Handlers (`apps/web/src/app/api/v1/ai/{extract,commit}/`) are
-  plain JSON endpoints instead, because Phase 5 (native mobile via Expo)
-  needs a contract callable from a non-browser client, and Server Actions
-  are bound to Next's RSC action-id protocol. Don't generalize this pattern
-  to other features without the same reason — everything else stays Server
-  Actions. See `docs/ai-smart-entry-plan.md` for the full rationale,
-  including why bearer-token auth isn't wired end-to-end yet (the query/
-  action layer these routes call through still instantiates its own
-  cookie-bound Supabase client internally).
+  that graceful fallback so the UI is always runnable. `PUBLIC_PATHS` there
+  includes `/api/mcp` and `/api/v1` — both do their own auth (MCP token /
+  bearer token) and have no cookie session to check; **don't remove either
+  from that list**, doing so once already broke bearer-token auth entirely
+  by silently redirecting every unauthenticated `/api/v1/*` call to `/login`.
+- **Mutations default to Server Actions on web — the `/api/v1/*` Route
+  Handlers are the deliberate exception**, and now cover every module
+  (`vault`, `finance/raw`, `transactions`, `budgets`, `goals`, `loans`,
+  `investments`, `net-worth`, plus the original `ai/{extract,commit,ask}`),
+  because `apps/mobile` (Expo) can't invoke a `"use server"` function
+  directly — Server Actions are bound to Next's RSC action-id protocol —
+  and instead needs a plain bearer-token REST call. `apps/web` itself never
+  calls these; it keeps using Server Actions exactly as before. Don't
+  generalize this pattern to other reasons — everything reachable only from
+  the browser stays Server Actions. See "The mobile app & the `/api/v1` REST
+  layer" below and
+  `docs/mobile-build-phase-plan.md` for the full rationale.
 
 ## Personalization, currency & optimistic UI
 
@@ -313,6 +376,73 @@ of all rows for a batch plus `status = 'rolled_back'` (`apps/web/src/lib/import/
 `previewImport` / `commitImport` / `rollbackImport`). Duplicate identity is
 `kind|amount|date|description`. UI is a 4-step wizard in
 `apps/web/src/components/import/`. Route: `/import`.
+
+## The mobile app & the `/api/v1` REST layer — live, Phase 5
+
+`apps/mobile` is a real Expo (React Native) app, feature-parity ported from
+`apps/web` for: Dashboard, Transactions, Budget, Goals, Analytics (primary
+bottom tabs), plus Loans/Investments/Net Worth (reached via a "More" tab —
+a deliberate deviation from the 5-item/thumb-reach rule; revisit once there
+are enough secondary modules to justify a real drawer like web's). AI
+Assistant is explicitly **not** in the mobile module list (v1 scope is
+feature parity minus AI). See `docs/mobile-build-phase-plan.md` for the full
+phase-by-phase build log (crypto porting, bearer-token auth, EAS build
+status) — it's the definitive reference the way `docs/e2ee-path-b-plan.md`
+is for the vault.
+
+**Why a REST layer exists at all**: Server Actions are bound to Next's RSC
+action-id protocol and can't be invoked from a non-browser client. Every
+module apps/mobile needs gets one `/api/v1/<module>/route.ts` Route Handler
+that thinly wraps the **existing** Server Action/query (auth check via
+`requireUser()`, then hand the already-Zod-validated JSON straight to the
+same `actions.ts` function web uses — not a second, divergent validation
+path). `apps/web` never calls these; it keeps using Server Actions directly.
+
+**Pattern to follow when porting a new module to mobile**:
+1. Add its Route Handler(s) under `apps/web/src/app/api/v1/<module>/`,
+   mirroring an existing one (`transactions/route.ts` is the simplest
+   reference: `requireUser()` → parse JSON → call the existing action →
+   `NextResponse.json(result, {status: result.ok ? 200 : 400})`). List
+   reads get their own `GET` (e.g. `goals/route.ts`); reads that feed
+   Dashboard/Budget-style aggregates reuse the shared `finance/raw`
+   boundary instead of a per-module route (mirrors
+   `apps/web/src/lib/finance/raw-data.ts`'s own "single fetch boundary").
+2. Add the typed methods to `packages/api-client/src/index.ts` (request/
+   response types + a method under `createApiClient()`'s returned object).
+   This is a hand-written thin wrapper, not a generated SDK — grow it one
+   module at a time, not speculatively.
+3. On the mobile side, add `apps/mobile/src/lib/<module>/` — `types.ts`
+   (Zod schema, same as web's), `compute.ts` (thin re-export of the shared
+   `packages/finance-engine` function — never reimplement the math), and
+   `client-actions.ts` (validate with Zod → encrypt client-side via
+   `apps/mobile/src/lib/vault/crypto.ts` → call the `api-client` method).
+   There's no `queries.ts`/`actions.ts` on the mobile side — the Route
+   Handler *is* the server side now.
+4. Build the screen under `apps/mobile/app/` (expo-router, file-based
+   routing same idea as `apps/web/src/app/`) + a form component under
+   `apps/mobile/src/components/` if it mutates.
+
+**Auth**: the mobile app signs in via Supabase's email/password flow (Google
+OAuth/magic-link need PKCE + deep links — an explicit, flagged gap, not
+silently skipped), persists the session in AsyncStorage
+(`apps/mobile/src/lib/supabase/client.ts`), and configures
+`packages/api-client`'s `getAccessToken` to return that session's live
+access token — which is what turns into the `Authorization: Bearer …`
+header `createClient()` on the web side resolves (see Auth above).
+
+**Vault on mobile**: same DEK/wrap design as web (see "End-to-end
+encryption" below), ported to `apps/mobile/src/lib/vault/crypto.ts` with an
+Argon2id **WASM-first, native-fallback** strategy (`react-native-argon2` /
+`react-native-quick-crypto` / `hash-wasm`) since there's no WebCrypto in
+Hermes. Validated at the algorithm level against the web implementation via
+`scripts/vault-crypto-vectors.mjs` — real on-device validation is still an
+open handoff item (this was built in a sandbox with no phone/EAS access).
+
+**Build/ship status**: code-complete for v1 (Android APK via EAS/GitHub
+Actions); actually producing a signed APK is gated on Expo account/EAS
+credentials this dev sandbox doesn't have — check
+`docs/mobile-build-phase-plan.md` §5 before assuming a build artifact
+exists. Don't treat that gate as a code problem to "fix."
 
 ## End-to-end encryption (the vault) & MCP agent access — live, Phase 3.5
 
@@ -512,8 +642,17 @@ module behind "user has a valid active key" (it is an optional module).
   `docs/e2ee-path-b-plan.md`.
 - **Phase 4**: SMS/Bank/Email sync (one shared import pipeline), shared family
   accounts.
-- **Phase 5**: Native mobile (Expo) via a shared Turborepo, offline sync,
-  biometrics, widgets.
+- **Phase 5** (v1 code-complete): **Native mobile (Expo) ✅** — see "The mobile
+  app & the `/api/v1` REST layer" above for the architecture and
+  `docs/mobile-build-phase-plan.md` for the phase-by-phase log. Turborepo
+  monorepo restructure, `packages/finance-engine` + `packages/api-client`
+  extraction, bearer-token auth generalization, and feature-parity ports of
+  Dashboard/Transactions/Budget/Goals/Analytics/Loans/Investments/Net Worth
+  are done. Still open: real on-device crypto validation (built without
+  phone/EAS access), Google OAuth/magic-link on mobile (PKCE + deep links),
+  a signed Android APK artifact (gated on Expo/EAS credentials, not a code
+  gap), iOS build, and later — offline sync, biometrics, widgets, store
+  submissions.
 
 Design for these seams now (pluggable AI providers, a single import pipeline,
 shareable packages) but don't build ahead of the current phase.
