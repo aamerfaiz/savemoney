@@ -599,6 +599,34 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      Android keystore automatically — both fine to accept the defaults
      on. The resulting `.apk` is the v1 deliverable this whole plan has
      been building toward.
+   - **Update, 2026-08-04**: user created an Expo account and supplied
+     access tokens directly in chat (handled as sensitive — never
+     written to any file/commit, unset from the shell after use).
+     `eas-cli whoami` failed identically with both tokens, which first
+     looked like bad credentials. Checked this sandbox's outbound-proxy
+     status (`$HTTPS_PROXY/__agentproxy/status`) and found the real
+     cause: `api.expo.dev:443` is rejected at the network-policy layer
+     (`connect_rejected`, gateway 403 on CONNECT) — before token
+     validation ever happens. Confirmed a second time, cleanly (a plain
+     `curl https://api.expo.dev/` with no token), same result. This
+     sandbox cannot reach Expo's API at all; not a credentials problem,
+     not something to retry around. Per this sandbox's proxy policy
+     ("do not retry or route around it — report the blocked host"), no
+     further attempts were made from here.
+   - **Workaround in progress**: user connected the GitHub repo directly
+     on Expo's dashboard (build triggers from Expo's cloud infra on
+     push, bypassing this sandbox's network entirely). First
+     GitHub-triggered build failed: `EAS project not configured. Must
+     configure EAS project by running 'eas init' before this command
+     can be run in non-interactive mode.` — expected, since `eas init`
+     (which writes `extra.eas.projectId` into `app.json`) never
+     successfully ran anywhere yet. Since `eas init` itself needs
+     `api.expo.dev` (blocked here) or an interactive session, the
+     project ID needs to come from the user's Expo dashboard instead
+     (Project settings → Project ID, on the `savemoney-mobile` project
+     the GitHub integration likely already auto-created) so it can be
+     hand-written into `app.json` without any network call from this
+     sandbox.
 7. iOS build — same codebase, no new screens — once an Apple Developer
    account is in place. Not blocking v1's Android APK.
 8. *(Later phase, not v1)* automatic capture channels per §3/§4, offline
