@@ -56,9 +56,10 @@ export default function RootLayout() {
           {/* Secondary modules (reached via the "More" tab, matching web's
               drawer for the same non-primary set) — pushed with a header,
               unlike the tab screens. Added one at a time as Phase 5.5c
-              builds each: Loans/Investments done, Net Worth follows. */}
+              builds each — all three now done. */}
           <Stack.Screen name="loans" options={{ headerShown: true, title: "Loans" }} />
           <Stack.Screen name="investments" options={{ headerShown: true, title: "Investments" }} />
+          <Stack.Screen name="net-worth" options={{ headerShown: true, title: "Net Worth" }} />
         </Stack.Protected>
       </Stack>
       <StatusBar style="auto" />

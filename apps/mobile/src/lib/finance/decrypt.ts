@@ -318,3 +318,53 @@ export async function decryptInvestmentRows(
   );
   return splitSettled(settled);
 }
+
+/** Narrow shape Analytics needs from investment contributions — same raw
+ * rows finance.raw() already returns (`investmentContributions`), no new
+ * route needed. */
+export interface DecryptedInvestmentContribution {
+  id: string;
+  amount: number;
+  contributedAt: string;
+}
+
+export async function decryptInvestmentContributionRows(
+  rows: { id: string; amount: string; contributedAt: string }[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedInvestmentContribution>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedInvestmentContribution> => ({
+      ...r,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Net Worth — Phase 5.5c, snapshot rows.                                  */
+/* ----------------------------------------------------------------------- */
+
+export interface DecryptedSnapshotRow {
+  id: string;
+  capturedAt: string;
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+  note: string | null;
+}
+
+export async function decryptSnapshotRows(
+  rows: import("@savemoney/api-client").RawSnapshotRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedSnapshotRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedSnapshotRow> => ({
+      ...r,
+      totalAssets: Number(await decryptPacked(r.totalAssets, dek)),
+      totalLiabilities: Number(await decryptPacked(r.totalLiabilities, dek)),
+      netWorth: Number(await decryptPacked(r.netWorth, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}

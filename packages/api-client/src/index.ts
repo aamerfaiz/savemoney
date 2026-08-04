@@ -333,6 +333,30 @@ export interface EncryptedInvestmentContributionInput {
   newCurrentValue: string;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Net Worth — Phase 5.5c. Snapshots read has its own route (it's a plain  */
+/* passthrough, not part of finance.raw()); capture is create-only, no      */
+/* update/delete (snapshots are append/upsert-by-day only).                */
+/* ----------------------------------------------------------------------- */
+
+export interface RawSnapshotRow {
+  id: string;
+  capturedAt: string;
+  totalAssets: string;
+  totalLiabilities: string;
+  netWorth: string;
+  note: string | null;
+}
+
+export interface EncryptedSnapshotInput {
+  /** Packed ciphertext. */
+  totalAssets: string;
+  /** Packed ciphertext. */
+  totalLiabilities: string;
+  /** Packed ciphertext. */
+  netWorth: string;
+}
+
 export interface AccountOption {
   id: string;
   name: string;
@@ -491,6 +515,12 @@ export function createApiClient(config: ApiClientConfig) {
           method: "POST",
           body: JSON.stringify(input),
         }),
+    },
+    netWorth: {
+      snapshots: () =>
+        request<{ ok: true; snapshots: RawSnapshotRow[] }>("/api/v1/net-worth/snapshots"),
+      capture: (input: EncryptedSnapshotInput) =>
+        request<ActionResult>("/api/v1/net-worth", { method: "POST", body: JSON.stringify(input) }),
     },
   };
 }

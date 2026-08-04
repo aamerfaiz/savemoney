@@ -499,6 +499,47 @@ stays as-is; no background DEK access, no PIN-wrap extension. (Decided
      name only). `More` now lists both Loans and Investments. Verified
      the same way: type-checks clean, `apps/web` build/lint green,
      vectors unaffected, live `curl` 401 checks on the new routes.
+   - **Analytics done, and a re-sequencing it justified (2026-08-04).**
+     Built Analytics *before* Net Worth (further reordering within this
+     already-reordered step — see the module-order note above): Net
+     Worth's trend needs the same trailing-6-month `{label, net}[]`
+     data Analytics computes, so building Analytics first meant Net
+     Worth could reuse that computation instead of re-deriving it.
+     **No new Route Handler at all** — `computeAnalyticsData()` only
+     needs income/expenses/activeGoals/loans/contributions/investment-
+     contributions, all already served by `finance.raw()`. `apps/
+     mobile/src/lib/analytics/{types,compute}.ts` are direct ports.
+     `app/(tabs)/analytics.tsx` replaces its `ComingSoon` placeholder: a
+     financial-health-score card, a 6-month income/expense bar chart,
+     and a category breakdown — **no charting library**, bars are plain
+     `View`s sized by relative height (web uses Recharts, which has no
+     RN runtime; this is the "re-implement behavior, not the exact
+     chrome" approach applied to a chart specifically for the first
+     time). Verified: type-checks clean, `apps/web` build/lint
+     unaffected (no new routes), vectors unaffected.
+   - **Net Worth done (2026-08-04) — the heaviest read composition so
+     far.** Net worth is assets/liabilities across Investments + Goals
+     + Loans, so `app/net-worth.tsx` pulls from all three modules' own
+     full-list routes *and* `finance.raw()` (for the Analytics-style
+     trend fallback) *and* its own snapshots route — matching web's own
+     dashboard/net-worth composition, which pulls from the same
+     sources; this isn't over-fetching, it's what the computation
+     actually needs. New routes: `/api/v1/net-worth` (POST, capture
+     today's snapshot — no update/delete, snapshots are append/upsert-
+     by-day only) and `/api/v1/net-worth/snapshots` (GET, a plain
+     ciphertext passthrough mirroring web's own
+     `fetchNetWorthSnapshotsAction`). `apps/mobile/src/lib/finance/
+     decrypt.ts` gained `decryptSnapshotRows`; `src/lib/networth/
+     {types,compute,client-actions}.ts` are direct ports of `buildNetWorth`
+     and the snapshot-capture encrypt wrapper. Screen shows the net-
+     worth figure, month-over-month change, assets/liabilities split,
+     a per-component breakdown, and a "save today's snapshot" button.
+     `More` now lists all three secondary modules. Verified the same
+     way: type-checks clean, `apps/web` build/lint green with the new
+     routes, vectors unaffected, live `curl` 401 checks on both new
+     routes.
+   - **Remaining: Dashboard**, the capstone (composes every module
+     above) — the only module left in this step.
 6. **Android APK build** via EAS Build (`eas build -p android --profile
    preview` → `.apk`, sideloadable, no Play Store submission yet). This is
    the v1 deliverable.
