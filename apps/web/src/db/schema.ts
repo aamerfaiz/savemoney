@@ -622,6 +622,79 @@ export const netWorthSnapshots = pgTable(
 );
 
 /* ----------------------------------------------------------------------- */
+/* Collections (Splitwise-style contribution pools, e.g. office gift money) */
+/* ----------------------------------------------------------------------- */
+/* One organizer (the signed-in user) tracks named contributors and what each
+ * put in toward a shared pool — never a multi-user shared ledger (no other
+ * party has an account here). `targetAmount` is optional: many collections
+ * just gather whatever comes in. The running total is never stored — it's
+ * always derived client-side from summing decrypted `collection_contributions`
+ * rows, the same way every other ciphertext total in this app is computed,
+ * which also sidesteps the read-modify-write race `goals.current_amount`
+ * accepts (see its comment in lib/goals/actions.ts). `payout*` fields record
+ * that the pooled money was spent, optionally linked to a real expense
+ * transaction so the collect-then-spend loop shows up in the user's own
+ * finances. */
+
+export const collectionStatus = pgEnum("collection_status", ["open", "closed"]);
+
+export const collections = pgTable(
+  "collections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    purpose: text("purpose"),
+    icon: text("icon"),
+    // Packed ciphertext (see docs/e2ee-path-b-plan.md) — optional, many
+    // collections have no fixed target.
+    targetAmount: text("target_amount"),
+    currency: text("currency").notNull().default("USD"),
+    eventDate: date("event_date"),
+    status: collectionStatus("status").notNull().default("open"),
+    // Set together when a payout is recorded — never independently.
+    payoutAmount: text("payout_amount"),
+    payoutAt: date("payout_at"),
+    payoutNote: text("payout_note"),
+    payoutExpenseId: uuid("payout_expense_id").references(() => expenses.id, {
+      onDelete: "set null",
+    }),
+    ...audit,
+  },
+  (t) => [
+    index("collections_user_idx").on(t.userId),
+    index("collections_payout_expense_idx").on(t.payoutExpenseId),
+  ],
+);
+
+export const collectionContributions = pgTable(
+  "collection_contributions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    // Packed ciphertext — the contributor's name, encrypted like every
+    // other free-text field on this table.
+    contributorName: text("contributor_name").notNull(),
+    amount: text("amount").notNull(),
+    contributedAt: date("contributed_at").notNull(),
+    method: text("method"),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("collection_contrib_collection_idx").on(t.collectionId),
+    index("collection_contrib_user_idx").on(t.userId),
+  ],
+);
+
+/* ----------------------------------------------------------------------- */
 /* AI provider keys (Phase 3, BYOK) — private schema, NOT PostgREST-exposed */
 /* ----------------------------------------------------------------------- */
 /* Lives in its own Postgres schema (rather than `public`) so it is never
@@ -816,6 +889,8 @@ export type Investment = typeof investments.$inferSelect;
 export type InvestmentContribution =
   typeof investmentContributions.$inferSelect;
 export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
+export type Collection = typeof collections.$inferSelect;
+export type CollectionContribution = typeof collectionContributions.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;

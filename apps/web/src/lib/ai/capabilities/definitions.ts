@@ -28,6 +28,15 @@ import { deleteBudget } from "@/lib/budgets/actions";
 import { recurringInputSchema, RECURRING_FREQUENCIES } from "@/lib/recurring/types";
 import { deleteRecurringRule } from "@/lib/recurring/actions";
 
+import {
+  collectionInputSchema,
+  contributorInputSchema,
+  payoutInputSchema,
+  COLLECTION_ICONS,
+  COLLECTION_STATUSES,
+} from "@/lib/collections/types";
+import { deleteCollection } from "@/lib/collections/actions";
+
 import type { AICapability } from "./types";
 import { matchByName } from "./shared";
 import { asBool, asString, normalizeDate, normalizeEnum, todayISO, toNumber } from "./extract-utils";
@@ -46,6 +55,45 @@ async function clientOnlyExecute(): Promise<{ ok: boolean; error?: string }> {
     ok: false,
     error: "This has an encrypted amount and can only be confirmed from the browser — try again from the Manage tab.",
   };
+}
+
+interface ContributorDraft {
+  contributorName: string;
+  amount: number;
+  contributedAt: string;
+  method: string | null;
+}
+
+/** Parses the model's freeform `contributors` array arg (used by
+ * `collection.create`/`collection.edit` to let one prompt record several
+ * people's contributions at once) into validated drafts. Never throws — a
+ * malformed entry is skipped with a warning rather than failing the whole
+ * capability, same philosophy as every other coercion in extract-utils.ts. */
+function parseContributorsArg(raw: unknown): {
+  contributors: ContributorDraft[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  if (!Array.isArray(raw)) return { contributors: [], warnings };
+
+  const contributors: ContributorDraft[] = [];
+  for (const item of raw.slice(0, 30)) {
+    if (typeof item !== "object" || item === null) continue;
+    const obj = item as Record<string, unknown>;
+    const name = asString(obj.name) ?? asString(obj.contributorName);
+    const amount = toNumber(obj.amount);
+    if (!name || amount == null) {
+      warnings.push("Skipped a contributor entry that was missing a name or amount.");
+      continue;
+    }
+    contributors.push({
+      contributorName: name,
+      amount,
+      contributedAt: normalizeDate(obj.date) ?? normalizeDate(obj.contributedAt) ?? todayISO(),
+      method: asString(obj.method),
+    });
+  }
+  return { contributors, warnings };
 }
 
 /**
@@ -682,5 +730,267 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
     },
     execute: (_fields, targetId) => deleteRecurringRule(targetId!),
+  },
+
+  {
+    key: "collection.create",
+    module: "collection",
+    label: "New collection",
+    requiresTarget: false,
+    requiresClientEncryption: true,
+    destructive: false,
+    actionLabel: "Add",
+    promptDescription:
+      "A brand-new contribution pool the user is starting to collect money " +
+      "into — Splitwise-style but single-organizer, e.g. office gift money " +
+      "or a group buy, never a personal expense/income/investment/loan/goal " +
+      "(those are separate capabilities above). args: title (string, " +
+      "required), purpose (string, optional), targetAmount (number, " +
+      "optional — omit if there's no fixed target), eventDate (YYYY-MM-DD, " +
+      "optional), contributors (array, optional — each item: {name (string, " +
+      "required), amount (number, required), date (YYYY-MM-DD, optional, " +
+      'defaults to today), method (string, optional)} — use this when the ' +
+      "user gives a full set of contributors in one message, e.g. \"start a " +
+      "collection for Priya's farewell, Alice gave 500 and Bob gave 300\").",
+    schema: collectionInputSchema,
+    async resolve(args) {
+      const title = asString(args.title);
+      if (!title) return { ok: false, warnings: [], error: "Missing collection title." };
+      const icon = normalizeEnum(args.icon, COLLECTION_ICONS) ?? "gift";
+
+      const parsed = collectionInputSchema.safeParse({
+        title,
+        purpose: asString(args.purpose),
+        icon,
+        targetAmount: toNumber(args.targetAmount),
+        eventDate: normalizeDate(args.eventDate),
+        status: "open",
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+
+      const { contributors, warnings } = parseContributorsArg(args.contributors);
+      const fields: Record<string, unknown> = { ...parsed.data };
+      if (contributors.length > 0) {
+        fields.contributors = contributors;
+        warnings.push(
+          `Will also record ${contributors.length} contribution${contributors.length === 1 ? "" : "s"}: ` +
+            contributors.map((c) => `${c.contributorName} (${c.amount})`).join(", "),
+        );
+      }
+      return { ok: true, fields, warnings };
+    },
+    execute: clientOnlyExecute,
+  },
+
+  {
+    key: "collection.contribution",
+    module: "collection",
+    label: "Collection contribution",
+    requiresTarget: true,
+    requiresClientEncryption: true,
+    destructive: false,
+    actionLabel: "Add",
+    promptDescription:
+      "Money one person contributed toward an EXISTING open collection " +
+      "pool. args: collectionTitle (string, required — must refer to an " +
+      "open collection the user already has), contributorName (string, " +
+      "required — who gave the money), amount (number, required), date " +
+      "(YYYY-MM-DD, optional, defaults to today), method (string, optional).",
+    schema: contributorInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.collectionTitle);
+      const collection = matchByName(nameGuess, ref.collections);
+      const warnings: string[] = [];
+      if (!collection) {
+        warnings.push(
+          nameGuess
+            ? `Couldn't match collection "${nameGuess}" — pick one below.`
+            : "No collection specified — pick one below.",
+        );
+      }
+      const contributorName = asString(args.contributorName);
+      const amount = toNumber(args.amount);
+      if (!contributorName || amount == null) {
+        return { ok: false, warnings, error: "Missing contributor name or amount." };
+      }
+
+      const parsed = contributorInputSchema.safeParse({
+        contributorName,
+        amount,
+        contributedAt: normalizeDate(args.date) ?? todayISO(),
+        method: asString(args.method),
+        note: null,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return {
+        ok: true,
+        fields: parsed.data,
+        targetId: collection?.id,
+        targetLabel: collection?.name,
+        warnings,
+      };
+    },
+    execute: clientOnlyExecute,
+  },
+
+  {
+    key: "collection.edit",
+    module: "collection",
+    label: "Edit collection",
+    requiresTarget: true,
+    requiresClientEncryption: true,
+    destructive: false,
+    actionLabel: "Save",
+    promptDescription:
+      "Change something about an EXISTING collection — its purpose, target " +
+      "amount, event date, or open/closed status — and/or bulk-add more " +
+      "contributors to it in the same request. Only include the args the " +
+      "user actually mentioned; everything else is left unchanged. args: " +
+      "collectionTitle (string, required — must refer to a collection the " +
+      "user already has), title (string, optional — a rename), purpose " +
+      "(string, optional), targetAmount (number, optional), eventDate " +
+      "(YYYY-MM-DD, optional), status (open or closed, optional), " +
+      "contributors (array, optional, same shape as collection.create's).",
+    schema: collectionInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.collectionTitle);
+      const collection = matchByName(nameGuess, ref.collections);
+      if (!collection) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess
+            ? `Couldn't find a collection named "${nameGuess}".`
+            : "Missing which collection to edit.",
+        };
+      }
+
+      // Only the args the model actually supplied are validated and
+      // included — anything omitted stays out of `fields` entirely so
+      // client-commit.ts's merge (against the already-decrypted current
+      // row) leaves it untouched, same reasoning as goal.contribution
+      // needing the goal's current amount rather than resolve() guessing.
+      const candidate: Record<string, unknown> = {};
+      const title = asString(args.title);
+      if (title) candidate.title = title;
+      if (args.purpose !== undefined) candidate.purpose = asString(args.purpose);
+      const icon = normalizeEnum(args.icon, COLLECTION_ICONS);
+      if (icon) candidate.icon = icon;
+      const targetAmount = toNumber(args.targetAmount);
+      if (targetAmount != null) candidate.targetAmount = targetAmount;
+      const eventDate = normalizeDate(args.eventDate);
+      if (eventDate) candidate.eventDate = eventDate;
+      const status = normalizeEnum(args.status, COLLECTION_STATUSES);
+      if (status) candidate.status = status;
+
+      const parsed = collectionInputSchema.partial().safeParse(candidate);
+      if (!parsed.success) {
+        return { ok: false, warnings: [], error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+
+      const { contributors, warnings } = parseContributorsArg(args.contributors);
+      const fields: Record<string, unknown> = { ...parsed.data };
+      if (contributors.length > 0) {
+        fields.contributors = contributors;
+        warnings.push(
+          `Will also record ${contributors.length} new contribution${contributors.length === 1 ? "" : "s"}.`,
+        );
+      }
+      if (Object.keys(parsed.data).length === 0 && contributors.length === 0) {
+        return {
+          ok: false,
+          warnings,
+          error: "Nothing to change — mention what to update or who contributed.",
+        };
+      }
+      return { ok: true, fields, targetId: collection.id, targetLabel: collection.name, warnings };
+    },
+    execute: clientOnlyExecute,
+  },
+
+  {
+    key: "collection.payout",
+    module: "collection",
+    label: "Collection payout",
+    requiresTarget: true,
+    requiresClientEncryption: true,
+    destructive: false,
+    actionLabel: "Add",
+    promptDescription:
+      "Recording that the money pooled in an EXISTING open collection was " +
+      "spent — this also closes the collection. args: collectionTitle " +
+      "(string, required — must refer to an open collection the user " +
+      "already has), amount (number, required), date (YYYY-MM-DD, " +
+      "optional, defaults to today), note (string, optional — what it was " +
+      "spent on).",
+    schema: payoutInputSchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.collectionTitle);
+      const collection = matchByName(nameGuess, ref.collections);
+      const warnings: string[] = [];
+      if (!collection) {
+        warnings.push(
+          nameGuess
+            ? `Couldn't match collection "${nameGuess}" — pick one below.`
+            : "No collection specified — pick one below.",
+        );
+      }
+      const amount = toNumber(args.amount);
+      if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
+
+      const parsed = payoutInputSchema.safeParse({
+        amount,
+        payoutAt: normalizeDate(args.date) ?? todayISO(),
+        note: asString(args.note),
+        categoryId: null,
+        accountId: null,
+        createExpense: true,
+      });
+      if (!parsed.success) {
+        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
+      }
+      return {
+        ok: true,
+        fields: parsed.data,
+        targetId: collection?.id,
+        targetLabel: collection?.name,
+        warnings,
+      };
+    },
+    execute: clientOnlyExecute,
+  },
+
+  {
+    key: "collection.delete",
+    module: "collection",
+    label: "Delete collection",
+    requiresTarget: true,
+    requiresClientEncryption: false,
+    destructive: true,
+    actionLabel: "Delete",
+    promptDescription:
+      "Remove an EXISTING collection entirely, along with all of its " +
+      "contributors. args: collectionTitle (string, required — must refer " +
+      "to a collection the user already has).",
+    schema: emptySchema,
+    async resolve(args, ref) {
+      const nameGuess = asString(args.collectionTitle);
+      const match = matchByName(nameGuess, ref.collections);
+      if (!match) {
+        return {
+          ok: false,
+          warnings: [],
+          error: nameGuess
+            ? `Couldn't find a collection named "${nameGuess}".`
+            : "Missing collection name.",
+        };
+      }
+      return { ok: true, fields: {}, targetId: match.id, targetLabel: match.name, warnings: [] };
+    },
+    execute: (_fields, targetId) => deleteCollection(targetId!),
   },
 ];

@@ -25,10 +25,14 @@ import type { McpSession } from "@/lib/mcp/session";
 import { checkRateLimit, logToolCall, resolveMcpSession } from "@/lib/mcp/session";
 import { toolResult } from "@/lib/mcp/tools/shared";
 import {
+  getCollection,
+  getCollectionSchema,
   getNetWorth,
   getNetWorthSchema,
   listBudgets,
   listBudgetsSchema,
+  listCollections,
+  listCollectionsSchema,
   listGoals,
   listGoalsSchema,
   listInvestments,
@@ -41,10 +45,14 @@ import {
   listTransactionsSchema,
 } from "@/lib/mcp/tools/read";
 import {
+  addCollectionContribution,
+  addCollectionContributionSchema,
   addGoalContribution,
   addGoalContributionSchema,
   createBudget,
   createBudgetSchema,
+  createCollection,
+  createCollectionSchema,
   createGoal,
   createGoalSchema,
   createInvestment,
@@ -57,6 +65,8 @@ import {
   createTransactionSchema,
   deleteBudget,
   deleteBudgetSchema,
+  deleteCollection,
+  deleteCollectionSchema,
   deleteGoal,
   deleteGoalSchema,
   deleteInvestment,
@@ -67,6 +77,8 @@ import {
   deleteRecurringRuleSchema,
   deleteTransaction,
   deleteTransactionSchema,
+  recordCollectionPayout,
+  recordCollectionPayoutSchema,
   recordInvestmentContribution,
   recordInvestmentContributionSchema,
   recordLoanPayment,
@@ -75,6 +87,8 @@ import {
   toggleRecurringRuleSchema,
   updateBudget,
   updateBudgetSchema,
+  updateCollection,
+  updateCollectionSchema,
   updateGoal,
   updateGoalSchema,
   updateInvestment,
@@ -171,6 +185,8 @@ function buildServer(session: McpSession): McpServer {
           "list_loans",
           "list_investments",
           "list_recurring_rules",
+          "list_collections",
+          "get_collection",
           "get_net_worth",
         ],
         writeTools: session.canWrite
@@ -181,6 +197,8 @@ function buildServer(session: McpSession): McpServer {
               "create_loan", "update_loan", "delete_loan", "record_loan_payment",
               "create_investment", "update_investment", "delete_investment", "record_investment_contribution",
               "create_recurring_rule", "update_recurring_rule", "delete_recurring_rule", "toggle_recurring_rule",
+              "create_collection", "update_collection", "delete_collection",
+              "add_collection_contribution", "record_collection_payout",
             ]
           : [],
         confirmGate:
@@ -199,6 +217,8 @@ function buildServer(session: McpSession): McpServer {
   wire(server, session, "read", "list_loans", "List loans with balances and terms.", listLoansSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, listLoans);
   wire(server, session, "read", "list_investments", "List investment holdings.", listInvestmentsSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, listInvestments);
   wire(server, session, "read", "list_recurring_rules", "List recurring income/expense rules.", listRecurringRulesSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, listRecurringRules);
+  wire(server, session, "read", "list_collections", "List contribution pools (Splitwise-style, single-organizer — e.g. office gift money) with totals collected.", listCollectionsSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, listCollections);
+  wire(server, session, "read", "get_collection", "Get one collection's full contributor breakdown — who gave how much.", getCollectionSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, getCollection);
   wire(server, session, "read", "get_net_worth", "Get the latest net worth snapshot.", getNetWorthSchema, { readOnlyHint: true, idempotentHint: true, openWorldHint: false }, getNetWorth);
 
   if (!session.canWrite) return server;
@@ -233,6 +253,12 @@ function buildServer(session: McpSession): McpServer {
   wire(server, session, "write", "update_recurring_rule", "Update a recurring rule. Preview first, then call again with confirm: true.", updateRecurringRuleSchema, writeAnn, updateRecurringRule);
   wire(server, session, "write", "delete_recurring_rule", "Soft-delete a recurring rule. Preview first, then call again with confirm: true.", deleteRecurringRuleSchema, deleteAnn, deleteRecurringRule);
   wire(server, session, "write", "toggle_recurring_rule", "Pause or resume a recurring rule. Preview first, then call again with confirm: true.", toggleRecurringRuleSchema, writeAnn, toggleRecurringRule);
+
+  wire(server, session, "write", "create_collection", "Create a contribution pool (Splitwise-style, single-organizer). Preview first, then call again with confirm: true.", createCollectionSchema, writeAnn, createCollection);
+  wire(server, session, "write", "update_collection", "Update a collection's title, purpose, target, event date, or open/closed status. Preview first, then call again with confirm: true.", updateCollectionSchema, writeAnn, updateCollection);
+  wire(server, session, "write", "delete_collection", "Soft-delete a collection. Preview first, then call again with confirm: true.", deleteCollectionSchema, deleteAnn, deleteCollection);
+  wire(server, session, "write", "add_collection_contribution", "Record that someone contributed money to an open collection. Preview first, then call again with confirm: true.", addCollectionContributionSchema, writeAnn, addCollectionContribution);
+  wire(server, session, "write", "record_collection_payout", "Record that a collection's pooled money was spent — closes the collection, optionally logging a real expense. Preview first, then call again with confirm: true.", recordCollectionPayoutSchema, writeAnn, recordCollectionPayout);
 
   return server;
 }

@@ -29,7 +29,8 @@ export interface AICapability {
     | "loan"
     | "goal"
     | "budget"
-    | "recurring";
+    | "recurring"
+    | "collection";
   label: string;
   /** Fed verbatim into the extraction system prompt — the model's only
    * description of what this capability does and what fields it takes. */

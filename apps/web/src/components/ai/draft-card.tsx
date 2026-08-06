@@ -252,6 +252,8 @@ function targetLabelFor(kind: TargetKind): string {
       return "Recurring rule";
     case "transaction":
       return "Transaction";
+    case "collection":
+      return "Collection";
   }
 }
 

@@ -667,6 +667,201 @@ export async function deleteRecurringRule(session: McpSession, args: z.infer<z.Z
 }
 
 /* ----------------------------------------------------------------------- */
+/* Collections (Splitwise-style contribution pools)                        */
+/* ----------------------------------------------------------------------- */
+
+export const createCollectionSchema = {
+  title: z.string().trim().min(1).max(80),
+  purpose: z.string().trim().max(200).optional(),
+  targetAmount: z.number().positive().max(1_000_000_000).optional().describe("Omit if there's no fixed target."),
+  eventDate: dateShape.optional(),
+  ...confirmShape,
+};
+
+export async function createCollection(session: McpSession, args: z.infer<z.ZodObject<typeof createCollectionSchema>>) {
+  const gate = requireWriteAccess(session);
+  if (gate) return { error: gate };
+  if (!db) return { error: "Database isn't configured in this environment." };
+
+  const plan = { title: args.title, purpose: args.purpose ?? null, targetAmount: args.targetAmount ?? null, eventDate: args.eventDate ?? null };
+  if (!args.confirm) return preview("create_collection", plan);
+
+  const currency = await getBaseCurrency(session.userId);
+  const targetAmount = args.targetAmount != null ? await encryptPacked(String(args.targetAmount), session.dek) : null;
+  const [row] = await db
+    .insert(schema.collections)
+    .values({
+      userId: session.userId,
+      title: args.title,
+      purpose: args.purpose ?? null,
+      targetAmount,
+      currency,
+      eventDate: args.eventDate ?? null,
+      status: "open",
+    })
+    .returning({ id: schema.collections.id });
+  return { status: "done", id: row.id, ...plan };
+}
+
+export const updateCollectionSchema = {
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(80).optional(),
+  purpose: z.string().trim().max(200).optional().describe("Pass an empty string to clear it."),
+  targetAmount: z.number().min(0).max(1_000_000_000).optional(),
+  eventDate: dateShape.optional(),
+  status: z.enum(["open", "closed"]).optional(),
+  ...confirmShape,
+};
+
+export async function updateCollection(session: McpSession, args: z.infer<z.ZodObject<typeof updateCollectionSchema>>) {
+  const gate = requireWriteAccess(session);
+  if (gate) return { error: gate };
+  if (!db) return { error: "Database isn't configured in this environment." };
+
+  const [row] = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.id, args.id), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
+    .limit(1);
+  if (!row) return { error: "No collection with that id." };
+
+  const currentTarget = await decryptOrNull(row.targetAmount, session.dek);
+  const newTarget = args.targetAmount !== undefined ? args.targetAmount : currentTarget;
+  const newTitle = args.title ?? row.title;
+  const newPurpose = args.purpose !== undefined ? (args.purpose === "" ? null : args.purpose) : row.purpose;
+  const newEventDate = args.eventDate ?? row.eventDate;
+  const newStatus = args.status ?? row.status;
+
+  const plan = {
+    id: args.id,
+    title: { from: row.title, to: newTitle },
+    purpose: { from: row.purpose, to: newPurpose },
+    targetAmount: { from: currentTarget, to: newTarget },
+    eventDate: { from: row.eventDate, to: newEventDate },
+    collectionStatus: { from: row.status, to: newStatus },
+  };
+  if (!args.confirm) return preview("update_collection", plan);
+
+  const targetAmount = newTarget != null ? await encryptPacked(String(newTarget), session.dek) : null;
+  await db
+    .update(schema.collections)
+    .set({ title: newTitle, purpose: newPurpose, targetAmount, eventDate: newEventDate, status: newStatus })
+    .where(and(eq(schema.collections.id, args.id), eq(schema.collections.userId, session.userId)));
+  return { status: "done", ...plan };
+}
+
+export const deleteCollectionSchema = { id: z.string().uuid(), ...confirmShape };
+
+export async function deleteCollection(session: McpSession, args: z.infer<z.ZodObject<typeof deleteCollectionSchema>>) {
+  const gate = requireWriteAccess(session);
+  if (gate) return { error: gate };
+  if (!db) return { error: "Database isn't configured in this environment." };
+
+  const [row] = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.id, args.id), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
+    .limit(1);
+  if (!row) return { error: "No collection with that id." };
+
+  const plan = { id: args.id, title: row.title };
+  if (!args.confirm) return preview("delete_collection", plan);
+
+  await db.update(schema.collections).set({ deletedAt: new Date() }).where(and(eq(schema.collections.id, args.id), eq(schema.collections.userId, session.userId)));
+  return { status: "done", ...plan };
+}
+
+export const addCollectionContributionSchema = {
+  collectionId: z.string().uuid(),
+  contributorName: z.string().trim().min(1).max(80),
+  amount: z.number().positive().max(1_000_000_000),
+  contributedAt: dateShape.optional().describe("ISO date. Defaults to today."),
+  method: z.string().trim().max(40).optional(),
+  ...confirmShape,
+};
+
+export async function addCollectionContribution(session: McpSession, args: z.infer<z.ZodObject<typeof addCollectionContributionSchema>>) {
+  const gate = requireWriteAccess(session);
+  if (gate) return { error: gate };
+  if (!db) return { error: "Database isn't configured in this environment." };
+
+  const [collection] = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.id, args.collectionId), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
+    .limit(1);
+  if (!collection) return { error: "No collection with that id." };
+  if (collection.status === "closed") return { error: "This collection is closed." };
+
+  const contributedAt = args.contributedAt ?? new Date().toISOString().slice(0, 10);
+  const plan = { collection: collection.title, contributor: args.contributorName, amount: args.amount, contributedAt, method: args.method ?? null };
+  if (!args.confirm) return preview("add_collection_contribution", plan);
+
+  const [contributorName, amount] = await Promise.all([
+    encryptPacked(args.contributorName, session.dek),
+    encryptPacked(String(args.amount), session.dek),
+  ]);
+  await db.insert(schema.collectionContributions).values({
+    collectionId: args.collectionId,
+    userId: session.userId,
+    contributorName,
+    amount,
+    contributedAt,
+    method: args.method ?? null,
+  });
+  return { status: "done", ...plan };
+}
+
+export const recordCollectionPayoutSchema = {
+  collectionId: z.string().uuid(),
+  amount: z.number().positive().max(1_000_000_000),
+  payoutAt: dateShape.optional().describe("ISO date. Defaults to today."),
+  note: z.string().trim().max(200).optional().describe("What the money was spent on."),
+  createExpense: z.boolean().default(true).describe("Also log this as a real expense transaction."),
+  ...confirmShape,
+};
+
+/** Always closes the collection — mirrors client-actions.ts's
+ * `encryptedRecordPayout`: once the pooled money is spent, there's nothing
+ * left to collect toward. */
+export async function recordCollectionPayout(session: McpSession, args: z.infer<z.ZodObject<typeof recordCollectionPayoutSchema>>) {
+  const gate = requireWriteAccess(session);
+  if (gate) return { error: gate };
+  if (!db) return { error: "Database isn't configured in this environment." };
+
+  const [collection] = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.id, args.collectionId), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
+    .limit(1);
+  if (!collection) return { error: "No collection with that id." };
+
+  const payoutAt = args.payoutAt ?? new Date().toISOString().slice(0, 10);
+  const plan = { collection: collection.title, amount: args.amount, payoutAt, note: args.note ?? null, createExpense: args.createExpense };
+  if (!args.confirm) return preview("record_collection_payout", plan);
+
+  let payoutExpenseId: string | null = null;
+  if (args.createExpense) {
+    const currency = await getBaseCurrency(session.userId);
+    const amount = await encryptPacked(String(args.amount), session.dek);
+    const note = args.note ? await encryptPacked(args.note, session.dek) : null;
+    const [expenseRow] = await db
+      .insert(schema.expenses)
+      .values({ userId: session.userId, amount, currency, note, spentAt: payoutAt })
+      .returning({ id: schema.expenses.id });
+    payoutExpenseId = expenseRow.id;
+  }
+
+  const payoutAmount = await encryptPacked(String(args.amount), session.dek);
+  const payoutNote = args.note ? await encryptPacked(args.note, session.dek) : null;
+  await db
+    .update(schema.collections)
+    .set({ payoutAmount, payoutAt, payoutNote, payoutExpenseId, status: "closed" })
+    .where(and(eq(schema.collections.id, args.collectionId), eq(schema.collections.userId, session.userId)));
+  return { status: "done", ...plan };
+}
+
+/* ----------------------------------------------------------------------- */
 /* Updates — every field optional; only what's provided changes.          */
 /* ----------------------------------------------------------------------- */
 

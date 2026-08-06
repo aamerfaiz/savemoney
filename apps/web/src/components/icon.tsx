@@ -29,6 +29,10 @@ import {
   Building2,
   Gem,
   CircleDollarSign,
+  Gift,
+  Users,
+  PartyPopper,
+  HandCoins,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +67,10 @@ const ICONS: Record<string, LucideIcon> = {
   bitcoin: Bitcoin,
   "building-2": Building2,
   gem: Gem,
+  gift: Gift,
+  users: Users,
+  "party-popper": PartyPopper,
+  "hand-coins": HandCoins,
 };
 
 export function Icon({

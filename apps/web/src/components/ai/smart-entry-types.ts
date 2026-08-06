@@ -4,6 +4,7 @@ import { LOAN_TYPES } from "@/lib/loans/types";
 import { GOAL_PRIORITIES } from "@/lib/goals/types";
 import { BUDGET_PERIODS } from "@/lib/budgets/types";
 import { RECURRING_FREQUENCIES } from "@/lib/recurring/types";
+import { COLLECTION_STATUSES } from "@/lib/collections/types";
 
 /** Client-safe mirror of the server's reference lookups (id + name only —
  * no "server-only" import, so this can be passed from the page down into
@@ -20,6 +21,7 @@ export interface SmartEntryReference {
   investments: OptionRef[];
   loans: OptionRef[];
   goals: OptionRef[];
+  collections: OptionRef[];
   recurringRules: OptionRef[];
   budgets: OptionRef[];
   transactions: OptionRef[];
@@ -61,7 +63,14 @@ export interface FieldSpec {
   enumOptions?: readonly string[];
 }
 
-export type TargetKind = "investment" | "loan" | "goal" | "budget" | "recurringRule" | "transaction";
+export type TargetKind =
+  | "investment"
+  | "loan"
+  | "goal"
+  | "budget"
+  | "recurringRule"
+  | "transaction"
+  | "collection";
 
 /** Capabilities that act on an existing row — log-against (contribution/
  * payment), edit, and delete — get a target picker in addition to (or,
@@ -83,6 +92,10 @@ export const TARGET_KIND: Record<string, TargetKind | undefined> = {
   "budget.delete": "budget",
   "recurring.edit": "recurringRule",
   "recurring.delete": "recurringRule",
+  "collection.contribution": "collection",
+  "collection.edit": "collection",
+  "collection.payout": "collection",
+  "collection.delete": "collection",
 };
 
 export const CAPABILITY_ICON: Record<string, string> = {
@@ -102,6 +115,10 @@ export const CAPABILITY_ICON: Record<string, string> = {
   "budget.edit": "wallet",
   "recurring.create": "layers",
   "recurring.edit": "layers",
+  "collection.create": "gift",
+  "collection.contribution": "hand-coins",
+  "collection.edit": "gift",
+  "collection.payout": "receipt",
 };
 
 /** One entry per capability — drives the editable fields on each draft
@@ -198,6 +215,22 @@ export const FIELD_SPECS: Record<string, FieldSpec[]> = {
     },
     { key: "startDate", label: "Start date", kind: "date" },
   ],
+  "collection.create": [
+    { key: "title", label: "Name", kind: "text" },
+    { key: "purpose", label: "Purpose", kind: "text" },
+    { key: "targetAmount", label: "Target amount", kind: "amount" },
+    { key: "eventDate", label: "Event date", kind: "date" },
+  ],
+  "collection.contribution": [
+    { key: "contributorName", label: "Contributor", kind: "text" },
+    { key: "amount", label: "Amount", kind: "amount" },
+    { key: "contributedAt", label: "Date", kind: "date" },
+  ],
+  "collection.payout": [
+    { key: "amount", label: "Amount", kind: "amount" },
+    { key: "payoutAt", label: "Date", kind: "date" },
+    { key: "note", label: "Spent on", kind: "text" },
+  ],
 };
 
 FIELD_SPECS["investment.edit"] = FIELD_SPECS["investment.create"];
@@ -205,6 +238,10 @@ FIELD_SPECS["loan.edit"] = FIELD_SPECS["loan.create"];
 FIELD_SPECS["goal.edit"] = FIELD_SPECS["goal.create"];
 FIELD_SPECS["budget.edit"] = FIELD_SPECS["budget.create"];
 FIELD_SPECS["recurring.edit"] = FIELD_SPECS["recurring.create"];
+FIELD_SPECS["collection.edit"] = [
+  ...FIELD_SPECS["collection.create"],
+  { key: "status", label: "Status", kind: "select", selectSource: "enum", enumOptions: COLLECTION_STATUSES },
+];
 
 /** transaction.edit's field set depends on which row matched (income vs
  * expense have different shapes) — resolved at render time, see DraftCard. */
