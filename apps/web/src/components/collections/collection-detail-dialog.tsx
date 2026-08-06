@@ -1,43 +1,98 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ContributorForm } from "./contributor-form";
+import { ContributorForm, type ContributorFormValues } from "./contributor-form";
 import { formatCurrency } from "@savemoney/finance-engine/format";
+import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteContributor } from "@/lib/collections/actions";
+import { encryptedAddContributor } from "@/lib/collections/client-actions";
 import type { CollectionContributor, CollectionWithProgress } from "@/lib/collections/types";
+
+type ContributorAction =
+  | { type: "add"; contributor: CollectionContributor }
+  | { type: "remove"; id: string };
+
+function contributorsReducer(
+  state: CollectionContributor[],
+  action: ContributorAction,
+): CollectionContributor[] {
+  if (action.type === "add") return [action.contributor, ...state];
+  return state.filter((c) => c.id !== action.id);
+}
 
 export function CollectionDetailDialog({
   collection,
   open,
   onClose,
   dek,
+  onContributorAdded,
+  onContributorRemoved,
 }: {
   collection: CollectionWithProgress | null;
   open: boolean;
   onClose: () => void;
   dek: CryptoKey;
+  /** Mirrors this dialog's own local optimistic dispatch into the card grid
+   * behind it, so a card's total doesn't lag a refetch behind what the open
+   * dialog already shows. */
+  onContributorAdded: (collectionId: string, contributor: CollectionContributor) => void;
+  onContributorRemoved: (collectionId: string, contributorId: string) => void;
 }) {
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
-  const [, startTransition] = useTransition();
-  const [contributors, removeContributor] = useOptimistic(
+  const [pending, startTransition] = useTransition();
+  const [addError, setAddError] = useState<string | null>(null);
+  const [contributors, dispatchContributors] = useOptimistic(
     collection?.contributors ?? [],
-    (state: CollectionContributor[], id: string) => state.filter((c) => c.id !== id),
+    contributorsReducer,
   );
 
   if (!collection) return null;
 
+  // Recomputed locally from the optimistic list (not `collection.summary`)
+  // so the total/progress bar above the list update in lockstep with a
+  // just-added row instead of lagging a render behind it.
+  const summary = computeCollectionSummary(contributors, collection.targetAmount);
+
   const onDelete = (c: CollectionContributor) => {
     if (!confirm(`Remove ${c.contributorName}'s contribution?`)) return;
     startTransition(async () => {
-      removeContributor(c.id);
+      dispatchContributors({ type: "remove", id: c.id });
+      onContributorRemoved(collection.id, c.id);
       await deleteContributor(c.id);
+      invalidateFinanceData();
+      router.refresh();
+    });
+  };
+
+  const onAdd = (values: ContributorFormValues) => {
+    setAddError(null);
+    startTransition(async () => {
+      const contributor: CollectionContributor = {
+        id: `optimistic-${crypto.randomUUID()}`,
+        contributorName: values.contributorName,
+        amount: values.amount,
+        contributedAt: values.contributedAt,
+        method: values.method,
+        note: null,
+      };
+      dispatchContributors({ type: "add", contributor });
+      onContributorAdded(collection.id, contributor);
+
+      const fd = new FormData();
+      fd.set("contributorName", values.contributorName);
+      fd.set("amount", String(values.amount));
+      fd.set("contributedAt", values.contributedAt);
+      if (values.method) fd.set("method", values.method);
+
+      const result = await encryptedAddContributor(dek, collection.id, undefined, fd);
+      if (!result.ok) setAddError(result.error ?? "Couldn't add contributor.");
       invalidateFinanceData();
       router.refresh();
     });
@@ -49,7 +104,7 @@ export function CollectionDetailDialog({
         <div className="rounded-md border border-border bg-muted/30 p-3">
           <div className="flex items-baseline justify-between">
             <span className="text-lg font-semibold tabular-nums">
-              {formatCurrency(collection.summary.totalCollected, collection.currency)}
+              {formatCurrency(summary.totalCollected, collection.currency)}
             </span>
             {collection.targetAmount != null && (
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -57,11 +112,11 @@ export function CollectionDetailDialog({
               </span>
             )}
           </div>
-          {collection.summary.progress != null && (
+          {summary.progress != null && (
             <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-brand transition-[width] duration-500"
-                style={{ width: `${Math.min(100, collection.summary.progress * 100)}%` }}
+                style={{ width: `${Math.min(100, summary.progress * 100)}%` }}
               />
             </div>
           )}
@@ -93,7 +148,7 @@ export function CollectionDetailDialog({
                     <span className="tabular-nums font-medium">
                       {formatCurrency(c.amount, collection.currency)}
                     </span>
-                    {collection.status === "open" && (
+                    {collection.status === "open" && !c.id.startsWith("optimistic-") && (
                       <button
                         onClick={() => onDelete(c)}
                         aria-label={`Remove ${c.contributorName}`}
@@ -110,7 +165,7 @@ export function CollectionDetailDialog({
         </div>
 
         {collection.status === "open" && (
-          <ContributorForm collectionId={collection.id} onSuccess={() => {}} dek={dek} />
+          <ContributorForm onSubmit={onAdd} pending={pending} error={addError} />
         )}
 
         {collection.status === "closed" && collection.payoutAmount != null && (
@@ -132,4 +187,3 @@ export function CollectionDetailDialog({
     </Dialog>
   );
 }
-

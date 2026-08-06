@@ -1,56 +1,60 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
-import type { ActionResult } from "@/lib/collections/actions";
-import { encryptedAddContributor } from "@/lib/collections/client-actions";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+export interface ContributorFormValues {
+  contributorName: string;
+  amount: number;
+  contributedAt: string;
+  method: string | null;
+}
+
+/**
+ * Purely presentational — `CollectionDetailDialog` owns the actual mutation
+ * so it can dispatch an optimistic contributor into its `useOptimistic` list
+ * synchronously, before the encrypt+write round trip, the same way its own
+ * `onDelete` already does. Deliberately not `useActionState`-bound like
+ * every other module's manual form: this one lives inside a dialog that
+ * stays open and shows a live list right above it, so it needs the instant
+ * update a form-action's own transition can't give a *different*
+ * component's `useOptimistic` state without this indirection anyway.
+ */
 export function ContributorForm({
-  collectionId,
-  onSuccess,
-  dek,
+  onSubmit,
+  pending,
+  error,
 }: {
-  collectionId: string;
-  onSuccess: () => void;
-  dek: CryptoKey;
+  onSubmit: (values: ContributorFormValues) => void;
+  pending: boolean;
+  error?: string | null;
 }) {
-  const router = useRouter();
-  const invalidateFinanceData = useInvalidateFinanceData();
-  const action = encryptedAddContributor.bind(null, dek, collectionId);
-  const [state, formAction, pending] = useActionState<
-    ActionResult | undefined,
-    FormData
-  >(action, undefined);
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const contributorName = String(fd.get("contributorName") ?? "").trim();
+    const amount = Number(fd.get("amount"));
+    if (!contributorName || !Number.isFinite(amount) || amount <= 0) return;
 
-  useEffect(() => {
-    if (state?.ok) {
-      invalidateFinanceData();
-      router.refresh();
-      onSuccess();
-    }
-  }, [state, onSuccess, router, invalidateFinanceData]);
-
-  const err = state?.fieldErrors ?? {};
+    onSubmit({
+      contributorName,
+      amount,
+      contributedAt: String(fd.get("contributedAt") || todayISO()),
+      method: String(fd.get("method") ?? "").trim() || null,
+    });
+    form.reset();
+  }
 
   return (
-    <form action={formAction} className="space-y-3 rounded-md border border-border p-3">
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-border p-3">
       <div className="grid grid-cols-2 gap-2.5">
         <div className="space-y-1">
           <Label htmlFor="contributorName">Who?</Label>
-          <Input
-            id="contributorName"
-            name="contributorName"
-            placeholder="e.g. Alice"
-            aria-invalid={!!err.contributorName}
-            required
-          />
+          <Input id="contributorName" name="contributorName" placeholder="e.g. Alice" required />
         </div>
         <div className="space-y-1">
           <Label htmlFor="amount">Amount</Label>
@@ -62,7 +66,6 @@ export function ContributorForm({
             step="0.01"
             min="0"
             placeholder="0.00"
-            aria-invalid={!!err.amount}
             required
           />
         </div>
@@ -78,9 +81,7 @@ export function ContributorForm({
         </div>
       </div>
 
-      {state?.error && !state.fieldErrors && (
-        <p className="text-xs text-negative">{state.error}</p>
-      )}
+      {error && <p className="text-xs text-negative">{error}</p>}
 
       <Button type="submit" size="sm" className="w-full" disabled={pending}>
         {pending ? "Adding…" : "Add contributor"}
