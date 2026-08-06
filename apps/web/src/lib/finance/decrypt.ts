@@ -32,6 +32,10 @@ import type {
   RawContributionRow,
 } from "./raw-data";
 import type { RawGoalRow } from "@/lib/goals/queries";
+import type {
+  RawCollectionRow,
+  RawCollectionContributionRow,
+} from "@/lib/collections/queries";
 import type { RawLoanRow } from "@/lib/loans/queries";
 import type { LoanType } from "@/lib/loans/types";
 import type { RawInvestmentRow } from "@/lib/investments/queries";
@@ -120,6 +124,31 @@ export interface DecryptedActiveGoal {
   currentAmount: number;
   monthlyContribution: number | null;
   deadline: string | null;
+}
+
+export interface DecryptedCollectionRow {
+  id: string;
+  title: string;
+  purpose: string | null;
+  icon: string | null;
+  targetAmount: number | null;
+  currency: string;
+  eventDate: string | null;
+  status: string;
+  payoutAmount: number | null;
+  payoutAt: string | null;
+  payoutNote: string | null;
+  payoutExpenseId: string | null;
+}
+
+export interface DecryptedCollectionContributionRow {
+  id: string;
+  collectionId: string;
+  contributorName: string;
+  amount: number;
+  contributedAt: string;
+  method: string | null;
+  note: string | null;
 }
 
 export interface DecryptedLoanRow {
@@ -338,6 +367,51 @@ export async function decryptGoalRows(
     }),
   );
   return splitSettledWithBackfill(settled);
+}
+
+/** No backfill path here (unlike goals/loans/etc.) — `collections` never
+ * existed before client-side encryption, so there's no legacy plaintext row
+ * to recover. A row that fails to decrypt is always a genuine failure
+ * (wrong DEK, corruption), never "pre-migration plaintext". */
+export async function decryptCollectionRows(
+  rows: RawCollectionRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedCollectionRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedCollectionRow> => ({
+      id: r.id,
+      title: r.title,
+      purpose: r.purpose,
+      icon: r.icon,
+      targetAmount: r.targetAmount ? Number(await decryptPacked(r.targetAmount, dek)) : null,
+      currency: r.currency,
+      eventDate: r.eventDate,
+      status: r.status,
+      payoutAmount: r.payoutAmount ? Number(await decryptPacked(r.payoutAmount, dek)) : null,
+      payoutAt: r.payoutAt,
+      payoutNote: r.payoutNote ? await decryptPacked(r.payoutNote, dek) : null,
+      payoutExpenseId: r.payoutExpenseId,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptCollectionContributionRows(
+  rows: RawCollectionContributionRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedCollectionContributionRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedCollectionContributionRow> => ({
+      id: r.id,
+      collectionId: r.collectionId,
+      contributorName: await decryptPacked(r.contributorName, dek),
+      amount: Number(await decryptPacked(r.amount, dek)),
+      contributedAt: r.contributedAt,
+      method: r.method,
+      note: r.note ? await decryptPacked(r.note, dek) : null,
+    })),
+  );
+  return splitSettled(settled);
 }
 
 export async function decryptActiveGoals(

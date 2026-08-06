@@ -246,6 +246,108 @@ export async function listRecurringRules(session: McpSession) {
   };
 }
 
+export const listCollectionsSchema = {};
+export async function listCollections(session: McpSession) {
+  if (!db) return { error: "Database isn't configured in this environment." };
+  const rows = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)));
+
+  // Totals are never stored (see schema.ts's comment on `collections`) —
+  // summed here from decrypted contributions, same as the client does.
+  const totals = new Map<string, number>();
+  const counts = new Map<string, number>();
+  if (session.scope === "read_full" && rows.length > 0) {
+    const contributionRows = await db
+      .select()
+      .from(schema.collectionContributions)
+      .where(
+        and(
+          eq(schema.collectionContributions.userId, session.userId),
+          isNull(schema.collectionContributions.deletedAt),
+        ),
+      );
+    for (const c of contributionRows) {
+      const amount = await decryptOrNull(c.amount, session.dek);
+      if (amount == null) continue;
+      totals.set(c.collectionId, (totals.get(c.collectionId) ?? 0) + amount);
+      counts.set(c.collectionId, (counts.get(c.collectionId) ?? 0) + 1);
+    }
+  }
+
+  return {
+    collections: await Promise.all(
+      rows.map(async (c) => ({
+        id: c.id,
+        title: c.title,
+        purpose: c.purpose,
+        currency: c.currency,
+        eventDate: c.eventDate,
+        status: c.status,
+        targetAmount: session.scope === "read_full" ? await decryptOrNull(c.targetAmount, session.dek) : undefined,
+        totalCollected: session.scope === "read_full" ? (totals.get(c.id) ?? 0) : undefined,
+        contributorCount: session.scope === "read_full" ? (counts.get(c.id) ?? 0) : undefined,
+        redacted: session.scope !== "read_full",
+      })),
+    ),
+  };
+}
+
+export const getCollectionSchema = { id: z.string().uuid() };
+export async function getCollection(session: McpSession, args: { id: string }) {
+  if (!db) return { error: "Database isn't configured in this environment." };
+  const [row] = await db
+    .select()
+    .from(schema.collections)
+    .where(and(eq(schema.collections.id, args.id), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
+    .limit(1);
+  if (!row) return { error: "No collection with that id." };
+
+  const contributionRows = await db
+    .select()
+    .from(schema.collectionContributions)
+    .where(
+      and(
+        eq(schema.collectionContributions.collectionId, args.id),
+        eq(schema.collectionContributions.userId, session.userId),
+        isNull(schema.collectionContributions.deletedAt),
+      ),
+    );
+
+  const contributors = await Promise.all(
+    contributionRows.map(async (c) => ({
+      id: c.id,
+      contributorName: session.scope === "read_full" ? await decryptOrNullSafe(c.contributorName, session.dek) : undefined,
+      amount: session.scope === "read_full" ? await decryptOrNull(c.amount, session.dek) : undefined,
+      contributedAt: c.contributedAt,
+      method: c.method,
+      redacted: session.scope !== "read_full",
+    })),
+  );
+  const totalCollected =
+    session.scope === "read_full"
+      ? contributors.reduce((sum, c) => sum + (c.amount ?? 0), 0)
+      : undefined;
+
+  return {
+    collection: {
+      id: row.id,
+      title: row.title,
+      purpose: row.purpose,
+      currency: row.currency,
+      eventDate: row.eventDate,
+      status: row.status,
+      targetAmount: session.scope === "read_full" ? await decryptOrNull(row.targetAmount, session.dek) : undefined,
+      payoutAmount: session.scope === "read_full" ? await decryptOrNull(row.payoutAmount, session.dek) : undefined,
+      payoutAt: row.payoutAt,
+      totalCollected,
+      redacted: session.scope !== "read_full",
+    },
+    contributors,
+  };
+}
+
 export const getNetWorthSchema = {};
 export async function getNetWorth(session: McpSession) {
   if (!db) return { error: "Database isn't configured in this environment." };

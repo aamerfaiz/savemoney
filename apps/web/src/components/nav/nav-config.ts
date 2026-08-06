@@ -16,6 +16,7 @@ import {
   FileText,
   Bell,
   Sparkles,
+  HandCoins,
 } from "lucide-react";
 
 import { GUEST_ALLOWED_PATHS } from "@/lib/guest/constants";
@@ -45,7 +46,8 @@ export const navItems: NavItem[] = [
   { label: "Net Worth", href: "/net-worth", icon: Scale },
   { label: "Recurring", href: "/recurring", icon: Repeat },
   { label: "Bill Calendar", href: "/calendar", icon: CalendarDays },
-  { label: "Analytics", href: "/analytics", icon: PieChart, primary: true },
+  { label: "Collections", href: "/collections", icon: HandCoins, primary: true },
+  { label: "Analytics", href: "/analytics", icon: PieChart },
   { label: "Financial Score", href: "/financial-score", icon: Gauge },
   { label: "Reports", href: "/reports", icon: FileText },
   { label: "Notifications", href: "/notifications", icon: Bell },

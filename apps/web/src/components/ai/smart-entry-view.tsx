@@ -14,6 +14,7 @@ import { resolveActiveKey } from "@/lib/ai/client-key";
 import { commitClientCapability, type ClientCommitResult } from "@/lib/ai/capabilities/client-commit";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useSideData } from "@/lib/finance/use-side-data";
+import { useCollectionsData } from "@/lib/collections/use-collections-data";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
@@ -34,6 +35,12 @@ export function SmartEntryView({
   // same query the Investments/Loans/Goals pages already run, so it's
   // typically warm from TanStack Query's cache rather than a fresh fetch.
   const sideData = useSideData(currency);
+  // Feeds collection.contribution/collection.edit/collection.payout's need
+  // for the target collection's *current* decrypted state — its own query
+  // key (not bundled into useSideData, see use-collections-data.ts), so
+  // this is typically a fresh fetch the first time Smart Entry needs it
+  // rather than piggybacking on the Collections page being open too.
+  const collectionsData = useCollectionsData(currency);
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +156,7 @@ export function SmartEntryView({
           investments: sideData.data?.investmentsData.investments ?? [],
           loans: sideData.data?.loansData.loans ?? [],
           goals: sideData.data?.goalsData.goals ?? [],
+          collections: collectionsData.data?.collectionsData.collections ?? [],
         };
         await Promise.all(
           clientTargets.map(async (t) => {

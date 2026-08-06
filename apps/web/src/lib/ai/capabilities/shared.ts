@@ -23,6 +23,9 @@ export interface ReferenceData {
   investments: NamedOption[];
   loans: NamedOption[];
   goals: NamedOption[];
+  /** Only `open` collections — a closed one has nothing left to log a
+   * contribution or payout against. */
+  collections: NamedOption[];
   recurringRules: NamedOption[];
   /** Synthetic "label" per row (no real name column on budgets) — see
    * `budgetLabel()`. */
@@ -54,6 +57,7 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     { data: investments },
     { data: loans },
     { data: goals },
+    { data: collectionRows },
     { data: recurring },
     { data: budgets },
   ] = await Promise.all([
@@ -70,6 +74,13 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     // No `emi` here — encrypted since Phase 3.5.4, same reasoning.
     supabase.from("loans").select("id, name").is("deleted_at", null),
     supabase.from("goals").select("id, name").is("deleted_at", null),
+    // `title` stays plaintext (like a goal's `name`) — only amounts and
+    // contributor names are encrypted, see docs/e2ee-path-b-plan.md.
+    supabase
+      .from("collections")
+      .select("id, title")
+      .is("deleted_at", null)
+      .eq("status", "open"),
     supabase
       .from("recurring_rules")
       .select("id, name")
@@ -105,6 +116,10 @@ export async function loadReferenceData(): Promise<ReferenceData> {
     goals: ((goals ?? []) as { id: string; name: string }[]).map((g) => ({
       id: g.id,
       name: g.name,
+    })),
+    collections: ((collectionRows ?? []) as { id: string; title: string }[]).map((c) => ({
+      id: c.id,
+      name: c.title,
     })),
     recurringRules: ((recurring ?? []) as { id: string; name: string }[]).map((r) => ({
       id: r.id,

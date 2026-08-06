@@ -86,6 +86,7 @@ function targetBelongsToUser(
   if (module === "investment") return ref.investments.some((i) => i.id === targetId);
   if (module === "loan") return ref.loans.some((l) => l.id === targetId);
   if (module === "goal") return ref.goals.some((g) => g.id === targetId);
+  if (module === "collection") return ref.collections.some((c) => c.id === targetId);
   if (module === "budget") return ref.budgets.some((b) => b.id === targetId);
   if (module === "recurring") return ref.recurringRules.some((r) => r.id === targetId);
   // Transactions are capped to the ~30 most recent (see loadReferenceData) —

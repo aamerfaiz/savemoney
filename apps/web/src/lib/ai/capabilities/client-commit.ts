@@ -37,9 +37,16 @@ import { encryptedCreateLoan, encryptedRecordPayment } from "@/lib/loans/client-
 import { encryptedCreateGoal, encryptedAddContribution } from "@/lib/goals/client-actions";
 import { encryptedCreateBudget } from "@/lib/budgets/client-actions";
 import { encryptedCreateRecurringRule } from "@/lib/recurring/client-actions";
+import {
+  encryptedCreateCollection,
+  encryptedAddContributor,
+  encryptedEditCollectionFields,
+  encryptedRecordPayout,
+} from "@/lib/collections/client-actions";
 import type { InvestmentWithProjection } from "@/lib/investments/types";
 import type { LoanWithProjection } from "@/lib/loans/types";
 import type { GoalWithProgress } from "@/lib/goals/types";
+import { COLLECTION_STATUSES, type CollectionWithProgress } from "@/lib/collections/types";
 
 export interface ClientCommitResult {
   ok: boolean;
@@ -56,6 +63,64 @@ export interface ClientCommitContext {
   investments: InvestmentWithProjection[];
   loans: LoanWithProjection[];
   goals: GoalWithProgress[];
+  collections: CollectionWithProgress[];
+}
+
+/** Mirrors `extract-utils.ts`'s coercions — kept as a separate copy because
+ * that file is `"server-only"` and this one must run in the browser, same
+ * reasoning as this file's own `toFormData` above. */
+function asString(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  return s === "" ? null : s;
+}
+function toNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const cleaned = v.replace(/[^0-9.-]/g, "");
+    if (cleaned === "" || cleaned === "-") return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function normalizeDate(v: unknown): string | null {
+  const s = asString(v);
+  return s && DATE_RE.test(s) ? s : null;
+}
+function normalizeEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
+  const s = asString(v)?.toLowerCase();
+  if (!s) return null;
+  return allowed.find((a) => a.toLowerCase() === s) ?? null;
+}
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+interface ContributorDraft {
+  contributorName?: unknown;
+  amount?: unknown;
+  contributedAt?: unknown;
+  method?: unknown;
+}
+
+/** Adds one contributor from a `collection.create`/`collection.edit`
+ * draft's `contributors` array — same shape `parseContributorsArg`
+ * (definitions.ts) already validated server-side, re-coerced here since
+ * this file can't import that "server-only" module. */
+async function addOneContributor(
+  dek: CryptoKey,
+  collectionId: string,
+  draft: ContributorDraft,
+): Promise<ClientCommitResult> {
+  const fd = toFormData({
+    contributorName: asString(draft.contributorName),
+    amount: toNumber(draft.amount),
+    contributedAt: normalizeDate(draft.contributedAt) ?? todayISO(),
+    method: asString(draft.method),
+  });
+  return encryptedAddContributor(dek, collectionId, undefined, fd);
 }
 
 /** Mirrors `capabilities/shared.ts`'s `toFormData` — kept as a separate
@@ -122,6 +187,59 @@ export async function commitClientCapability(
 
     case "recurring.create":
       return encryptedCreateRecurringRule(ctx.dek, undefined, fd);
+
+    case "collection.create": {
+      const { contributors, ...scalarFields } = fields as {
+        contributors?: ContributorDraft[];
+      } & Record<string, unknown>;
+      const result = await encryptedCreateCollection(ctx.dek, undefined, toFormData(scalarFields));
+      if (!result.ok || !result.id) return result;
+      if (Array.isArray(contributors)) {
+        for (const c of contributors) {
+          const r = await addOneContributor(ctx.dek, result.id, c);
+          if (!r.ok) return r;
+        }
+      }
+      return { ok: true };
+    }
+
+    case "collection.contribution": {
+      const collection = ctx.collections.find((c) => c.id === targetId);
+      if (!collection) return { ok: false, error: "That collection could not be found." };
+      return encryptedAddContributor(ctx.dek, collection.id, undefined, fd);
+    }
+
+    case "collection.edit": {
+      const collection = ctx.collections.find((c) => c.id === targetId);
+      if (!collection) return { ok: false, error: "That collection could not be found." };
+      const { contributors, ...scalarFields } = fields as {
+        contributors?: ContributorDraft[];
+      } & Record<string, unknown>;
+
+      const editResult = await encryptedEditCollectionFields(ctx.dek, collection, {
+        title: asString(scalarFields.title) ?? undefined,
+        purpose: "purpose" in scalarFields ? asString(scalarFields.purpose) : undefined,
+        icon: "icon" in scalarFields ? asString(scalarFields.icon) : undefined,
+        targetAmount: "targetAmount" in scalarFields ? toNumber(scalarFields.targetAmount) : undefined,
+        eventDate: "eventDate" in scalarFields ? normalizeDate(scalarFields.eventDate) : undefined,
+        status: normalizeEnum(scalarFields.status, COLLECTION_STATUSES) ?? undefined,
+      });
+      if (!editResult.ok) return editResult;
+
+      if (Array.isArray(contributors)) {
+        for (const c of contributors) {
+          const r = await addOneContributor(ctx.dek, collection.id, c);
+          if (!r.ok) return r;
+        }
+      }
+      return { ok: true };
+    }
+
+    case "collection.payout": {
+      const collection = ctx.collections.find((c) => c.id === targetId);
+      if (!collection) return { ok: false, error: "That collection could not be found." };
+      return encryptedRecordPayout(ctx.dek, collection.id, undefined, fd);
+    }
 
     default:
       return { ok: false, error: `"${capability}" isn't available yet.` };

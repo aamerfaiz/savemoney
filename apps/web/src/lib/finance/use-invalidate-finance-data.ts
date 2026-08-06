@@ -14,7 +14,12 @@
  * Every module feeds the safe-to-spend/health-score numbers on
  * `useFinanceData` (goal contributions, loan EMIs, investment SIPs), so a
  * mutation on any module invalidates both keys rather than trying to track
- * which one a given change actually affects.
+ * which one a given change actually affects. `collections-data` is the one
+ * exception that doesn't feed those numbers (see use-collections-data.ts),
+ * but it's invalidated here too anyway — cheap (just marks it stale) and
+ * keeps every form calling one shared "refresh whatever might have
+ * changed" hook rather than a per-module variant. Collections' payout flow
+ * also writes a real expense row, which does need `finance-data` refreshed.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,5 +30,6 @@ export function useInvalidateFinanceData() {
   return useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["finance-data"] });
     queryClient.invalidateQueries({ queryKey: ["finance-side-data"] });
+    queryClient.invalidateQueries({ queryKey: ["collections-data"] });
   }, [queryClient]);
 }
