@@ -13,12 +13,38 @@ import { CollectionDetailDialog } from "./collection-detail-dialog";
 import { PayoutForm } from "./payout-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@savemoney/finance-engine/format";
+import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteCollection } from "@/lib/collections/actions";
 import type { CollectionsData } from "@/lib/collections/compute";
-import type { CollectionWithProgress } from "@/lib/collections/types";
+import type { CollectionContributor, CollectionWithProgress } from "@/lib/collections/types";
 import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
+
+type CollectionsAction =
+  | { type: "removeCollection"; id: string }
+  | { type: "addContributor"; collectionId: string; contributor: CollectionContributor }
+  | { type: "removeContributor"; collectionId: string; contributorId: string };
+
+/** Keeps a card's own totals in step with an add/remove happening inside its
+ * still-open detail dialog — mirrors the recompute `CollectionDetailDialog`
+ * already does locally for its own list, just at the card-grid level too. */
+function collectionsReducer(
+  state: CollectionWithProgress[],
+  action: CollectionsAction,
+): CollectionWithProgress[] {
+  if (action.type === "removeCollection") {
+    return state.filter((c) => c.id !== action.id);
+  }
+  return state.map((c) => {
+    if (c.id !== action.collectionId) return c;
+    const contributors =
+      action.type === "addContributor"
+        ? [action.contributor, ...c.contributors]
+        : c.contributors.filter((ct) => ct.id !== action.contributorId);
+    return { ...c, contributors, summary: computeCollectionSummary(contributors, c.targetAmount) };
+  });
+}
 
 export function CollectionsView({
   data,
@@ -43,10 +69,7 @@ export function CollectionsView({
   const [payingOut, setPayingOut] = useState<CollectionWithProgress | null>(null);
   const { currency } = data;
 
-  const [collections, removeCollection] = useOptimistic(
-    data.collections,
-    (state: CollectionWithProgress[], id: string) => state.filter((c) => c.id !== id),
-  );
+  const [collections, dispatchCollections] = useOptimistic(data.collections, collectionsReducer);
 
   const open = collections.filter((c) => c.status === "open");
   const closed = collections.filter((c) => c.status === "closed");
@@ -54,7 +77,7 @@ export function CollectionsView({
   const onDelete = (c: CollectionWithProgress) => {
     if (!confirm(`Delete "${c.title}"? This removes all of its contributors too.`)) return;
     startTransition(async () => {
-      removeCollection(c.id);
+      dispatchCollections({ type: "removeCollection", id: c.id });
       await deleteCollection(c.id);
       invalidateFinanceData();
       router.refresh();
@@ -159,6 +182,12 @@ export function CollectionsView({
         open={!!viewing}
         onClose={() => setViewing(null)}
         dek={dek}
+        onContributorAdded={(collectionId, contributor) =>
+          dispatchCollections({ type: "addContributor", collectionId, contributor })
+        }
+        onContributorRemoved={(collectionId, contributorId) =>
+          dispatchCollections({ type: "removeContributor", collectionId, contributorId })
+        }
       />
 
       <Dialog
