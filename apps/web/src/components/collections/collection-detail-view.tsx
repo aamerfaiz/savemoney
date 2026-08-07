@@ -145,7 +145,7 @@ export function CollectionDetailView({
       </Link>
 
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <span
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-md",
@@ -155,11 +155,11 @@ export function CollectionDetailView({
             <Icon name={collection.icon ?? "gift"} className="size-5" />
           </span>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-xl font-semibold tracking-tight lg:text-2xl">{collection.title}</h1>
-              {collection.status === "closed" && <Badge variant="default">Closed</Badge>}
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight lg:text-2xl">{collection.title}</h1>
+              {collection.status === "closed" && <Badge variant="default" className="shrink-0">Closed</Badge>}
             </div>
-            {collection.purpose && <p className="text-sm text-muted-foreground">{collection.purpose}</p>}
+            {collection.purpose && <p className="truncate text-sm text-muted-foreground">{collection.purpose}</p>}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
