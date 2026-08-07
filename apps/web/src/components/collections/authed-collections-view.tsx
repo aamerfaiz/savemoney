@@ -8,20 +8,12 @@ import { useDecryptProgress } from "@/lib/finance/decrypt-progress";
 import { useDelayedLoading } from "@/lib/finance/use-delayed-loading";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
-import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
 
-/** The real (non-guest) Collections page's client boundary — mirrors
- * AuthedGoalsView: contributor names/amounts are encrypted, so the fetch +
- * decrypt has to happen client-side once the vault is unlocked. */
-export function AuthedCollectionsView({
-  currency,
-  expenseCategories,
-  accounts,
-}: {
-  currency: CurrencyCode;
-  expenseCategories: CategoryOption[];
-  accounts: AccountOption[];
-}) {
+/** The real (non-guest) Collections list page's client boundary — mirrors
+ * AuthedGoalsView: contributor/participant names and amounts are encrypted,
+ * so the fetch + decrypt has to happen client-side once the vault is
+ * unlocked. */
+export function AuthedCollectionsView({ currency }: { currency: CurrencyCode }) {
   const dek = useVaultStore((s) => s.dek);
   const data = useCollectionsData(currency);
   const showLoading = useDelayedLoading(data.isLoading);
@@ -45,13 +37,14 @@ export function AuthedCollectionsView({
     );
   }
 
+  const { collectionsData, failedCollectionCount, failedParticipantCount, failedContributionCount, failedExpenseCount } =
+    data.data;
+
   return (
     <CollectionsView
-      data={data.data.collectionsData}
+      data={collectionsData}
       dek={dek}
-      failedCount={data.data.failedCollectionCount + data.data.failedContributionCount}
-      expenseCategories={expenseCategories}
-      accounts={accounts}
+      failedCount={failedCollectionCount + failedParticipantCount + failedContributionCount + failedExpenseCount}
     />
   );
 }

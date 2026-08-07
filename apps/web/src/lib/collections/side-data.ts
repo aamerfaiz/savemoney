@@ -6,12 +6,19 @@
  * doesn't feed the budget engine and has no reason to be bundled into
  * `useSideData`'s single query — see use-collections-data.ts. */
 
-import { fetchCollectionsRaw, fetchCollectionContributionsRaw } from "./queries";
+import {
+  fetchCollectionsRaw,
+  fetchCollectionParticipantsRaw,
+  fetchCollectionContributionsRaw,
+  fetchCollectionExpensesRaw,
+} from "./queries";
 
 export async function fetchCollectionsDataAction() {
-  const [collections, contributions] = await Promise.all([
+  const [collections, participants, contributions, expenses] = await Promise.all([
     fetchCollectionsRaw(),
+    fetchCollectionParticipantsRaw(),
     fetchCollectionContributionsRaw(),
+    fetchCollectionExpensesRaw(),
   ]);
-  return { collections, contributions };
+  return { collections, participants, contributions, expenses };
 }

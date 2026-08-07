@@ -35,7 +35,7 @@ export function SmartEntryView({
   // same query the Investments/Loans/Goals pages already run, so it's
   // typically warm from TanStack Query's cache rather than a fresh fetch.
   const sideData = useSideData(currency);
-  // Feeds collection.contribution/collection.edit/collection.payout's need
+  // Feeds collection.contribution/collection.edit/collection.expense's need
   // for the target collection's *current* decrypted state — its own query
   // key (not bundled into useSideData, see use-collections-data.ts), so
   // this is typically a fresh fetch the first time Smart Entry needs it

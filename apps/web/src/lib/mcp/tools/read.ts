@@ -255,24 +255,42 @@ export async function listCollections(session: McpSession) {
     .where(and(eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)));
 
   // Totals are never stored (see schema.ts's comment on `collections`) —
-  // summed here from decrypted contributions, same as the client does.
-  const totals = new Map<string, number>();
+  // summed here from decrypted contributions/expenses, same as the client
+  // does.
+  const collected = new Map<string, number>();
   const counts = new Map<string, number>();
+  const spent = new Map<string, number>();
   if (session.scope === "read_full" && rows.length > 0) {
-    const contributionRows = await db
-      .select()
-      .from(schema.collectionContributions)
-      .where(
-        and(
-          eq(schema.collectionContributions.userId, session.userId),
-          isNull(schema.collectionContributions.deletedAt),
+    const [contributionRows, expenseRows] = await Promise.all([
+      db
+        .select()
+        .from(schema.collectionContributions)
+        .where(
+          and(
+            eq(schema.collectionContributions.userId, session.userId),
+            isNull(schema.collectionContributions.deletedAt),
+          ),
         ),
-      );
+      db
+        .select()
+        .from(schema.collectionExpenses)
+        .where(
+          and(
+            eq(schema.collectionExpenses.userId, session.userId),
+            isNull(schema.collectionExpenses.deletedAt),
+          ),
+        ),
+    ]);
     for (const c of contributionRows) {
       const amount = await decryptOrNull(c.amount, session.dek);
       if (amount == null) continue;
-      totals.set(c.collectionId, (totals.get(c.collectionId) ?? 0) + amount);
+      collected.set(c.collectionId, (collected.get(c.collectionId) ?? 0) + amount);
       counts.set(c.collectionId, (counts.get(c.collectionId) ?? 0) + 1);
+    }
+    for (const e of expenseRows) {
+      const amount = await decryptOrNull(e.amount, session.dek);
+      if (amount == null) continue;
+      spent.set(e.collectionId, (spent.get(e.collectionId) ?? 0) + amount);
     }
   }
 
@@ -286,7 +304,8 @@ export async function listCollections(session: McpSession) {
         eventDate: c.eventDate,
         status: c.status,
         targetAmount: session.scope === "read_full" ? await decryptOrNull(c.targetAmount, session.dek) : undefined,
-        totalCollected: session.scope === "read_full" ? (totals.get(c.id) ?? 0) : undefined,
+        totalCollected: session.scope === "read_full" ? (collected.get(c.id) ?? 0) : undefined,
+        totalSpent: session.scope === "read_full" ? (spent.get(c.id) ?? 0) : undefined,
         contributorCount: session.scope === "read_full" ? (counts.get(c.id) ?? 0) : undefined,
         redacted: session.scope !== "read_full",
       })),
@@ -304,31 +323,81 @@ export async function getCollection(session: McpSession, args: { id: string }) {
     .limit(1);
   if (!row) return { error: "No collection with that id." };
 
-  const contributionRows = await db
-    .select()
-    .from(schema.collectionContributions)
-    .where(
-      and(
-        eq(schema.collectionContributions.collectionId, args.id),
-        eq(schema.collectionContributions.userId, session.userId),
-        isNull(schema.collectionContributions.deletedAt),
+  const [participantRows, contributionRows, expenseRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.collectionParticipants)
+      .where(
+        and(
+          eq(schema.collectionParticipants.collectionId, args.id),
+          eq(schema.collectionParticipants.userId, session.userId),
+          isNull(schema.collectionParticipants.deletedAt),
+        ),
       ),
-    );
+    db
+      .select()
+      .from(schema.collectionContributions)
+      .where(
+        and(
+          eq(schema.collectionContributions.collectionId, args.id),
+          eq(schema.collectionContributions.userId, session.userId),
+          isNull(schema.collectionContributions.deletedAt),
+        ),
+      ),
+    db
+      .select()
+      .from(schema.collectionExpenses)
+      .where(
+        and(
+          eq(schema.collectionExpenses.collectionId, args.id),
+          eq(schema.collectionExpenses.userId, session.userId),
+          isNull(schema.collectionExpenses.deletedAt),
+        ),
+      ),
+  ]);
 
-  const contributors = await Promise.all(
+  const participantNameById = new Map<string, string | null>();
+  const participants = await Promise.all(
+    participantRows.map(async (p) => {
+      const displayName = session.scope === "read_full" ? await decryptOrNullSafe(p.displayName, session.dek) : null;
+      participantNameById.set(p.id, displayName);
+      return { id: p.id, displayName: session.scope === "read_full" ? displayName : undefined, redacted: session.scope !== "read_full" };
+    }),
+  );
+
+  const contributions = await Promise.all(
     contributionRows.map(async (c) => ({
       id: c.id,
-      contributorName: session.scope === "read_full" ? await decryptOrNullSafe(c.contributorName, session.dek) : undefined,
+      contributorName:
+        session.scope === "read_full"
+          ? c.participantId
+            ? (participantNameById.get(c.participantId) ?? null)
+            : c.contributorName
+              ? await decryptOrNullSafe(c.contributorName, session.dek)
+              : null
+          : undefined,
       amount: session.scope === "read_full" ? await decryptOrNull(c.amount, session.dek) : undefined,
       contributedAt: c.contributedAt,
       method: c.method,
       redacted: session.scope !== "read_full",
     })),
   );
+
+  const expenses = await Promise.all(
+    expenseRows.map(async (e) => ({
+      id: e.id,
+      description: session.scope === "read_full" && e.description ? await decryptOrNullSafe(e.description, session.dek) : undefined,
+      amount: session.scope === "read_full" ? await decryptOrNull(e.amount, session.dek) : undefined,
+      spentAt: e.spentAt,
+      paidByName: e.paidByParticipantId ? (participantNameById.get(e.paidByParticipantId) ?? null) : null,
+      redacted: session.scope !== "read_full",
+    })),
+  );
+
   const totalCollected =
-    session.scope === "read_full"
-      ? contributors.reduce((sum, c) => sum + (c.amount ?? 0), 0)
-      : undefined;
+    session.scope === "read_full" ? contributions.reduce((sum, c) => sum + (c.amount ?? 0), 0) : undefined;
+  const totalSpent =
+    session.scope === "read_full" ? expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0) : undefined;
 
   return {
     collection: {
@@ -339,12 +408,17 @@ export async function getCollection(session: McpSession, args: { id: string }) {
       eventDate: row.eventDate,
       status: row.status,
       targetAmount: session.scope === "read_full" ? await decryptOrNull(row.targetAmount, session.dek) : undefined,
-      payoutAmount: session.scope === "read_full" ? await decryptOrNull(row.payoutAmount, session.dek) : undefined,
-      payoutAt: row.payoutAt,
       totalCollected,
+      totalSpent,
+      balance:
+        session.scope === "read_full" && totalCollected != null && totalSpent != null
+          ? totalCollected - totalSpent
+          : undefined,
       redacted: session.scope !== "read_full",
     },
-    contributors,
+    participants,
+    contributions,
+    expenses,
   };
 }
 

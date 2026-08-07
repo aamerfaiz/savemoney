@@ -94,7 +94,7 @@ export const TARGET_KIND: Record<string, TargetKind | undefined> = {
   "recurring.delete": "recurringRule",
   "collection.contribution": "collection",
   "collection.edit": "collection",
-  "collection.payout": "collection",
+  "collection.expense": "collection",
   "collection.delete": "collection",
 };
 
@@ -118,7 +118,7 @@ export const CAPABILITY_ICON: Record<string, string> = {
   "collection.create": "gift",
   "collection.contribution": "hand-coins",
   "collection.edit": "gift",
-  "collection.payout": "receipt",
+  "collection.expense": "receipt",
 };
 
 /** One entry per capability — drives the editable fields on each draft
@@ -226,10 +226,11 @@ export const FIELD_SPECS: Record<string, FieldSpec[]> = {
     { key: "amount", label: "Amount", kind: "amount" },
     { key: "contributedAt", label: "Date", kind: "date" },
   ],
-  "collection.payout": [
+  "collection.expense": [
     { key: "amount", label: "Amount", kind: "amount" },
-    { key: "payoutAt", label: "Date", kind: "date" },
-    { key: "note", label: "Spent on", kind: "text" },
+    { key: "spentAt", label: "Date", kind: "date" },
+    { key: "description", label: "Spent on", kind: "text" },
+    { key: "categoryId", label: "Category", kind: "select", selectSource: "expenseCategory" },
   ],
 };
 

@@ -30,8 +30,7 @@ import { deleteRecurringRule } from "@/lib/recurring/actions";
 
 import {
   collectionInputSchema,
-  contributorInputSchema,
-  payoutInputSchema,
+  expenseInputSchema,
   COLLECTION_ICONS,
   COLLECTION_STATUSES,
 } from "@/lib/collections/types";
@@ -796,9 +795,22 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "Money one person contributed toward an EXISTING open collection " +
       "pool. args: collectionTitle (string, required — must refer to an " +
       "open collection the user already has), contributorName (string, " +
-      "required — who gave the money), amount (number, required), date " +
+      "required — who gave the money; matched against, or added to, that " +
+      "collection's participant roster), amount (number, required), date " +
       "(YYYY-MM-DD, optional, defaults to today), method (string, optional).",
-    schema: contributorInputSchema,
+    // Decorative only — `requiresClientEncryption` capabilities never reach
+    // commit.ts's schema check (see `clientOnlyExecute`'s comment below).
+    // `contributionInputSchema` (collections/types.ts) needs a resolved
+    // `participantId`, which this capability can't produce server-side
+    // (participant names are encrypted — see client-commit.ts's
+    // `collection.contribution` case, which resolves/creates the
+    // participant client-side instead), so this uses a lighter shape.
+    schema: z.object({
+      contributorName: z.string().min(1),
+      amount: z.number().positive(),
+      contributedAt: z.string(),
+      method: z.string().nullable().optional(),
+    }),
     async resolve(args, ref) {
       const nameGuess = asString(args.collectionTitle);
       const collection = matchByName(nameGuess, ref.collections);
@@ -816,19 +828,17 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
         return { ok: false, warnings, error: "Missing contributor name or amount." };
       }
 
-      const parsed = contributorInputSchema.safeParse({
-        contributorName,
-        amount,
-        contributedAt: normalizeDate(args.date) ?? todayISO(),
-        method: asString(args.method),
-        note: null,
-      });
-      if (!parsed.success) {
-        return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };
-      }
+      // `contributorName` is a free-text name here, not a resolved id — the
+      // client's decrypted participant roster (only it can read those
+      // names) does the real match-or-create at commit time.
       return {
         ok: true,
-        fields: parsed.data,
+        fields: {
+          contributorName,
+          amount,
+          contributedAt: normalizeDate(args.date) ?? todayISO(),
+          method: asString(args.method),
+        },
         targetId: collection?.id,
         targetLabel: collection?.name,
         warnings,
@@ -913,21 +923,22 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
   },
 
   {
-    key: "collection.payout",
+    key: "collection.expense",
     module: "collection",
-    label: "Collection payout",
+    label: "Collection expense",
     requiresTarget: true,
     requiresClientEncryption: true,
     destructive: false,
     actionLabel: "Add",
     promptDescription:
-      "Recording that the money pooled in an EXISTING open collection was " +
-      "spent — this also closes the collection. args: collectionTitle " +
-      "(string, required — must refer to an open collection the user " +
-      "already has), amount (number, required), date (YYYY-MM-DD, " +
-      "optional, defaults to today), note (string, optional — what it was " +
-      "spent on).",
-    schema: payoutInputSchema,
+      "Money spent out of an EXISTING open collection's pool — a collection " +
+      "can have several of these over time (it does NOT close the " +
+      "collection; that's a separate collection.edit status change). args: " +
+      "collectionTitle (string, required — must refer to an open collection " +
+      "the user already has), amount (number, required), description " +
+      "(string, optional — what it was spent on), categoryName (string, " +
+      "optional), date (YYYY-MM-DD, optional, defaults to today).",
+    schema: expenseInputSchema,
     async resolve(args, ref) {
       const nameGuess = asString(args.collectionTitle);
       const collection = matchByName(nameGuess, ref.collections);
@@ -942,13 +953,20 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       const amount = toNumber(args.amount);
       if (amount == null) return { ok: false, warnings, error: "Missing or invalid amount." };
 
-      const parsed = payoutInputSchema.safeParse({
+      const categoryGuess = asString(args.categoryName);
+      const category = matchByName(categoryGuess, ref.expenseCategories);
+      if (categoryGuess && !category) {
+        warnings.push(`Couldn't match category "${categoryGuess}" — pick one below.`);
+      }
+
+      const parsed = expenseInputSchema.safeParse({
         amount,
-        payoutAt: normalizeDate(args.date) ?? todayISO(),
-        note: asString(args.note),
-        categoryId: null,
+        description: asString(args.description),
+        categoryId: category?.id ?? null,
+        paidByParticipantId: null,
+        spentAt: normalizeDate(args.date) ?? todayISO(),
+        linkToTransaction: false,
         accountId: null,
-        createExpense: true,
       });
       if (!parsed.success) {
         return { ok: false, warnings, error: parsed.error.issues[0]?.message ?? "Invalid data." };

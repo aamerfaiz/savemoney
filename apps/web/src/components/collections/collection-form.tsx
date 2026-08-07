@@ -78,7 +78,7 @@ export function CollectionForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="purpose">What's it for? (optional)</Label>
+        <Label htmlFor="purpose">What&apos;s it for? (optional)</Label>
         <Input
           id="purpose"
           name="purpose"

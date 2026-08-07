@@ -11,19 +11,19 @@ export interface ActionResult {
   ok: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
-  /** Set by `createCollection` — lets Smart Entry's client-commit chain a
-   * "create with a full set of contributors" prompt into the follow-up
-   * `addContributor` calls without a second round trip to look the row up. */
+  /** Set by create actions that need to be chained (e.g. Smart Entry's
+   * "create with a full contributor list" flow, or "create a participant
+   * then add their contribution"). */
   id?: string;
 }
 
 /**
  * What the server actually validates: shape only, for the fields that stay
- * plaintext. `targetAmount`/`payoutAmount` and every contributor's `amount`/
- * `contributorName` arrive as already-packed ciphertext — the client
- * validated the real values (positive, within range) *before* encrypting,
- * via the same schemas the UI form uses. See src/lib/collections/
- * client-actions.ts, which builds this input.
+ * plaintext. `targetAmount`, every participant's `displayName`, every
+ * contribution's `amount`, and every expense's `amount`/`description`
+ * arrive as already-packed ciphertext — the client validated the real
+ * values before encrypting, via the same schemas the UI form uses. See
+ * src/lib/collections/client-actions.ts, which builds this input.
  */
 const encryptedCollectionInputSchema = z.object({
   title: z.string().trim().min(1).max(80),
@@ -41,26 +41,37 @@ const encryptedCollectionInputSchema = z.object({
 
 export type EncryptedCollectionInput = z.infer<typeof encryptedCollectionInputSchema>;
 
-const encryptedContributorInputSchema = z.object({
-  contributorName: z.string().min(1),
+const encryptedParticipantInputSchema = z.object({
+  displayName: z.string().min(1),
+});
+
+export type EncryptedParticipantInput = z.infer<typeof encryptedParticipantInputSchema>;
+
+const encryptedContributionInputSchema = z.object({
+  participantId: z.string().uuid(),
   amount: z.string().min(1),
   contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   method: z.string().trim().max(40).optional().nullable(),
   note: z.string().trim().max(200).optional().nullable(),
 });
 
-export type EncryptedContributorInput = z.infer<typeof encryptedContributorInputSchema>;
+export type EncryptedContributionInput = z.infer<typeof encryptedContributionInputSchema>;
 
-const encryptedPayoutInputSchema = z.object({
+const encryptedExpenseInputSchema = z.object({
   amount: z.string().min(1),
-  payoutAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  note: z.string().trim().max(200).optional().nullable(),
+  description: z.string().trim().max(200).optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
+  paidByParticipantId: z.string().uuid().optional().nullable(),
+  spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  linkToTransaction: z.boolean(),
   accountId: z.string().uuid().optional().nullable(),
-  createExpense: z.boolean(),
 });
 
-export type EncryptedPayoutInput = z.infer<typeof encryptedPayoutInputSchema>;
+export type EncryptedExpenseInput = z.infer<typeof encryptedExpenseInputSchema>;
+
+/* ----------------------------------------------------------------------- */
+/* Collections                                                              */
+/* ----------------------------------------------------------------------- */
 
 export async function createCollection(input: EncryptedCollectionInput): Promise<ActionResult> {
   const parsed = encryptedCollectionInputSchema.safeParse(input);
@@ -118,6 +129,7 @@ export async function updateCollection(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/collections");
+  revalidatePath(`/collections/${id}`);
   return { ok: true };
 }
 
@@ -136,11 +148,119 @@ export async function deleteCollection(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function addContributor(
+/* ----------------------------------------------------------------------- */
+/* Participants                                                             */
+/* ----------------------------------------------------------------------- */
+
+export async function createParticipant(
   collectionId: string,
-  input: EncryptedContributorInput,
+  input: EncryptedParticipantInput,
 ): Promise<ActionResult> {
-  const parsed = encryptedContributorInputSchema.safeParse(input);
+  const parsed = encryptedParticipantInputSchema.safeParse(input);
+  if (!parsed.success) return fieldErrors(parsed.error);
+
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
+
+  const { data, error } = await supabase
+    .from("collection_participants")
+    .insert({
+      collection_id: collectionId,
+      user_id: userId,
+      display_name: parsed.data.displayName,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true, id: (data as { id: string }).id };
+}
+
+/** Refuses to delete a participant who has any contributions recorded —
+ * removing them would silently orphan that money. The UI should surface
+ * this rather than let the FK constraint reject it with a raw DB error. */
+export async function deleteParticipant(
+  collectionId: string,
+  participantId: string,
+): Promise<ActionResult> {
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase } = auth;
+
+  const { count } = await supabase
+    .from("collection_contributions")
+    .select("id", { count: "exact", head: true })
+    .eq("participant_id", participantId)
+    .is("deleted_at", null);
+  if (count && count > 0) {
+    return {
+      ok: false,
+      error: `${count} contribution${count === 1 ? "" : "s"} would be orphaned — remove those first.`,
+    };
+  }
+
+  const { error } = await supabase
+    .from("collection_participants")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", participantId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true };
+}
+
+/** One-click "add to roster" for a pre-participants-table (legacy)
+ * contribution row: creates a participant and re-points every legacy
+ * contribution sharing the given decrypted name onto it. The name arrives
+ * already re-encrypted for the new participant row; matching which legacy
+ * rows to move happens client-side (only the browser can decrypt
+ * `contributor_name` to compare), so this just takes the resolved id list. */
+export async function migrateLegacyContributions(
+  collectionId: string,
+  input: EncryptedParticipantInput,
+  contributionIds: string[],
+): Promise<ActionResult> {
+  const parsed = encryptedParticipantInputSchema.safeParse(input);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  if (contributionIds.length === 0) return { ok: false, error: "Nothing to migrate." };
+
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
+
+  const { data, error } = await supabase
+    .from("collection_participants")
+    .insert({
+      collection_id: collectionId,
+      user_id: userId,
+      display_name: parsed.data.displayName,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  const participantId = (data as { id: string }).id;
+
+  const { error: updErr } = await supabase
+    .from("collection_contributions")
+    .update({ participant_id: participantId, contributor_name: null })
+    .in("id", contributionIds);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true, id: participantId };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Contributions                                                            */
+/* ----------------------------------------------------------------------- */
+
+export async function addContribution(
+  collectionId: string,
+  input: EncryptedContributionInput,
+): Promise<ActionResult> {
+  const parsed = encryptedContributionInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -151,7 +271,7 @@ export async function addContributor(
   const { error } = await supabase.from("collection_contributions").insert({
     collection_id: collectionId,
     user_id: userId,
-    contributor_name: v.contributorName,
+    participant_id: v.participantId,
     amount: v.amount,
     contributed_at: v.contributedAt,
     method: v.method ?? null,
@@ -159,11 +279,14 @@ export async function addContributor(
   });
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/collections");
+  revalidatePath(`/collections/${collectionId}`);
   return { ok: true };
 }
 
-export async function deleteContributor(id: string): Promise<ActionResult> {
+export async function deleteContribution(
+  collectionId: string,
+  id: string,
+): Promise<ActionResult> {
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase } = auth;
@@ -174,20 +297,23 @@ export async function deleteContributor(id: string): Promise<ActionResult> {
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/collections");
+  revalidatePath(`/collections/${collectionId}`);
   return { ok: true };
 }
 
-/** Records that the pooled money was spent — always closes the collection
- * (once it's spent, there's nothing left to collect toward). When
- * `createExpense` is true, also inserts a linked row into `expenses` so the
- * spend shows up in the user's own Transactions feed, closing the
- * collect-then-spend loop. */
-export async function recordPayout(
+/* ----------------------------------------------------------------------- */
+/* Expenses                                                                 */
+/* ----------------------------------------------------------------------- */
+
+/** Records money spent out of a collection's pool. When `linkToTransaction`
+ * is set, also inserts a linked row into `expenses` so the spend shows up
+ * in the user's own Transactions feed — optional per expense, since not
+ * every pool spend was fronted by the organizer's own money. */
+export async function addExpense(
   collectionId: string,
-  input: EncryptedPayoutInput,
+  input: EncryptedExpenseInput,
 ): Promise<ActionResult> {
-  const parsed = encryptedPayoutInputSchema.safeParse(input);
+  const parsed = encryptedExpenseInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -195,8 +321,8 @@ export async function recordPayout(
   const { supabase, userId } = auth;
   const v = parsed.data;
 
-  let payoutExpenseId: string | null = null;
-  if (v.createExpense) {
+  let linkedTransactionId: string | null = null;
+  if (v.linkToTransaction) {
     const currency = await baseCurrencyFor(supabase, userId);
     const { data, error: insErr } = await supabase
       .from("expenses")
@@ -206,30 +332,45 @@ export async function recordPayout(
         currency,
         category_id: v.categoryId ?? null,
         account_id: v.accountId ?? null,
-        description: null,
-        note: v.note ?? null,
-        spent_at: v.payoutAt,
+        description: v.description ?? null,
+        note: null,
+        spent_at: v.spentAt,
       })
       .select("id")
       .single();
     if (insErr) return { ok: false, error: insErr.message };
-    payoutExpenseId = (data as { id: string }).id;
+    linkedTransactionId = (data as { id: string }).id;
   }
 
-  const { error: updErr } = await supabase
-    .from("collections")
-    .update({
-      payout_amount: v.amount,
-      payout_at: v.payoutAt,
-      payout_note: v.note ?? null,
-      payout_expense_id: payoutExpenseId,
-      status: "closed",
-    })
-    .eq("id", collectionId);
-  if (updErr) return { ok: false, error: updErr.message };
+  const { error } = await supabase.from("collection_expenses").insert({
+    collection_id: collectionId,
+    user_id: userId,
+    amount: v.amount,
+    description: v.description ?? null,
+    category_id: v.categoryId ?? null,
+    paid_by_participant_id: v.paidByParticipantId ?? null,
+    spent_at: v.spentAt,
+    linked_transaction_id: linkedTransactionId,
+  });
+  if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/collections");
+  revalidatePath(`/collections/${collectionId}`);
   revalidatePath("/transactions");
+  return { ok: true };
+}
+
+export async function deleteExpense(collectionId: string, id: string): Promise<ActionResult> {
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase } = auth;
+
+  const { error } = await supabase
+    .from("collection_expenses")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
   return { ok: true };
 }
 
