@@ -11,20 +11,23 @@ import { encryptPacked } from "@/lib/vault/crypto";
 import {
   createCollection,
   updateCollection,
-  createParticipant,
-  migrateLegacyContributions,
+  createContributor,
+  linkLegacyContributions,
   addContribution,
+  updateContribution,
   addExpense,
   type ActionResult,
   type EncryptedCollectionInput,
-  type EncryptedParticipantInput,
+  type EncryptedContributorInput,
   type EncryptedContributionInput,
+  type EncryptedContributionEditInput,
   type EncryptedExpenseInput,
 } from "./actions";
 import {
   collectionInputSchema,
-  participantInputSchema,
+  contributorInputSchema,
   contributionInputSchema,
+  contributionEditInputSchema,
   expenseInputSchema,
   type CollectionStatus,
   type CollectionWithProgress,
@@ -145,40 +148,36 @@ export async function encryptedEditCollectionFields(
 }
 
 /* ----------------------------------------------------------------------- */
-/* Participants                                                             */
+/* Contributors (the roster)                                               */
 /* ----------------------------------------------------------------------- */
 
-export async function encryptedCreateParticipant(
+export async function encryptedCreateContributor(
   dek: CryptoKey,
   collectionId: string,
   _prev: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = participantInputSchema.safeParse({
+  const parsed = contributorInputSchema.safeParse({
     displayName: formData.get("displayName"),
   });
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const displayName = await encryptPacked(parsed.data.displayName, dek);
-  const input: EncryptedParticipantInput = { displayName };
-  return createParticipant(collectionId, input);
+  const input: EncryptedContributorInput = { displayName };
+  return createContributor(collectionId, input);
 }
 
-export async function encryptedMigrateLegacyContributions(
+export async function encryptedLinkLegacyContributions(
   dek: CryptoKey,
   collectionId: string,
   displayName: string,
   contributionIds: string[],
 ): Promise<ActionResult> {
-  const parsed = participantInputSchema.safeParse({ displayName });
+  const parsed = contributorInputSchema.safeParse({ displayName });
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const encryptedName = await encryptPacked(parsed.data.displayName, dek);
-  return migrateLegacyContributions(
-    collectionId,
-    { displayName: encryptedName },
-    contributionIds,
-  );
+  return linkLegacyContributions(collectionId, { displayName: encryptedName }, contributionIds);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -192,7 +191,7 @@ export async function encryptedAddContribution(
   formData: FormData,
 ): Promise<ActionResult> {
   const parsed = contributionInputSchema.safeParse({
-    participantId: formData.get("participantId"),
+    contributorId: formData.get("contributorId"),
     amount: formData.get("amount"),
     contributedAt:
       formData.get("contributedAt") || new Date().toISOString().slice(0, 10),
@@ -206,13 +205,33 @@ export async function encryptedAddContribution(
   const note = v.note ? await encryptPacked(v.note, dek) : null;
 
   const input: EncryptedContributionInput = {
-    participantId: v.participantId,
+    contributorId: v.contributorId,
     amount,
     contributedAt: v.contributedAt,
     method: v.method ?? null,
     note,
   };
   return addContribution(collectionId, input);
+}
+
+/** Edits an existing contribution's amount/date/method — everything the
+ * caller doesn't include in `fields` stays untouched server-side. */
+export async function encryptedUpdateContribution(
+  dek: CryptoKey,
+  collectionId: string,
+  contributionId: string,
+  fields: { amount?: number; contributedAt?: string; method?: string | null },
+): Promise<ActionResult> {
+  const parsed = contributionEditInputSchema.safeParse(fields);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  const v = parsed.data;
+
+  const input: EncryptedContributionEditInput = {
+    amount: v.amount != null ? await encryptPacked(String(v.amount), dek) : undefined,
+    contributedAt: v.contributedAt,
+    method: v.method !== undefined ? (v.method ?? null) : undefined,
+  };
+  return updateContribution(collectionId, contributionId, input);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -229,7 +248,7 @@ export async function encryptedAddExpense(
     amount: formData.get("amount"),
     description: emptyToNull(formData.get("description")),
     categoryId: emptyToNull(formData.get("categoryId")),
-    paidByParticipantId: emptyToNull(formData.get("paidByParticipantId")),
+    paidByContributorId: emptyToNull(formData.get("paidByContributorId")),
     spentAt: formData.get("spentAt") || new Date().toISOString().slice(0, 10),
     linkToTransaction: formData.get("linkToTransaction") === "true",
     accountId: emptyToNull(formData.get("accountId")),
@@ -244,7 +263,7 @@ export async function encryptedAddExpense(
     amount,
     description,
     categoryId: v.categoryId ?? null,
-    paidByParticipantId: v.paidByParticipantId ?? null,
+    paidByContributorId: v.paidByContributorId ?? null,
     spentAt: v.spentAt,
     linkToTransaction: v.linkToTransaction,
     accountId: v.accountId ?? null,

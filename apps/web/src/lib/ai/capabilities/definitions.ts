@@ -796,15 +796,15 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       "pool. args: collectionTitle (string, required — must refer to an " +
       "open collection the user already has), contributorName (string, " +
       "required — who gave the money; matched against, or added to, that " +
-      "collection's participant roster), amount (number, required), date " +
+      "collection's contributor roster), amount (number, required), date " +
       "(YYYY-MM-DD, optional, defaults to today), method (string, optional).",
     // Decorative only — `requiresClientEncryption` capabilities never reach
     // commit.ts's schema check (see `clientOnlyExecute`'s comment below).
     // `contributionInputSchema` (collections/types.ts) needs a resolved
-    // `participantId`, which this capability can't produce server-side
-    // (participant names are encrypted — see client-commit.ts's
+    // `contributorId`, which this capability can't produce server-side
+    // (contributor names are encrypted — see client-commit.ts's
     // `collection.contribution` case, which resolves/creates the
-    // participant client-side instead), so this uses a lighter shape.
+    // contributor client-side instead), so this uses a lighter shape.
     schema: z.object({
       contributorName: z.string().min(1),
       amount: z.number().positive(),
@@ -829,7 +829,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
       }
 
       // `contributorName` is a free-text name here, not a resolved id — the
-      // client's decrypted participant roster (only it can read those
+      // client's decrypted contributor roster (only it can read those
       // names) does the real match-or-create at commit time.
       return {
         ok: true,
@@ -963,7 +963,7 @@ export const CAPABILITY_DEFINITIONS: AICapability[] = [
         amount,
         description: asString(args.description),
         categoryId: category?.id ?? null,
-        paidByParticipantId: null,
+        paidByContributorId: null,
         spentAt: normalizeDate(args.date) ?? todayISO(),
         linkToTransaction: false,
         accountId: null,

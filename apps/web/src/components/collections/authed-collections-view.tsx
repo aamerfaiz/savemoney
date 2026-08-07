@@ -10,7 +10,7 @@ import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 /** The real (non-guest) Collections list page's client boundary — mirrors
- * AuthedGoalsView: contributor/participant names and amounts are encrypted,
+ * AuthedGoalsView: contributor names and amounts are encrypted,
  * so the fetch + decrypt has to happen client-side once the vault is
  * unlocked. */
 export function AuthedCollectionsView({ currency }: { currency: CurrencyCode }) {
@@ -37,14 +37,14 @@ export function AuthedCollectionsView({ currency }: { currency: CurrencyCode }) 
     );
   }
 
-  const { collectionsData, failedCollectionCount, failedParticipantCount, failedContributionCount, failedExpenseCount } =
+  const { collectionsData, failedCollectionCount, failedContributorCount, failedContributionCount, failedExpenseCount } =
     data.data;
 
   return (
     <CollectionsView
       data={collectionsData}
       dek={dek}
-      failedCount={failedCollectionCount + failedParticipantCount + failedContributionCount + failedExpenseCount}
+      failedCount={failedCollectionCount + failedContributorCount + failedContributionCount + failedExpenseCount}
     />
   );
 }

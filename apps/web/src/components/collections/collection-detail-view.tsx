@@ -10,36 +10,38 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { CollectionForm } from "./collection-form";
-import { ParticipantsPanel } from "./participants-panel";
+import { ContributorsPanel } from "./contributors-panel";
 import { ExpenseForm } from "./expense-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@savemoney/finance-engine/format";
 import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteCollection, deleteExpense } from "@/lib/collections/actions";
+import { legacyContributorId } from "@/lib/collections/compute";
 import type {
   CollectionContributionRow,
+  CollectionContributor,
   CollectionExpenseRow,
-  CollectionParticipant,
   CollectionWithProgress,
 } from "@/lib/collections/types";
 import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
 
 export type CollectionAction =
-  | { type: "addParticipant"; participant: CollectionParticipant }
-  | { type: "removeParticipant"; participantId: string }
+  | { type: "addContributor"; contributor: CollectionContributor }
+  | { type: "removeContributor"; contributorId: string }
   | { type: "addContribution"; contribution: CollectionContributionRow }
+  | { type: "updateContribution"; contributionId: string; fields: Partial<CollectionContributionRow> }
   | { type: "removeContribution"; contributionId: string }
-  | { type: "migrateLegacy"; participant: CollectionParticipant; contributionIds: string[] }
+  | { type: "linkLegacy"; contributor: CollectionContributor; contributionIds: string[] }
   | { type: "addExpense"; expense: CollectionExpenseRow }
   | { type: "removeExpense"; expenseId: string };
 
 function recompute(state: CollectionWithProgress): CollectionWithProgress {
   const totals = new Map<string, number>();
   for (const c of state.contributions) {
-    if (c.participantId) totals.set(c.participantId, (totals.get(c.participantId) ?? 0) + c.amount);
+    totals.set(c.contributorId, (totals.get(c.contributorId) ?? 0) + c.amount);
   }
-  const participants = state.participants.map((p) => ({
+  const contributors = state.contributors.map((p) => ({
     ...p,
     totalContributed: totals.get(p.id) ?? 0,
   }));
@@ -48,7 +50,7 @@ function recompute(state: CollectionWithProgress): CollectionWithProgress {
     state.expenses.map((e) => ({ amount: e.amount })),
     state.targetAmount,
   );
-  return { ...state, participants, summary };
+  return { ...state, contributors, summary };
 }
 
 function collectionReducer(
@@ -56,25 +58,35 @@ function collectionReducer(
   action: CollectionAction,
 ): CollectionWithProgress {
   switch (action.type) {
-    case "addParticipant":
-      return { ...state, participants: [action.participant, ...state.participants] };
-    case "removeParticipant":
-      return { ...state, participants: state.participants.filter((p) => p.id !== action.participantId) };
+    case "addContributor":
+      return { ...state, contributors: [action.contributor, ...state.contributors] };
+    case "removeContributor":
+      return { ...state, contributors: state.contributors.filter((p) => p.id !== action.contributorId) };
     case "addContribution":
       return recompute({ ...state, contributions: [action.contribution, ...state.contributions] });
+    case "updateContribution":
+      return recompute({
+        ...state,
+        contributions: state.contributions.map((c) =>
+          c.id === action.contributionId ? { ...c, ...action.fields } : c,
+        ),
+      });
     case "removeContribution":
       return recompute({
         ...state,
         contributions: state.contributions.filter((c) => c.id !== action.contributionId),
       });
-    case "migrateLegacy": {
+    case "linkLegacy": {
       const idSet = new Set(action.contributionIds);
       const contributions = state.contributions.map((c) =>
         idSet.has(c.id)
-          ? { ...c, participantId: action.participant.id, contributorName: action.participant.displayName, isLegacy: false }
+          ? { ...c, contributorId: action.contributor.id, contributorName: action.contributor.displayName }
           : c,
       );
-      return recompute({ ...state, participants: [action.participant, ...state.participants], contributions });
+      const contributors = state.contributors
+        .filter((p) => p.id !== legacyContributorId(action.contributor.displayName))
+        .concat(action.contributor);
+      return recompute({ ...state, contributors, contributions });
     }
     case "addExpense":
       return recompute({ ...state, expenses: [action.expense, ...state.expenses] });
@@ -99,7 +111,7 @@ export function CollectionDetailView({
   const [, startTransition] = useTransition();
   const [collection, dispatch] = useOptimistic(initial, collectionReducer);
   const [editing, setEditing] = useState(false);
-  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [contributorsOpen, setContributorsOpen] = useState(false);
   const [addingExpense, setAddingExpense] = useState(false);
 
   const { summary } = collection;
@@ -107,7 +119,7 @@ export function CollectionDetailView({
   const spentPct = Math.round(Math.min(1, summary.spentProgress) * 100);
 
   const onDeleteCollection = () => {
-    if (!confirm(`Delete "${collection.title}"? This removes all of its participants, contributions, and expenses too.`)) return;
+    if (!confirm(`Delete "${collection.title}"? This removes all of its contributors, contributions, and expenses too.`)) return;
     startTransition(async () => {
       await deleteCollection(collection.id);
       invalidateFinanceData();
@@ -152,12 +164,12 @@ export function CollectionDetailView({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
-            onClick={() => setParticipantsOpen(true)}
-            aria-label="Participants"
+            onClick={() => setContributorsOpen(true)}
+            aria-label="Contributors"
             className="flex items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-1 pr-2.5 hover:bg-muted"
           >
-            <AvatarStack participants={collection.participants} />
-            <span className="text-xs font-medium tabular-nums">{collection.participants.length}</span>
+            <AvatarStack contributors={collection.contributors} />
+            <span className="text-xs font-medium tabular-nums">{collection.contributors.length}</span>
           </button>
           <button
             onClick={() => setEditing(true)}
@@ -298,10 +310,10 @@ export function CollectionDetailView({
         />
       </Dialog>
 
-      <ParticipantsPanel
+      <ContributorsPanel
         collection={collection}
-        open={participantsOpen}
-        onClose={() => setParticipantsOpen(false)}
+        open={contributorsOpen}
+        onClose={() => setContributorsOpen(false)}
         dek={dek}
         dispatch={dispatch}
         startTransition={startTransition}
@@ -310,8 +322,8 @@ export function CollectionDetailView({
   );
 }
 
-function AvatarStack({ participants }: { participants: CollectionParticipant[] }) {
-  const shown = participants.slice(0, 3);
+function AvatarStack({ contributors }: { contributors: CollectionContributor[] }) {
+  const shown = contributors.slice(0, 3);
   if (shown.length === 0) {
     return (
       <span className="flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground">

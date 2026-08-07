@@ -1,22 +1,31 @@
 /**
  * Pure collections computation — takes already-decrypted rows (only the
- * browser, with the vault unlocked, can decrypt participant names/amounts)
+ * browser, with the vault unlocked, can decrypt contributor names/amounts)
  * and assembles each collection's roster, contributions, expenses, and
  * derived summary. No I/O, no "server-only".
+ *
+ * Pre-roster ("legacy") contributions — rows saved before the
+ * `collection_contributors` table existed, which only have a plaintext-once-
+ * decrypted `contributorName` and no `contributorId` — are folded directly
+ * into the same `contributors` list as a synthesized entry per unique name
+ * (`isLegacy: true`, `id: "legacy:<name>"`), grouped exactly like a real
+ * contributor's rows would be. There is deliberately no separate "legacy"
+ * list: from the UI's perspective it's one roster, with a "Link to roster"
+ * action available on the entries that aren't a real row yet.
  */
 
 import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   DecryptedCollectionRow,
-  DecryptedCollectionParticipantRow,
+  DecryptedCollectionContributorRow,
   DecryptedCollectionContributionRow,
   DecryptedCollectionExpenseRow,
 } from "@/lib/finance/decrypt";
 import type {
   CollectionStatus,
   CollectionWithProgress,
-  CollectionParticipant,
+  CollectionContributor,
   CollectionContributionRow,
   CollectionExpenseRow,
 } from "./types";
@@ -32,6 +41,8 @@ export interface CategoryLookup {
   icon: string | null;
 }
 
+export const legacyContributorId = (name: string) => `legacy:${name.trim().toLowerCase()}`;
+
 function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const row of rows) {
@@ -45,56 +56,77 @@ function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
 
 export function computeCollectionsData(
   collectionRows: DecryptedCollectionRow[],
-  participantRows: DecryptedCollectionParticipantRow[],
+  contributorRows: DecryptedCollectionContributorRow[],
   contributionRows: DecryptedCollectionContributionRow[],
   expenseRows: DecryptedCollectionExpenseRow[],
   categories: CategoryLookup[],
   currency: CurrencyCode,
 ): CollectionsData {
-  const participantsByCollection = groupBy(participantRows, (p) => p.collectionId);
+  const contributorsByCollection = groupBy(contributorRows, (p) => p.collectionId);
   const contributionsByCollection = groupBy(contributionRows, (c) => c.collectionId);
   const expensesByCollection = groupBy(expenseRows, (e) => e.collectionId);
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   const collections: CollectionWithProgress[] = collectionRows.map((c) => {
-    const rawParticipants = participantsByCollection.get(c.id) ?? [];
+    const rawContributors = contributorsByCollection.get(c.id) ?? [];
     const rawContributions = contributionsByCollection.get(c.id) ?? [];
     const rawExpenses = expensesByCollection.get(c.id) ?? [];
-    const participantNameById = new Map(rawParticipants.map((p) => [p.id, p.displayName]));
+    const nameById = new Map(rawContributors.map((p) => [p.id, p.displayName]));
 
-    const contributedByParticipant = new Map<string, number>();
+    // Resolve every contribution to a stable contributor id — a real one
+    // when `contributorId` is set, or a synthesized `legacy:<name>` one for
+    // pre-roster rows, grouped by name.
     const contributions: CollectionContributionRow[] = rawContributions
       .map((ct) => {
-        const resolvedName = ct.participantId
-          ? (participantNameById.get(ct.participantId) ?? "Unknown")
+        const resolvedId = ct.contributorId ?? legacyContributorId(ct.contributorName ?? "Unknown");
+        const resolvedName = ct.contributorId
+          ? (nameById.get(ct.contributorId) ?? "Unknown")
           : (ct.contributorName ?? "Unknown");
-        if (ct.participantId) {
-          contributedByParticipant.set(
-            ct.participantId,
-            (contributedByParticipant.get(ct.participantId) ?? 0) + ct.amount,
-          );
-        }
         return {
           id: ct.id,
-          participantId: ct.participantId,
+          contributorId: resolvedId,
           contributorName: resolvedName,
           amount: ct.amount,
           contributedAt: ct.contributedAt,
           method: ct.method,
           note: ct.note,
-          isLegacy: ct.participantId === null,
         };
       })
       .sort((a, b) => (a.contributedAt < b.contributedAt ? 1 : -1));
 
-    const participants: CollectionParticipant[] = rawParticipants
-      .map((p) => ({
-        id: p.id,
-        displayName: p.displayName,
-        linkedUserId: p.linkedUserId,
-        totalContributed: contributedByParticipant.get(p.id) ?? 0,
-      }))
-      .sort((a, b) => b.totalContributed - a.totalContributed);
+    const totalsById = new Map<string, number>();
+    for (const ct of contributions) {
+      totalsById.set(ct.contributorId, (totalsById.get(ct.contributorId) ?? 0) + ct.amount);
+    }
+
+    const realContributors: CollectionContributor[] = rawContributors.map((p) => ({
+      id: p.id,
+      displayName: p.displayName,
+      linkedUserId: p.linkedUserId,
+      totalContributed: totalsById.get(p.id) ?? 0,
+      isLegacy: false,
+    }));
+
+    // One synthesized entry per unique legacy name that isn't already
+    // covered by a real contributor row.
+    const legacyNames = new Map<string, string>();
+    for (const ct of rawContributions) {
+      if (ct.contributorId || !ct.contributorName) continue;
+      legacyNames.set(legacyContributorId(ct.contributorName), ct.contributorName);
+    }
+    const legacyContributors: CollectionContributor[] = [...legacyNames.entries()].map(
+      ([id, displayName]) => ({
+        id,
+        displayName,
+        linkedUserId: null,
+        totalContributed: totalsById.get(id) ?? 0,
+        isLegacy: true,
+      }),
+    );
+
+    const contributors = [...realContributors, ...legacyContributors].sort(
+      (a, b) => b.totalContributed - a.totalContributed,
+    );
 
     const expenses: CollectionExpenseRow[] = rawExpenses
       .map((e) => {
@@ -106,10 +138,8 @@ export function computeCollectionsData(
           categoryId: e.categoryId,
           categoryName: category?.name ?? null,
           categoryIcon: category?.icon ?? null,
-          paidByParticipantId: e.paidByParticipantId,
-          paidByName: e.paidByParticipantId
-            ? (participantNameById.get(e.paidByParticipantId) ?? null)
-            : null,
+          paidByContributorId: e.paidByContributorId,
+          paidByName: e.paidByContributorId ? (nameById.get(e.paidByContributorId) ?? null) : null,
           spentAt: e.spentAt,
           linkedTransactionId: e.linkedTransactionId,
         };
@@ -133,7 +163,7 @@ export function computeCollectionsData(
       currency,
       eventDate: c.eventDate,
       status: c.status as CollectionStatus,
-      participants,
+      contributors,
       contributions,
       expenses,
       summary,

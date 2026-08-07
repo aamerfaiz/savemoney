@@ -19,7 +19,7 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
  * Owns its own mutation (rather than binding to `useActionState`) so it can
  * dispatch an optimistic expense into the parent's `useOptimistic` state
  * before the encrypt+write round trip resolves — same reasoning as
- * ContributorForm's redesign after the "adding a contributor doesn't
+ * ContributionForm's redesign after the "adding a contributor doesn't
  * update until refresh" fix (see that PR).
  */
 export function ExpenseForm({
@@ -44,6 +44,10 @@ export function ExpenseForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkToTransaction, setLinkToTransaction] = useState(false);
+  // Legacy (pre-roster) entries have a synthetic "legacy:<name>" id, not a
+  // real row to point a foreign key at — only real contributors are valid
+  // "paid by" choices.
+  const realContributors = collection.contributors.filter((p) => !p.isLegacy);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -59,11 +63,11 @@ export function ExpenseForm({
 
     const description = String(fd.get("description") ?? "").trim() || null;
     const categoryId = String(fd.get("categoryId") ?? "") || null;
-    const paidByParticipantId = String(fd.get("paidByParticipantId") ?? "") || null;
+    const paidByContributorId = String(fd.get("paidByContributorId") ?? "") || null;
     const spentAt = String(fd.get("spentAt") || todayISO());
     const category = categoryId ? expenseCategories.find((c) => c.id === categoryId) : undefined;
-    const paidBy = paidByParticipantId
-      ? collection.participants.find((p) => p.id === paidByParticipantId)
+    const paidBy = paidByContributorId
+      ? collection.contributors.find((p) => p.id === paidByContributorId)
       : undefined;
 
     startTransition(async () => {
@@ -76,7 +80,7 @@ export function ExpenseForm({
           categoryId,
           categoryName: category?.name ?? null,
           categoryIcon: category?.icon ?? null,
-          paidByParticipantId,
+          paidByContributorId,
           paidByName: paidBy?.displayName ?? null,
           spentAt,
           linkedTransactionId: null,
@@ -122,12 +126,12 @@ export function ExpenseForm({
             ))}
           </Select>
         </div>
-        {collection.participants.length > 0 && (
+        {realContributors.length > 0 && (
           <div className="space-y-1.5">
-            <Label htmlFor="paidByParticipantId">Paid by (optional)</Label>
-            <Select id="paidByParticipantId" name="paidByParticipantId" defaultValue="">
+            <Label htmlFor="paidByContributorId">Paid by (optional)</Label>
+            <Select id="paidByContributorId" name="paidByContributorId" defaultValue="">
               <option value="">Unspecified</option>
-              {collection.participants.map((p) => (
+              {realContributors.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.displayName}
                 </option>

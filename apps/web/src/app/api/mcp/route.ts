@@ -257,7 +257,7 @@ function buildServer(session: McpSession): McpServer {
   wire(server, session, "write", "create_collection", "Create a contribution pool (Splitwise-style, single-organizer). Preview first, then call again with confirm: true.", createCollectionSchema, writeAnn, createCollection);
   wire(server, session, "write", "update_collection", "Update a collection's title, purpose, target, event date, or open/closed status. Preview first, then call again with confirm: true.", updateCollectionSchema, writeAnn, updateCollection);
   wire(server, session, "write", "delete_collection", "Soft-delete a collection. Preview first, then call again with confirm: true.", deleteCollectionSchema, deleteAnn, deleteCollection);
-  wire(server, session, "write", "add_collection_contribution", "Record that someone contributed money to an open collection — matched against, or added to, its participant roster. Preview first, then call again with confirm: true.", addCollectionContributionSchema, writeAnn, addCollectionContribution);
+  wire(server, session, "write", "add_collection_contribution", "Record that someone contributed money to an open collection — matched against, or added to, its contributor roster. Preview first, then call again with confirm: true.", addCollectionContributionSchema, writeAnn, addCollectionContribution);
   wire(server, session, "write", "add_collection_expense", "Record money spent out of a collection's pool — a collection can have several over time; this does not close it. Preview first, then call again with confirm: true.", addCollectionExpenseSchema, writeAnn, addCollectionExpense);
 
   return server;

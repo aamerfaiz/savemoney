@@ -34,7 +34,7 @@ import type {
 import type { RawGoalRow } from "@/lib/goals/queries";
 import type {
   RawCollectionRow,
-  RawCollectionParticipantRow,
+  RawCollectionContributorRow,
   RawCollectionContributionRow,
   RawCollectionExpenseRow,
 } from "@/lib/collections/queries";
@@ -139,7 +139,7 @@ export interface DecryptedCollectionRow {
   status: string;
 }
 
-export interface DecryptedCollectionParticipantRow {
+export interface DecryptedCollectionContributorRow {
   id: string;
   collectionId: string;
   displayName: string;
@@ -149,9 +149,9 @@ export interface DecryptedCollectionParticipantRow {
 export interface DecryptedCollectionContributionRow {
   id: string;
   collectionId: string;
-  participantId: string | null;
+  contributorId: string | null;
   /** Legacy fallback name — only set (and only meaningful) when
-   * `participantId` is null; see the schema comment on
+   * `contributorId` is null; see the schema comment on
    * `collection_contributions.contributor_name`. */
   contributorName: string | null;
   amount: number;
@@ -166,7 +166,7 @@ export interface DecryptedCollectionExpenseRow {
   amount: number;
   description: string | null;
   categoryId: string | null;
-  paidByParticipantId: string | null;
+  paidByContributorId: string | null;
   spentAt: string;
   linkedTransactionId: string | null;
 }
@@ -412,12 +412,12 @@ export async function decryptCollectionRows(
   return splitSettled(settled);
 }
 
-export async function decryptCollectionParticipantRows(
-  rows: RawCollectionParticipantRow[],
+export async function decryptCollectionContributorRows(
+  rows: RawCollectionContributorRow[],
   dek: CryptoKey,
-): Promise<DecryptResult<DecryptedCollectionParticipantRow>> {
+): Promise<DecryptResult<DecryptedCollectionContributorRow>> {
   const settled = await Promise.allSettled(
-    rows.map(async (r): Promise<DecryptedCollectionParticipantRow> => ({
+    rows.map(async (r): Promise<DecryptedCollectionContributorRow> => ({
       id: r.id,
       collectionId: r.collectionId,
       displayName: await decryptPacked(r.displayName, dek),
@@ -435,7 +435,7 @@ export async function decryptCollectionContributionRows(
     rows.map(async (r): Promise<DecryptedCollectionContributionRow> => ({
       id: r.id,
       collectionId: r.collectionId,
-      participantId: r.participantId,
+      contributorId: r.contributorId,
       contributorName: r.contributorName ? await decryptPacked(r.contributorName, dek) : null,
       amount: Number(await decryptPacked(r.amount, dek)),
       contributedAt: r.contributedAt,
@@ -457,7 +457,7 @@ export async function decryptCollectionExpenseRows(
       amount: Number(await decryptPacked(r.amount, dek)),
       description: r.description ? await decryptPacked(r.description, dek) : null,
       categoryId: r.categoryId,
-      paidByParticipantId: r.paidByParticipantId,
+      paidByContributorId: r.paidByContributorId,
       spentAt: r.spentAt,
       linkedTransactionId: r.linkedTransactionId,
     })),

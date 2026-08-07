@@ -772,22 +772,22 @@ export async function deleteCollection(session: McpSession, args: z.infer<z.ZodO
 }
 
 /** Case-insensitive match against a collection's already-decrypted roster,
- * or creates a new participant — an MCP call has `session.dek` available
+ * or creates a new contributor — an MCP call has `session.dek` available
  * server-side (unlike the browser Smart Entry path, which has to defer
  * this to client-commit.ts), so name matching can happen right here. */
-async function resolveOrCreateParticipant(
+async function resolveOrCreateContributor(
   session: McpSession,
   collectionId: string,
   name: string,
 ): Promise<{ id: string; displayName: string }> {
   const rows = await db!
     .select()
-    .from(schema.collectionParticipants)
+    .from(schema.collectionContributors)
     .where(
       and(
-        eq(schema.collectionParticipants.collectionId, collectionId),
-        eq(schema.collectionParticipants.userId, session.userId),
-        isNull(schema.collectionParticipants.deletedAt),
+        eq(schema.collectionContributors.collectionId, collectionId),
+        eq(schema.collectionContributors.userId, session.userId),
+        isNull(schema.collectionContributors.deletedAt),
       ),
     );
   const norm = name.trim().toLowerCase();
@@ -797,9 +797,9 @@ async function resolveOrCreateParticipant(
   }
   const displayName = await encryptPacked(name, session.dek);
   const [row] = await db!
-    .insert(schema.collectionParticipants)
+    .insert(schema.collectionContributors)
     .values({ collectionId, userId: session.userId, displayName })
-    .returning({ id: schema.collectionParticipants.id });
+    .returning({ id: schema.collectionContributors.id });
   return { id: row.id, displayName: name };
 }
 
@@ -829,12 +829,12 @@ export async function addCollectionContribution(session: McpSession, args: z.inf
   const plan = { collection: collection.title, contributor: args.contributorName, amount: args.amount, contributedAt, method: args.method ?? null };
   if (!args.confirm) return preview("add_collection_contribution", plan);
 
-  const participant = await resolveOrCreateParticipant(session, args.collectionId, args.contributorName);
+  const contributor = await resolveOrCreateContributor(session, args.collectionId, args.contributorName);
   const amount = await encryptPacked(String(args.amount), session.dek);
   await db.insert(schema.collectionContributions).values({
     collectionId: args.collectionId,
     userId: session.userId,
-    participantId: participant.id,
+    contributorId: contributor.id,
     amount,
     contributedAt,
     method: args.method ?? null,

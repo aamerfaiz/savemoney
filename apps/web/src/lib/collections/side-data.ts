@@ -8,17 +8,17 @@
 
 import {
   fetchCollectionsRaw,
-  fetchCollectionParticipantsRaw,
+  fetchCollectionContributorsRaw,
   fetchCollectionContributionsRaw,
   fetchCollectionExpensesRaw,
 } from "./queries";
 
 export async function fetchCollectionsDataAction() {
-  const [collections, participants, contributions, expenses] = await Promise.all([
+  const [collections, contributors, contributions, expenses] = await Promise.all([
     fetchCollectionsRaw(),
-    fetchCollectionParticipantsRaw(),
+    fetchCollectionContributorsRaw(),
     fetchCollectionContributionsRaw(),
     fetchCollectionExpensesRaw(),
   ]);
-  return { collections, participants, contributions, expenses };
+  return { collections, contributors, contributions, expenses };
 }
