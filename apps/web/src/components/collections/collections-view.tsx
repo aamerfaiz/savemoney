@@ -168,7 +168,7 @@ function CollectionCard({
             )}
           </span>
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-sm:opacity-100">
           <button
             onClick={onEdit}
             aria-label="Edit"
