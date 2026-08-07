@@ -624,11 +624,11 @@ export const netWorthSnapshots = pgTable(
 /* ----------------------------------------------------------------------- */
 /* Collections (Splitwise-style contribution pools, e.g. office gift money) */
 /* ----------------------------------------------------------------------- */
-/* One organizer (the signed-in user) tracks a roster of participants and
+/* One organizer (the signed-in user) tracks a roster of contributors and
  * what each put into a shared pool, plus what's been spent from it —
  * still a single-user-owned ledger today (no other party has an account
- * here), but `collection_participants.linkedUserId` exists specifically so
- * a participant can later be upgraded to a real linked account without a
+ * here), but `collection_contributors.linkedUserId` exists specifically so
+ * a contributor can later be upgraded to a real linked account without a
  * schema change, once multi-user/invites are built. `targetAmount` is
  * optional: many collections just gather whatever comes in. Every total
  * (collected, spent, remaining) is derived client-side by summing decrypted
@@ -664,12 +664,12 @@ export const collections = pgTable(
 /** A collection's roster — one row per person, contributions/expenses
  * reference this instead of re-typing a name on every row. `linkedUserId`
  * is the forward-compatibility hook for real multi-user support: always
- * null today (nobody but the organizer has an account), but a participant
+ * null today (nobody but the organizer has an account), but a contributor
  * can be re-pointed at a real `auth.users` row later (e.g. after an invite
  * flow) without touching `collection_contributions`/`collection_expenses`
  * at all. */
-export const collectionParticipants = pgTable(
-  "collection_participants",
+export const collectionContributors = pgTable(
+  "collection_contributors",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     collectionId: uuid("collection_id")
@@ -678,7 +678,7 @@ export const collectionParticipants = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    // Packed ciphertext — a participant's display name, encrypted like
+    // Packed ciphertext — a contributor's display name, encrypted like
     // every other free-text field in this module.
     displayName: text("display_name").notNull(),
     linkedUserId: uuid("linked_user_id").references(() => authUsers.id, {
@@ -687,8 +687,8 @@ export const collectionParticipants = pgTable(
     ...audit,
   },
   (t) => [
-    index("collection_participants_collection_idx").on(t.collectionId),
-    index("collection_participants_user_idx").on(t.userId),
+    index("collection_contributors_collection_idx").on(t.collectionId),
+    index("collection_contributors_user_idx").on(t.userId),
   ],
 );
 
@@ -702,13 +702,13 @@ export const collectionContributions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    participantId: uuid("participant_id").references(() => collectionParticipants.id, {
+    contributorId: uuid("contributor_id").references(() => collectionContributors.id, {
       onDelete: "set null",
     }),
-    // Legacy fallback only — pre-participants-table rows (nullable so old
-    // rows keep displaying via this while `participant_id` is null; every
-    // new contribution goes through `participantId` instead and leaves
-    // this null). Packed ciphertext, same as `participant_id`'s name.
+    // Legacy fallback only — pre-roster-table rows (nullable so old rows
+    // keep displaying via this while `contributor_id` is null; every new
+    // contribution goes through `contributorId` instead and leaves this
+    // null). Packed ciphertext, same as `contributorId`'s name.
     contributorName: text("contributor_name"),
     amount: text("amount").notNull(),
     contributedAt: date("contributed_at").notNull(),
@@ -719,12 +719,12 @@ export const collectionContributions = pgTable(
   (t) => [
     index("collection_contrib_collection_idx").on(t.collectionId),
     index("collection_contrib_user_idx").on(t.userId),
-    index("collection_contrib_participant_idx").on(t.participantId),
+    index("collection_contrib_contributor_idx").on(t.contributorId),
   ],
 );
 
 /** Money spent out of a collection's pool — plural and ongoing, replacing
- * the old single collection-level payout. `paidByParticipantId` is optional
+ * the old single collection-level payout. `paidByContributorId` is optional
  * bookkeeping (who fronted it) that stays unused by any math today but sets
  * up real Splitwise-style per-expense splitting later without another
  * migration. `linkedTransactionId` mirrors the old payout's "log this as a
@@ -743,7 +743,7 @@ export const collectionExpenses = pgTable(
     amount: text("amount").notNull(),
     description: text("description"),
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
-    paidByParticipantId: uuid("paid_by_participant_id").references(() => collectionParticipants.id, {
+    paidByContributorId: uuid("paid_by_contributor_id").references(() => collectionContributors.id, {
       onDelete: "set null",
     }),
     spentAt: date("spent_at").notNull(),
@@ -956,7 +956,7 @@ export type InvestmentContribution =
   typeof investmentContributions.$inferSelect;
 export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type Collection = typeof collections.$inferSelect;
-export type CollectionParticipant = typeof collectionParticipants.$inferSelect;
+export type CollectionContributor = typeof collectionContributors.$inferSelect;
 export type CollectionContribution = typeof collectionContributions.$inferSelect;
 export type CollectionExpense = typeof collectionExpenses.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;

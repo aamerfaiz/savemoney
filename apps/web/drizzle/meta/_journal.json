@@ -148,6 +148,13 @@
       "when": 1786087257365,
       "tag": "0020_silent_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786090000000,
+      "tag": "0021_rename_participant_to_contributor",
+      "breakpoints": true
     }
   ]
 }

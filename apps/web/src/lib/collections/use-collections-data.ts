@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchCollectionsDataAction } from "./side-data";
 import {
   decryptCollectionRows,
-  decryptCollectionParticipantRows,
+  decryptCollectionContributorRows,
   decryptCollectionContributionRows,
   decryptCollectionExpenseRows,
 } from "@/lib/finance/decrypt";
@@ -38,16 +38,16 @@ export function useCollectionsData(currency: CurrencyCode, categories: CategoryL
 
       const {
         collections: rawCollections,
-        participants: rawParticipants,
+        contributors: rawContributors,
         contributions: rawContributions,
         expenses: rawExpenses,
       } = await fetchCollectionsDataAction();
 
       const totalRows =
-        rawCollections.length + rawParticipants.length + rawContributions.length + rawExpenses.length;
+        rawCollections.length + rawContributors.length + rawContributions.length + rawExpenses.length;
       useDecryptProgressStore.getState().startChunk(COLLECTIONS_PROGRESS_KEY, totalRows);
 
-      const [collectionRowsResult, participantRowsResult, contributionRowsResult, expenseRowsResult] =
+      const [collectionRowsResult, contributorRowsResult, contributionRowsResult, expenseRowsResult] =
         await Promise.all([
           withProgress(
             COLLECTIONS_PROGRESS_KEY,
@@ -56,8 +56,8 @@ export function useCollectionsData(currency: CurrencyCode, categories: CategoryL
           ),
           withProgress(
             COLLECTIONS_PROGRESS_KEY,
-            rawParticipants.length,
-            decryptCollectionParticipantRows(rawParticipants, dek),
+            rawContributors.length,
+            decryptCollectionContributorRows(rawContributors, dek),
           ),
           withProgress(
             COLLECTIONS_PROGRESS_KEY,
@@ -73,7 +73,7 @@ export function useCollectionsData(currency: CurrencyCode, categories: CategoryL
 
       const collectionsData = computeCollectionsData(
         collectionRowsResult.rows,
-        participantRowsResult.rows,
+        contributorRowsResult.rows,
         contributionRowsResult.rows,
         expenseRowsResult.rows,
         categories,
@@ -83,7 +83,7 @@ export function useCollectionsData(currency: CurrencyCode, categories: CategoryL
       return {
         collectionsData,
         failedCollectionCount: collectionRowsResult.failedCount,
-        failedParticipantCount: participantRowsResult.failedCount,
+        failedContributorCount: contributorRowsResult.failedCount,
         failedContributionCount: contributionRowsResult.failedCount,
         failedExpenseCount: expenseRowsResult.failedCount,
       };

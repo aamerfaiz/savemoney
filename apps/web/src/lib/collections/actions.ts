@@ -12,14 +12,14 @@ export interface ActionResult {
   error?: string;
   fieldErrors?: Record<string, string>;
   /** Set by create actions that need to be chained (e.g. Smart Entry's
-   * "create with a full contributor list" flow, or "create a participant
+   * "create with a full contributor list" flow, or "create a contributor
    * then add their contribution"). */
   id?: string;
 }
 
 /**
  * What the server actually validates: shape only, for the fields that stay
- * plaintext. `targetAmount`, every participant's `displayName`, every
+ * plaintext. `targetAmount`, every contributor's `displayName`, every
  * contribution's `amount`, and every expense's `amount`/`description`
  * arrive as already-packed ciphertext — the client validated the real
  * values before encrypting, via the same schemas the UI form uses. See
@@ -41,14 +41,14 @@ const encryptedCollectionInputSchema = z.object({
 
 export type EncryptedCollectionInput = z.infer<typeof encryptedCollectionInputSchema>;
 
-const encryptedParticipantInputSchema = z.object({
+const encryptedContributorInputSchema = z.object({
   displayName: z.string().min(1),
 });
 
-export type EncryptedParticipantInput = z.infer<typeof encryptedParticipantInputSchema>;
+export type EncryptedContributorInput = z.infer<typeof encryptedContributorInputSchema>;
 
 const encryptedContributionInputSchema = z.object({
-  participantId: z.string().uuid(),
+  contributorId: z.string().uuid(),
   amount: z.string().min(1),
   contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   method: z.string().trim().max(40).optional().nullable(),
@@ -57,11 +57,23 @@ const encryptedContributionInputSchema = z.object({
 
 export type EncryptedContributionInput = z.infer<typeof encryptedContributionInputSchema>;
 
+const encryptedContributionEditInputSchema = z.object({
+  amount: z.string().min(1).optional(),
+  contributedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  method: z.string().trim().max(40).optional().nullable(),
+  note: z.string().trim().max(200).optional().nullable(),
+});
+
+export type EncryptedContributionEditInput = z.infer<typeof encryptedContributionEditInputSchema>;
+
 const encryptedExpenseInputSchema = z.object({
   amount: z.string().min(1),
   description: z.string().trim().max(200).optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
-  paidByParticipantId: z.string().uuid().optional().nullable(),
+  paidByContributorId: z.string().uuid().optional().nullable(),
   spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   linkToTransaction: z.boolean(),
   accountId: z.string().uuid().optional().nullable(),
@@ -149,14 +161,14 @@ export async function deleteCollection(id: string): Promise<ActionResult> {
 }
 
 /* ----------------------------------------------------------------------- */
-/* Participants                                                             */
+/* Contributors (the roster)                                               */
 /* ----------------------------------------------------------------------- */
 
-export async function createParticipant(
+export async function createContributor(
   collectionId: string,
-  input: EncryptedParticipantInput,
+  input: EncryptedContributorInput,
 ): Promise<ActionResult> {
-  const parsed = encryptedParticipantInputSchema.safeParse(input);
+  const parsed = encryptedContributorInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
 
   const auth = await requireUser();
@@ -164,7 +176,7 @@ export async function createParticipant(
   const { supabase, userId } = auth;
 
   const { data, error } = await supabase
-    .from("collection_participants")
+    .from("collection_contributors")
     .insert({
       collection_id: collectionId,
       user_id: userId,
@@ -178,12 +190,12 @@ export async function createParticipant(
   return { ok: true, id: (data as { id: string }).id };
 }
 
-/** Refuses to delete a participant who has any contributions recorded —
+/** Refuses to delete a contributor who has any contributions recorded —
  * removing them would silently orphan that money. The UI should surface
  * this rather than let the FK constraint reject it with a raw DB error. */
-export async function deleteParticipant(
+export async function deleteContributor(
   collectionId: string,
-  participantId: string,
+  contributorId: string,
 ): Promise<ActionResult> {
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
@@ -192,7 +204,7 @@ export async function deleteParticipant(
   const { count } = await supabase
     .from("collection_contributions")
     .select("id", { count: "exact", head: true })
-    .eq("participant_id", participantId)
+    .eq("contributor_id", contributorId)
     .is("deleted_at", null);
   if (count && count > 0) {
     return {
@@ -202,36 +214,36 @@ export async function deleteParticipant(
   }
 
   const { error } = await supabase
-    .from("collection_participants")
+    .from("collection_contributors")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", participantId);
+    .eq("id", contributorId);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/collections/${collectionId}`);
   return { ok: true };
 }
 
-/** One-click "add to roster" for a pre-participants-table (legacy)
- * contribution row: creates a participant and re-points every legacy
- * contribution sharing the given decrypted name onto it. The name arrives
- * already re-encrypted for the new participant row; matching which legacy
- * rows to move happens client-side (only the browser can decrypt
- * `contributor_name` to compare), so this just takes the resolved id list. */
-export async function migrateLegacyContributions(
+/** "Link to roster" for a pre-roster (legacy) contribution grouping: creates
+ * a real contributor row and re-points every legacy contribution sharing
+ * the given decrypted name onto it. The name arrives already re-encrypted
+ * for the new contributor row; matching which legacy rows to move happens
+ * client-side (only the browser can decrypt `contributor_name` to
+ * compare), so this just takes the resolved id list. */
+export async function linkLegacyContributions(
   collectionId: string,
-  input: EncryptedParticipantInput,
+  input: EncryptedContributorInput,
   contributionIds: string[],
 ): Promise<ActionResult> {
-  const parsed = encryptedParticipantInputSchema.safeParse(input);
+  const parsed = encryptedContributorInputSchema.safeParse(input);
   if (!parsed.success) return fieldErrors(parsed.error);
-  if (contributionIds.length === 0) return { ok: false, error: "Nothing to migrate." };
+  if (contributionIds.length === 0) return { ok: false, error: "Nothing to link." };
 
   const auth = await requireUser();
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase, userId } = auth;
 
   const { data, error } = await supabase
-    .from("collection_participants")
+    .from("collection_contributors")
     .insert({
       collection_id: collectionId,
       user_id: userId,
@@ -240,16 +252,16 @@ export async function migrateLegacyContributions(
     .select("id")
     .single();
   if (error) return { ok: false, error: error.message };
-  const participantId = (data as { id: string }).id;
+  const contributorId = (data as { id: string }).id;
 
   const { error: updErr } = await supabase
     .from("collection_contributions")
-    .update({ participant_id: participantId, contributor_name: null })
+    .update({ contributor_id: contributorId, contributor_name: null })
     .in("id", contributionIds);
   if (updErr) return { ok: false, error: updErr.message };
 
   revalidatePath(`/collections/${collectionId}`);
-  return { ok: true, id: participantId };
+  return { ok: true, id: contributorId };
 }
 
 /* ----------------------------------------------------------------------- */
@@ -271,12 +283,42 @@ export async function addContribution(
   const { error } = await supabase.from("collection_contributions").insert({
     collection_id: collectionId,
     user_id: userId,
-    participant_id: v.participantId,
+    contributor_id: v.contributorId,
     amount: v.amount,
     contributed_at: v.contributedAt,
     method: v.method ?? null,
     note: v.note ?? null,
   });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true };
+}
+
+/** Edits an existing contribution's amount/date/method — every field
+ * optional, only what's provided changes. Lets a mistyped amount be fixed
+ * in place instead of forcing a delete-and-re-add. */
+export async function updateContribution(
+  collectionId: string,
+  id: string,
+  input: EncryptedContributionEditInput,
+): Promise<ActionResult> {
+  const parsed = encryptedContributionEditInputSchema.safeParse(input);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  const v = parsed.data;
+
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase } = auth;
+
+  const patch: Record<string, unknown> = {};
+  if (v.amount !== undefined) patch.amount = v.amount;
+  if (v.contributedAt !== undefined) patch.contributed_at = v.contributedAt;
+  if (v.method !== undefined) patch.method = v.method ?? null;
+  if (v.note !== undefined) patch.note = v.note ?? null;
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { error } = await supabase.from("collection_contributions").update(patch).eq("id", id);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/collections/${collectionId}`);
@@ -348,7 +390,7 @@ export async function addExpense(
     amount: v.amount,
     description: v.description ?? null,
     category_id: v.categoryId ?? null,
-    paid_by_participant_id: v.paidByParticipantId ?? null,
+    paid_by_contributor_id: v.paidByContributorId ?? null,
     spent_at: v.spentAt,
     linked_transaction_id: linkedTransactionId,
   });

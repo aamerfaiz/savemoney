@@ -36,14 +36,14 @@ export const collectionInputSchema = z.object({
 
 export type CollectionInput = z.infer<typeof collectionInputSchema>;
 
-export const participantInputSchema = z.object({
-  displayName: z.string().trim().min(1, "Give this participant a name").max(80),
+export const contributorInputSchema = z.object({
+  displayName: z.string().trim().min(1, "Give this contributor a name").max(80),
 });
 
-export type ParticipantInput = z.infer<typeof participantInputSchema>;
+export type ContributorInput = z.infer<typeof contributorInputSchema>;
 
 export const contributionInputSchema = z.object({
-  participantId: z.string().uuid(),
+  contributorId: z.string().uuid(),
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   contributedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   method: z.string().trim().max(40).optional().nullable(),
@@ -52,11 +52,19 @@ export const contributionInputSchema = z.object({
 
 export type ContributionInput = z.infer<typeof contributionInputSchema>;
 
+/** Every field optional — used to edit an existing contribution's amount,
+ * date, or method after the fact rather than only ever delete-and-redo. */
+export const contributionEditInputSchema = contributionInputSchema
+  .omit({ contributorId: true })
+  .partial();
+
+export type ContributionEditInput = z.infer<typeof contributionEditInputSchema>;
+
 export const expenseInputSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   description: z.string().trim().max(200).optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
-  paidByParticipantId: z.string().uuid().optional().nullable(),
+  paidByContributorId: z.string().uuid().optional().nullable(),
   spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   linkToTransaction: z.coerce.boolean().default(false),
   accountId: z.string().uuid().optional().nullable(),
@@ -64,28 +72,27 @@ export const expenseInputSchema = z.object({
 
 export type ExpenseInput = z.infer<typeof expenseInputSchema>;
 
-export interface CollectionParticipant {
+export interface CollectionContributor {
   id: string;
   displayName: string;
   linkedUserId: string | null;
   totalContributed: number;
+  /** True for a contributor synthesized from pre-roster contributions that
+   * share a name, rather than a real `collection_contributors` row —
+   * `id` is a stable `legacy:<name>` key in this case, not a UUID. Surfaced
+   * so the UI can offer a one-click "Link to roster" instead of treating
+   * it as a second, separate kind of thing from real contributors. */
+  isLegacy: boolean;
 }
 
 export interface CollectionContributionRow {
   id: string;
-  participantId: string | null;
-  /** The participant's display name, or the legacy `contributor_name` for a
-   * pre-roster row that hasn't been added to the roster yet. */
+  contributorId: string;
   contributorName: string;
   amount: number;
   contributedAt: string;
   method: string | null;
   note: string | null;
-  /** True for a pre-participants-table row — `participantId` is null and
-   * `contributorName` came from the legacy fallback field. Surfaced so the
-   * UI can offer a one-click "add to roster" instead of silently migrating
-   * data in the background. */
-  isLegacy: boolean;
 }
 
 export interface CollectionExpenseRow {
@@ -95,7 +102,7 @@ export interface CollectionExpenseRow {
   categoryId: string | null;
   categoryName: string | null;
   categoryIcon: string | null;
-  paidByParticipantId: string | null;
+  paidByContributorId: string | null;
   paidByName: string | null;
   spentAt: string;
   linkedTransactionId: string | null;
@@ -110,7 +117,7 @@ export interface CollectionWithProgress {
   currency: CurrencyCode;
   eventDate: string | null;
   status: CollectionStatus;
-  participants: CollectionParticipant[];
+  contributors: CollectionContributor[];
   contributions: CollectionContributionRow[];
   expenses: CollectionExpenseRow[];
   summary: CollectionSummary;

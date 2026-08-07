@@ -43,7 +43,7 @@ export function CollectionsView({
   const closed = collections.filter((c) => c.status === "closed");
 
   const onDelete = (c: CollectionWithProgress) => {
-    if (!confirm(`Delete "${c.title}"? This removes all of its participants, contributions, and expenses too.`)) return;
+    if (!confirm(`Delete "${c.title}"? This removes all of its contributors, contributions, and expenses too.`)) return;
     startTransition(async () => {
       removeCollection(c.id);
       await deleteCollection(c.id);

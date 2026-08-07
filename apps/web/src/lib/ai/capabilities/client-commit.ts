@@ -39,7 +39,7 @@ import { encryptedCreateBudget } from "@/lib/budgets/client-actions";
 import { encryptedCreateRecurringRule } from "@/lib/recurring/client-actions";
 import {
   encryptedCreateCollection,
-  encryptedCreateParticipant,
+  encryptedCreateContributor,
   encryptedEditCollectionFields,
   encryptedAddContribution as encryptedAddCollectionContribution,
   encryptedAddExpense,
@@ -106,22 +106,22 @@ interface ContributorDraft {
   method?: unknown;
 }
 
-/** Finds an existing participant by case-insensitive name match, or creates
- * one — participant names are encrypted, so this match can only ever
+/** Finds an existing contributor by case-insensitive name match, or creates
+ * one — contributor names are encrypted, so this match can only ever
  * happen here (client-side, against the already-decrypted roster), never
  * in definitions.ts's server-side `resolve()`. */
-async function resolveOrCreateParticipant(
+async function resolveOrCreateContributor(
   dek: CryptoKey,
   collectionId: string,
   name: string,
-  existingParticipants: { id: string; displayName: string }[],
+  existingContributors: { id: string; displayName: string }[],
 ): Promise<{ id: string } | { error: string }> {
   const norm = name.trim().toLowerCase();
-  const match = existingParticipants.find((p) => p.displayName.trim().toLowerCase() === norm);
+  const match = existingContributors.find((p) => p.displayName.trim().toLowerCase() === norm);
   if (match) return { id: match.id };
 
-  const result = await encryptedCreateParticipant(dek, collectionId, undefined, toFormData({ displayName: name }));
-  if (!result.ok || !result.id) return { error: result.error ?? "Couldn't add participant." };
+  const result = await encryptedCreateContributor(dek, collectionId, undefined, toFormData({ displayName: name }));
+  if (!result.ok || !result.id) return { error: result.error ?? "Couldn't add contributor." };
   return { id: result.id };
 }
 
@@ -129,22 +129,22 @@ async function resolveOrCreateParticipant(
  * `collection.contribution` draft — same shape `parseContributorsArg`
  * (definitions.ts) already validated server-side, re-coerced here since
  * this file can't import that "server-only" module. Resolves (or creates)
- * the named participant first, then logs the contribution against them. */
+ * the named contributor first, then logs the contribution against them. */
 async function addOneContribution(
   dek: CryptoKey,
   collectionId: string,
-  existingParticipants: { id: string; displayName: string }[],
+  existingContributors: { id: string; displayName: string }[],
   draft: ContributorDraft,
 ): Promise<ClientCommitResult> {
   const name = asString(draft.contributorName);
   const amount = toNumber(draft.amount);
   if (!name || amount == null) return { ok: false, error: "Missing contributor name or amount." };
 
-  const participant = await resolveOrCreateParticipant(dek, collectionId, name, existingParticipants);
-  if ("error" in participant) return { ok: false, error: participant.error };
+  const contributor = await resolveOrCreateContributor(dek, collectionId, name, existingContributors);
+  if ("error" in contributor) return { ok: false, error: contributor.error };
 
   const fd = toFormData({
-    participantId: participant.id,
+    contributorId: contributor.id,
     amount,
     contributedAt: normalizeDate(draft.contributedAt) ?? todayISO(),
     method: asString(draft.method),
@@ -235,7 +235,7 @@ export async function commitClientCapability(
     case "collection.contribution": {
       const collection = ctx.collections.find((c) => c.id === targetId);
       if (!collection) return { ok: false, error: "That collection could not be found." };
-      return addOneContribution(ctx.dek, collection.id, collection.participants, fields as ContributorDraft);
+      return addOneContribution(ctx.dek, collection.id, collection.contributors, fields as ContributorDraft);
     }
 
     case "collection.edit": {
@@ -257,7 +257,7 @@ export async function commitClientCapability(
 
       if (Array.isArray(contributors)) {
         for (const c of contributors) {
-          const r = await addOneContribution(ctx.dek, collection.id, collection.participants, c);
+          const r = await addOneContribution(ctx.dek, collection.id, collection.contributors, c);
           if (!r.ok) return r;
         }
       }

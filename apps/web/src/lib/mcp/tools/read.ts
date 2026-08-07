@@ -323,15 +323,15 @@ export async function getCollection(session: McpSession, args: { id: string }) {
     .limit(1);
   if (!row) return { error: "No collection with that id." };
 
-  const [participantRows, contributionRows, expenseRows] = await Promise.all([
+  const [contributorRows, contributionRows, expenseRows] = await Promise.all([
     db
       .select()
-      .from(schema.collectionParticipants)
+      .from(schema.collectionContributors)
       .where(
         and(
-          eq(schema.collectionParticipants.collectionId, args.id),
-          eq(schema.collectionParticipants.userId, session.userId),
-          isNull(schema.collectionParticipants.deletedAt),
+          eq(schema.collectionContributors.collectionId, args.id),
+          eq(schema.collectionContributors.userId, session.userId),
+          isNull(schema.collectionContributors.deletedAt),
         ),
       ),
     db
@@ -356,11 +356,11 @@ export async function getCollection(session: McpSession, args: { id: string }) {
       ),
   ]);
 
-  const participantNameById = new Map<string, string | null>();
-  const participants = await Promise.all(
-    participantRows.map(async (p) => {
+  const contributorNameById = new Map<string, string | null>();
+  const contributors = await Promise.all(
+    contributorRows.map(async (p) => {
       const displayName = session.scope === "read_full" ? await decryptOrNullSafe(p.displayName, session.dek) : null;
-      participantNameById.set(p.id, displayName);
+      contributorNameById.set(p.id, displayName);
       return { id: p.id, displayName: session.scope === "read_full" ? displayName : undefined, redacted: session.scope !== "read_full" };
     }),
   );
@@ -370,8 +370,8 @@ export async function getCollection(session: McpSession, args: { id: string }) {
       id: c.id,
       contributorName:
         session.scope === "read_full"
-          ? c.participantId
-            ? (participantNameById.get(c.participantId) ?? null)
+          ? c.contributorId
+            ? (contributorNameById.get(c.contributorId) ?? null)
             : c.contributorName
               ? await decryptOrNullSafe(c.contributorName, session.dek)
               : null
@@ -389,7 +389,7 @@ export async function getCollection(session: McpSession, args: { id: string }) {
       description: session.scope === "read_full" && e.description ? await decryptOrNullSafe(e.description, session.dek) : undefined,
       amount: session.scope === "read_full" ? await decryptOrNull(e.amount, session.dek) : undefined,
       spentAt: e.spentAt,
-      paidByName: e.paidByParticipantId ? (participantNameById.get(e.paidByParticipantId) ?? null) : null,
+      paidByName: e.paidByContributorId ? (contributorNameById.get(e.paidByContributorId) ?? null) : null,
       redacted: session.scope !== "read_full",
     })),
   );
@@ -416,7 +416,7 @@ export async function getCollection(session: McpSession, args: { id: string }) {
           : undefined,
       redacted: session.scope !== "read_full",
     },
-    participants,
+    contributors,
     contributions,
     expenses,
   };

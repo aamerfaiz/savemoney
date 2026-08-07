@@ -3,7 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Packed-ciphertext rows straight off `collections`/`collection_participants`/
+ * Packed-ciphertext rows straight off `collections`/`collection_contributors`/
  * `collection_contributions`/`collection_expenses` — every amount and name
  * needs the vault DEK to read, so no totals are computed here. See
  * src/lib/collections/compute.ts, which takes over once the client has
@@ -21,7 +21,7 @@ export interface RawCollectionRow {
   status: string;
 }
 
-export interface RawCollectionParticipantRow {
+export interface RawCollectionContributorRow {
   id: string;
   collectionId: string;
   displayName: string;
@@ -31,7 +31,7 @@ export interface RawCollectionParticipantRow {
 export interface RawCollectionContributionRow {
   id: string;
   collectionId: string;
-  participantId: string | null;
+  contributorId: string | null;
   contributorName: string | null;
   amount: string;
   contributedAt: string;
@@ -45,7 +45,7 @@ export interface RawCollectionExpenseRow {
   amount: string;
   description: string | null;
   categoryId: string | null;
-  paidByParticipantId: string | null;
+  paidByContributorId: string | null;
   spentAt: string;
   linkedTransactionId: string | null;
 }
@@ -61,7 +61,7 @@ interface CollectionSel {
   status: string;
 }
 
-interface ParticipantSel {
+interface ContributorSel {
   id: string;
   collection_id: string;
   display_name: string;
@@ -71,7 +71,7 @@ interface ParticipantSel {
 interface ContributionSel {
   id: string;
   collection_id: string;
-  participant_id: string | null;
+  contributor_id: string | null;
   contributor_name: string | null;
   amount: string;
   contributed_at: string;
@@ -85,7 +85,7 @@ interface ExpenseSel {
   amount: string;
   description: string | null;
   category_id: string | null;
-  paid_by_participant_id: string | null;
+  paid_by_contributor_id: string | null;
   spent_at: string;
   linked_transaction_id: string | null;
 }
@@ -109,14 +109,14 @@ export async function fetchCollectionsRaw(): Promise<RawCollectionRow[]> {
   }));
 }
 
-export async function fetchCollectionParticipantsRaw(): Promise<RawCollectionParticipantRow[]> {
+export async function fetchCollectionContributorsRaw(): Promise<RawCollectionContributorRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
-    .from("collection_participants")
+    .from("collection_contributors")
     .select("id, collection_id, display_name, linked_user_id")
     .is("deleted_at", null);
 
-  return ((data ?? []) as ParticipantSel[]).map((p) => ({
+  return ((data ?? []) as ContributorSel[]).map((p) => ({
     id: p.id,
     collectionId: p.collection_id,
     displayName: p.display_name,
@@ -131,7 +131,7 @@ export async function fetchCollectionContributionsRaw(): Promise<
   const { data } = await supabase
     .from("collection_contributions")
     .select(
-      "id, collection_id, participant_id, contributor_name, amount, contributed_at, method, note",
+      "id, collection_id, contributor_id, contributor_name, amount, contributed_at, method, note",
     )
     .is("deleted_at", null)
     .order("contributed_at", { ascending: false });
@@ -139,7 +139,7 @@ export async function fetchCollectionContributionsRaw(): Promise<
   return ((data ?? []) as ContributionSel[]).map((c) => ({
     id: c.id,
     collectionId: c.collection_id,
-    participantId: c.participant_id,
+    contributorId: c.contributor_id,
     contributorName: c.contributor_name,
     amount: c.amount,
     contributedAt: c.contributed_at,
@@ -153,7 +153,7 @@ export async function fetchCollectionExpensesRaw(): Promise<RawCollectionExpense
   const { data } = await supabase
     .from("collection_expenses")
     .select(
-      "id, collection_id, amount, description, category_id, paid_by_participant_id, spent_at, linked_transaction_id",
+      "id, collection_id, amount, description, category_id, paid_by_contributor_id, spent_at, linked_transaction_id",
     )
     .is("deleted_at", null)
     .order("spent_at", { ascending: false });
@@ -164,7 +164,7 @@ export async function fetchCollectionExpensesRaw(): Promise<RawCollectionExpense
     amount: e.amount,
     description: e.description,
     categoryId: e.category_id,
-    paidByParticipantId: e.paid_by_participant_id,
+    paidByContributorId: e.paid_by_contributor_id,
     spentAt: e.spent_at,
     linkedTransactionId: e.linked_transaction_id,
   }));
