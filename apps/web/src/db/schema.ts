@@ -624,17 +624,19 @@ export const netWorthSnapshots = pgTable(
 /* ----------------------------------------------------------------------- */
 /* Collections (Splitwise-style contribution pools, e.g. office gift money) */
 /* ----------------------------------------------------------------------- */
-/* One organizer (the signed-in user) tracks named contributors and what each
- * put in toward a shared pool — never a multi-user shared ledger (no other
- * party has an account here). `targetAmount` is optional: many collections
- * just gather whatever comes in. The running total is never stored — it's
- * always derived client-side from summing decrypted `collection_contributions`
- * rows, the same way every other ciphertext total in this app is computed,
- * which also sidesteps the read-modify-write race `goals.current_amount`
- * accepts (see its comment in lib/goals/actions.ts). `payout*` fields record
- * that the pooled money was spent, optionally linked to a real expense
- * transaction so the collect-then-spend loop shows up in the user's own
- * finances. */
+/* One organizer (the signed-in user) tracks a roster of participants and
+ * what each put into a shared pool, plus what's been spent from it —
+ * still a single-user-owned ledger today (no other party has an account
+ * here), but `collection_participants.linkedUserId` exists specifically so
+ * a participant can later be upgraded to a real linked account without a
+ * schema change, once multi-user/invites are built. `targetAmount` is
+ * optional: many collections just gather whatever comes in. Every total
+ * (collected, spent, remaining) is derived client-side by summing decrypted
+ * rows, never stored — sidesteps the read-modify-write race
+ * `goals.current_amount` accepts (see its comment in lib/goals/actions.ts).
+ * Spending is its own ledger (`collection_expenses`), not a single
+ * collection-level payout — a collection can have many expenses over time,
+ * each optionally linked to a real expense transaction. */
 
 export const collectionStatus = pgEnum("collection_status", ["open", "closed"]);
 
@@ -654,18 +656,39 @@ export const collections = pgTable(
     currency: text("currency").notNull().default("USD"),
     eventDate: date("event_date"),
     status: collectionStatus("status").notNull().default("open"),
-    // Set together when a payout is recorded — never independently.
-    payoutAmount: text("payout_amount"),
-    payoutAt: date("payout_at"),
-    payoutNote: text("payout_note"),
-    payoutExpenseId: uuid("payout_expense_id").references(() => expenses.id, {
+    ...audit,
+  },
+  (t) => [index("collections_user_idx").on(t.userId)],
+);
+
+/** A collection's roster — one row per person, contributions/expenses
+ * reference this instead of re-typing a name on every row. `linkedUserId`
+ * is the forward-compatibility hook for real multi-user support: always
+ * null today (nobody but the organizer has an account), but a participant
+ * can be re-pointed at a real `auth.users` row later (e.g. after an invite
+ * flow) without touching `collection_contributions`/`collection_expenses`
+ * at all. */
+export const collectionParticipants = pgTable(
+  "collection_participants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    // Packed ciphertext — a participant's display name, encrypted like
+    // every other free-text field in this module.
+    displayName: text("display_name").notNull(),
+    linkedUserId: uuid("linked_user_id").references(() => authUsers.id, {
       onDelete: "set null",
     }),
     ...audit,
   },
   (t) => [
-    index("collections_user_idx").on(t.userId),
-    index("collections_payout_expense_idx").on(t.payoutExpenseId),
+    index("collection_participants_collection_idx").on(t.collectionId),
+    index("collection_participants_user_idx").on(t.userId),
   ],
 );
 
@@ -679,9 +702,14 @@ export const collectionContributions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    // Packed ciphertext — the contributor's name, encrypted like every
-    // other free-text field on this table.
-    contributorName: text("contributor_name").notNull(),
+    participantId: uuid("participant_id").references(() => collectionParticipants.id, {
+      onDelete: "set null",
+    }),
+    // Legacy fallback only — pre-participants-table rows (nullable so old
+    // rows keep displaying via this while `participant_id` is null; every
+    // new contribution goes through `participantId` instead and leaves
+    // this null). Packed ciphertext, same as `participant_id`'s name.
+    contributorName: text("contributor_name"),
     amount: text("amount").notNull(),
     contributedAt: date("contributed_at").notNull(),
     method: text("method"),
@@ -691,6 +719,44 @@ export const collectionContributions = pgTable(
   (t) => [
     index("collection_contrib_collection_idx").on(t.collectionId),
     index("collection_contrib_user_idx").on(t.userId),
+    index("collection_contrib_participant_idx").on(t.participantId),
+  ],
+);
+
+/** Money spent out of a collection's pool — plural and ongoing, replacing
+ * the old single collection-level payout. `paidByParticipantId` is optional
+ * bookkeeping (who fronted it) that stays unused by any math today but sets
+ * up real Splitwise-style per-expense splitting later without another
+ * migration. `linkedTransactionId` mirrors the old payout's "log this as a
+ * real expense too" link, now per expense instead of per collection. */
+export const collectionExpenses = pgTable(
+  "collection_expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    // Packed ciphertext.
+    amount: text("amount").notNull(),
+    description: text("description"),
+    categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+    paidByParticipantId: uuid("paid_by_participant_id").references(() => collectionParticipants.id, {
+      onDelete: "set null",
+    }),
+    spentAt: date("spent_at").notNull(),
+    linkedTransactionId: uuid("linked_transaction_id").references(() => expenses.id, {
+      onDelete: "set null",
+    }),
+    ...audit,
+  },
+  (t) => [
+    index("collection_expenses_collection_idx").on(t.collectionId),
+    index("collection_expenses_user_idx").on(t.userId),
+    index("collection_expenses_category_idx").on(t.categoryId),
+    index("collection_expenses_linked_txn_idx").on(t.linkedTransactionId),
   ],
 );
 
@@ -890,7 +956,9 @@ export type InvestmentContribution =
   typeof investmentContributions.$inferSelect;
 export type NetWorthSnapshot = typeof netWorthSnapshots.$inferSelect;
 export type Collection = typeof collections.$inferSelect;
+export type CollectionParticipant = typeof collectionParticipants.$inferSelect;
 export type CollectionContribution = typeof collectionContributions.$inferSelect;
+export type CollectionExpense = typeof collectionExpenses.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;

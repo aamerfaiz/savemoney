@@ -15,16 +15,18 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchCollectionsDataAction } from "./side-data";
 import {
   decryptCollectionRows,
+  decryptCollectionParticipantRows,
   decryptCollectionContributionRows,
+  decryptCollectionExpenseRows,
 } from "@/lib/finance/decrypt";
 import { useDecryptProgressStore, withProgress } from "@/lib/finance/decrypt-progress";
-import { computeCollectionsData } from "./compute";
+import { computeCollectionsData, type CategoryLookup } from "./compute";
 import { useVaultStore } from "@/lib/vault/store";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
 
 export const COLLECTIONS_PROGRESS_KEY = "collections-data";
 
-export function useCollectionsData(currency: CurrencyCode) {
+export function useCollectionsData(currency: CurrencyCode, categories: CategoryLookup[] = []) {
   const dek = useVaultStore((s) => s.dek);
 
   return useQuery({
@@ -34,36 +36,56 @@ export function useCollectionsData(currency: CurrencyCode) {
     queryFn: async () => {
       if (!dek) throw new Error("Vault is locked.");
 
-      const { collections: rawCollections, contributions: rawContributions } =
-        await fetchCollectionsDataAction();
+      const {
+        collections: rawCollections,
+        participants: rawParticipants,
+        contributions: rawContributions,
+        expenses: rawExpenses,
+      } = await fetchCollectionsDataAction();
 
-      useDecryptProgressStore
-        .getState()
-        .startChunk(COLLECTIONS_PROGRESS_KEY, rawCollections.length + rawContributions.length);
+      const totalRows =
+        rawCollections.length + rawParticipants.length + rawContributions.length + rawExpenses.length;
+      useDecryptProgressStore.getState().startChunk(COLLECTIONS_PROGRESS_KEY, totalRows);
 
-      const [collectionRowsResult, contributionRowsResult] = await Promise.all([
-        withProgress(
-          COLLECTIONS_PROGRESS_KEY,
-          rawCollections.length,
-          decryptCollectionRows(rawCollections, dek),
-        ),
-        withProgress(
-          COLLECTIONS_PROGRESS_KEY,
-          rawContributions.length,
-          decryptCollectionContributionRows(rawContributions, dek),
-        ),
-      ]);
+      const [collectionRowsResult, participantRowsResult, contributionRowsResult, expenseRowsResult] =
+        await Promise.all([
+          withProgress(
+            COLLECTIONS_PROGRESS_KEY,
+            rawCollections.length,
+            decryptCollectionRows(rawCollections, dek),
+          ),
+          withProgress(
+            COLLECTIONS_PROGRESS_KEY,
+            rawParticipants.length,
+            decryptCollectionParticipantRows(rawParticipants, dek),
+          ),
+          withProgress(
+            COLLECTIONS_PROGRESS_KEY,
+            rawContributions.length,
+            decryptCollectionContributionRows(rawContributions, dek),
+          ),
+          withProgress(
+            COLLECTIONS_PROGRESS_KEY,
+            rawExpenses.length,
+            decryptCollectionExpenseRows(rawExpenses, dek),
+          ),
+        ]);
 
       const collectionsData = computeCollectionsData(
         collectionRowsResult.rows,
+        participantRowsResult.rows,
         contributionRowsResult.rows,
+        expenseRowsResult.rows,
+        categories,
         currency,
       );
 
       return {
         collectionsData,
         failedCollectionCount: collectionRowsResult.failedCount,
+        failedParticipantCount: participantRowsResult.failedCount,
         failedContributionCount: contributionRowsResult.failedCount,
+        failedExpenseCount: expenseRowsResult.failedCount,
       };
     },
   });

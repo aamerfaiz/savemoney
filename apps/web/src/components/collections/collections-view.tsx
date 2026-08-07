@@ -2,6 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Plus, Pencil, Trash2, Users, ShieldAlert, HandCoins } from "lucide-react";
 
 import { Icon } from "@/components/icon";
@@ -9,83 +10,47 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { CollectionForm } from "./collection-form";
-import { CollectionDetailDialog } from "./collection-detail-dialog";
-import { PayoutForm } from "./payout-form";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@savemoney/finance-engine/format";
-import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { useAutoOpenAdd } from "@/lib/nav/use-auto-open-add";
 import { deleteCollection } from "@/lib/collections/actions";
 import type { CollectionsData } from "@/lib/collections/compute";
-import type { CollectionContributor, CollectionWithProgress } from "@/lib/collections/types";
-import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
-
-type CollectionsAction =
-  | { type: "removeCollection"; id: string }
-  | { type: "addContributor"; collectionId: string; contributor: CollectionContributor }
-  | { type: "removeContributor"; collectionId: string; contributorId: string };
-
-/** Keeps a card's own totals in step with an add/remove happening inside its
- * still-open detail dialog — mirrors the recompute `CollectionDetailDialog`
- * already does locally for its own list, just at the card-grid level too. */
-function collectionsReducer(
-  state: CollectionWithProgress[],
-  action: CollectionsAction,
-): CollectionWithProgress[] {
-  if (action.type === "removeCollection") {
-    return state.filter((c) => c.id !== action.id);
-  }
-  return state.map((c) => {
-    if (c.id !== action.collectionId) return c;
-    const contributors =
-      action.type === "addContributor"
-        ? [action.contributor, ...c.contributors]
-        : c.contributors.filter((ct) => ct.id !== action.contributorId);
-    return { ...c, contributors, summary: computeCollectionSummary(contributors, c.targetAmount) };
-  });
-}
+import type { CollectionWithProgress } from "@/lib/collections/types";
 
 export function CollectionsView({
   data,
   dek,
   failedCount = 0,
-  expenseCategories,
-  accounts,
 }: {
   data: CollectionsData;
   dek: CryptoKey;
   /** Rows that existed but couldn't be decrypted with the current DEK. */
   failedCount?: number;
-  expenseCategories: CategoryOption[];
-  accounts: AccountOption[];
 }) {
   const router = useRouter();
   const invalidateFinanceData = useInvalidateFinanceData();
   const [, startTransition] = useTransition();
   const [adding, setAdding] = useState(useAutoOpenAdd());
   const [editing, setEditing] = useState<CollectionWithProgress | null>(null);
-  const [viewing, setViewing] = useState<CollectionWithProgress | null>(null);
-  const [payingOut, setPayingOut] = useState<CollectionWithProgress | null>(null);
-  const { currency } = data;
 
-  const [collections, dispatchCollections] = useOptimistic(data.collections, collectionsReducer);
+  const [collections, removeCollection] = useOptimistic(
+    data.collections,
+    (state: CollectionWithProgress[], id: string) => state.filter((c) => c.id !== id),
+  );
 
   const open = collections.filter((c) => c.status === "open");
   const closed = collections.filter((c) => c.status === "closed");
 
   const onDelete = (c: CollectionWithProgress) => {
-    if (!confirm(`Delete "${c.title}"? This removes all of its contributors too.`)) return;
+    if (!confirm(`Delete "${c.title}"? This removes all of its participants, contributions, and expenses too.`)) return;
     startTransition(async () => {
-      dispatchCollections({ type: "removeCollection", id: c.id });
+      removeCollection(c.id);
       await deleteCollection(c.id);
       invalidateFinanceData();
       router.refresh();
     });
   };
-
-  // Re-select the up-to-date row for a currently-open dialog after a mutation.
-  const findLive = (id: string) => collections.find((c) => c.id === id) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -122,14 +87,7 @@ export function CollectionsView({
           {open.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2">
               {open.map((c) => (
-                <CollectionCard
-                  key={c.id}
-                  c={c}
-                  onView={() => setViewing(c)}
-                  onEdit={() => setEditing(c)}
-                  onDelete={() => onDelete(c)}
-                  onPayout={() => setPayingOut(c)}
-                />
+                <CollectionCard key={c.id} c={c} onEdit={() => setEditing(c)} onDelete={() => onDelete(c)} />
               ))}
             </div>
           )}
@@ -139,14 +97,7 @@ export function CollectionsView({
               <p className="text-xs font-medium text-muted-foreground">Closed</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {closed.map((c) => (
-                  <CollectionCard
-                    key={c.id}
-                    c={c}
-                    onView={() => setViewing(c)}
-                    onEdit={() => setEditing(c)}
-                    onDelete={() => onDelete(c)}
-                    onPayout={() => setPayingOut(c)}
-                  />
+                  <CollectionCard key={c.id} c={c} onEdit={() => setEditing(c)} onDelete={() => onDelete(c)} />
                 ))}
               </div>
             </div>
@@ -176,51 +127,18 @@ export function CollectionsView({
           <CollectionForm existing={editing} onSuccess={() => setEditing(null)} dek={dek} />
         )}
       </Dialog>
-
-      <CollectionDetailDialog
-        collection={viewing ? findLive(viewing.id) : null}
-        open={!!viewing}
-        onClose={() => setViewing(null)}
-        dek={dek}
-        onContributorAdded={(collectionId, contributor) =>
-          dispatchCollections({ type: "addContributor", collectionId, contributor })
-        }
-        onContributorRemoved={(collectionId, contributorId) =>
-          dispatchCollections({ type: "removeContributor", collectionId, contributorId })
-        }
-      />
-
-      <Dialog
-        open={!!payingOut}
-        onClose={() => setPayingOut(null)}
-        title={payingOut ? `Record payout — ${payingOut.title}` : "Record payout"}
-      >
-        {payingOut && (
-          <PayoutForm
-            collection={findLive(payingOut.id) ?? payingOut}
-            expenseCategories={expenseCategories}
-            accounts={accounts}
-            onSuccess={() => setPayingOut(null)}
-            dek={dek}
-          />
-        )}
-      </Dialog>
     </div>
   );
 }
 
 function CollectionCard({
   c,
-  onView,
   onEdit,
   onDelete,
-  onPayout,
 }: {
   c: CollectionWithProgress;
-  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onPayout: () => void;
 }) {
   const { summary } = c;
   const pct = summary.progress != null ? Math.round(summary.progress * 100) : null;
@@ -237,9 +155,9 @@ function CollectionCard({
           <Icon name={c.icon ?? "gift"} className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <button onClick={onView} className="truncate text-left text-sm font-medium hover:underline">
+          <Link href={`/collections/${c.id}`} className="truncate text-left text-sm font-medium hover:underline">
             {c.title}
-          </button>
+          </Link>
           <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
             <Users className="size-3" />
             {summary.contributorCount} {summary.contributorCount === 1 ? "person" : "people"}
@@ -268,7 +186,7 @@ function CollectionCard({
         </div>
       </div>
 
-      <div className="mt-3">
+      <Link href={`/collections/${c.id}`} className="mt-3 block">
         <div className="flex items-baseline justify-between text-sm">
           <span className="font-semibold tabular-nums">
             {formatCurrency(summary.totalCollected, c.currency)}
@@ -290,22 +208,15 @@ function CollectionCard({
             />
           </div>
         )}
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button variant="secondary" size="sm" onClick={onView}>
-          View contributors
-        </Button>
-        {c.status === "open" ? (
-          <Button variant="secondary" size="sm" onClick={onPayout} disabled={summary.contributorCount === 0}>
-            Record payout
-          </Button>
-        ) : (
-          <Button variant="secondary" size="sm" disabled>
-            Paid out
-          </Button>
+        {summary.totalSpent > 0 && (
+          <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
+            {formatCurrency(summary.totalSpent, c.currency)} spent ·{" "}
+            <span className={summary.isOverspent ? "text-negative" : ""}>
+              {formatCurrency(summary.balance, c.currency)} left
+            </span>
+          </p>
         )}
-      </div>
+      </Link>
     </div>
   );
 }

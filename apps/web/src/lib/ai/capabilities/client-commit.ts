@@ -39,9 +39,10 @@ import { encryptedCreateBudget } from "@/lib/budgets/client-actions";
 import { encryptedCreateRecurringRule } from "@/lib/recurring/client-actions";
 import {
   encryptedCreateCollection,
-  encryptedAddContributor,
+  encryptedCreateParticipant,
   encryptedEditCollectionFields,
-  encryptedRecordPayout,
+  encryptedAddContribution as encryptedAddCollectionContribution,
+  encryptedAddExpense,
 } from "@/lib/collections/client-actions";
 import type { InvestmentWithProjection } from "@/lib/investments/types";
 import type { LoanWithProjection } from "@/lib/loans/types";
@@ -105,22 +106,50 @@ interface ContributorDraft {
   method?: unknown;
 }
 
-/** Adds one contributor from a `collection.create`/`collection.edit`
- * draft's `contributors` array — same shape `parseContributorsArg`
- * (definitions.ts) already validated server-side, re-coerced here since
- * this file can't import that "server-only" module. */
-async function addOneContributor(
+/** Finds an existing participant by case-insensitive name match, or creates
+ * one — participant names are encrypted, so this match can only ever
+ * happen here (client-side, against the already-decrypted roster), never
+ * in definitions.ts's server-side `resolve()`. */
+async function resolveOrCreateParticipant(
   dek: CryptoKey,
   collectionId: string,
+  name: string,
+  existingParticipants: { id: string; displayName: string }[],
+): Promise<{ id: string } | { error: string }> {
+  const norm = name.trim().toLowerCase();
+  const match = existingParticipants.find((p) => p.displayName.trim().toLowerCase() === norm);
+  if (match) return { id: match.id };
+
+  const result = await encryptedCreateParticipant(dek, collectionId, undefined, toFormData({ displayName: name }));
+  if (!result.ok || !result.id) return { error: result.error ?? "Couldn't add participant." };
+  return { id: result.id };
+}
+
+/** Adds one contribution from a `collection.create`/`collection.edit`/
+ * `collection.contribution` draft — same shape `parseContributorsArg`
+ * (definitions.ts) already validated server-side, re-coerced here since
+ * this file can't import that "server-only" module. Resolves (or creates)
+ * the named participant first, then logs the contribution against them. */
+async function addOneContribution(
+  dek: CryptoKey,
+  collectionId: string,
+  existingParticipants: { id: string; displayName: string }[],
   draft: ContributorDraft,
 ): Promise<ClientCommitResult> {
+  const name = asString(draft.contributorName);
+  const amount = toNumber(draft.amount);
+  if (!name || amount == null) return { ok: false, error: "Missing contributor name or amount." };
+
+  const participant = await resolveOrCreateParticipant(dek, collectionId, name, existingParticipants);
+  if ("error" in participant) return { ok: false, error: participant.error };
+
   const fd = toFormData({
-    contributorName: asString(draft.contributorName),
-    amount: toNumber(draft.amount),
+    participantId: participant.id,
+    amount,
     contributedAt: normalizeDate(draft.contributedAt) ?? todayISO(),
     method: asString(draft.method),
   });
-  return encryptedAddContributor(dek, collectionId, undefined, fd);
+  return encryptedAddCollectionContribution(dek, collectionId, undefined, fd);
 }
 
 /** Mirrors `capabilities/shared.ts`'s `toFormData` — kept as a separate
@@ -196,7 +225,7 @@ export async function commitClientCapability(
       if (!result.ok || !result.id) return result;
       if (Array.isArray(contributors)) {
         for (const c of contributors) {
-          const r = await addOneContributor(ctx.dek, result.id, c);
+          const r = await addOneContribution(ctx.dek, result.id, [], c);
           if (!r.ok) return r;
         }
       }
@@ -206,7 +235,7 @@ export async function commitClientCapability(
     case "collection.contribution": {
       const collection = ctx.collections.find((c) => c.id === targetId);
       if (!collection) return { ok: false, error: "That collection could not be found." };
-      return encryptedAddContributor(ctx.dek, collection.id, undefined, fd);
+      return addOneContribution(ctx.dek, collection.id, collection.participants, fields as ContributorDraft);
     }
 
     case "collection.edit": {
@@ -228,17 +257,17 @@ export async function commitClientCapability(
 
       if (Array.isArray(contributors)) {
         for (const c of contributors) {
-          const r = await addOneContributor(ctx.dek, collection.id, c);
+          const r = await addOneContribution(ctx.dek, collection.id, collection.participants, c);
           if (!r.ok) return r;
         }
       }
       return { ok: true };
     }
 
-    case "collection.payout": {
+    case "collection.expense": {
       const collection = ctx.collections.find((c) => c.id === targetId);
       if (!collection) return { ok: false, error: "That collection could not be found." };
-      return encryptedRecordPayout(ctx.dek, collection.id, undefined, fd);
+      return encryptedAddExpense(ctx.dek, collection.id, undefined, fd);
     }
 
     default:

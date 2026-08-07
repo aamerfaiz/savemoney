@@ -2,27 +2,30 @@
 
 /**
  * Client-side wrappers that validate + encrypt before calling the real
- * Server Actions. `collection-form.tsx`/`contributor-form.tsx`/
- * `payout-form.tsx` bind these instead of `createCollection`/
- * `updateCollection`/`addContributor`/`recordPayout` directly — same shape
- * `useActionState` needs. Mirrors src/lib/goals/client-actions.ts.
+ * Server Actions. Forms bind these instead of the raw actions in
+ * ./actions.ts directly — same shape `useActionState` needs. Mirrors
+ * src/lib/goals/client-actions.ts.
  */
 
 import { encryptPacked } from "@/lib/vault/crypto";
 import {
   createCollection,
   updateCollection,
-  addContributor,
-  recordPayout,
+  createParticipant,
+  migrateLegacyContributions,
+  addContribution,
+  addExpense,
   type ActionResult,
   type EncryptedCollectionInput,
-  type EncryptedContributorInput,
-  type EncryptedPayoutInput,
+  type EncryptedParticipantInput,
+  type EncryptedContributionInput,
+  type EncryptedExpenseInput,
 } from "./actions";
 import {
   collectionInputSchema,
-  contributorInputSchema,
-  payoutInputSchema,
+  participantInputSchema,
+  contributionInputSchema,
+  expenseInputSchema,
   type CollectionStatus,
   type CollectionWithProgress,
 } from "./types";
@@ -42,6 +45,10 @@ function fieldErrors(err: import("zod").ZodError): ActionResult {
   }
   return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
 }
+
+/* ----------------------------------------------------------------------- */
+/* Collections                                                              */
+/* ----------------------------------------------------------------------- */
 
 function parseCollectionForm(formData: FormData) {
   const raw = {
@@ -101,18 +108,13 @@ export async function encryptedUpdateCollection(
   return updateCollection(id, result.input);
 }
 
-/**
- * Merge-edit for Smart Entry's `collection.edit` capability (see
+/** Merge-edit for Smart Entry's `collection.edit` capability (see
  * definitions.ts) — takes only the fields the user's prompt actually
  * mentioned (everything else `undefined`) and merges them onto `current`,
- * the already-decrypted row `client-commit.ts` looked up via
- * `useCollectionsData()`. Bypasses the FormData-based
- * `encryptedUpdateCollection` above: that wrapper always writes every
- * field, which would silently null out anything the prompt didn't mention
- * (e.g. wiping the target amount just because the user only asked to close
- * the collection) — exactly the merge-on-edit problem
- * docs/ai-smart-entry-plan.md flags as unbuilt for every other module.
- */
+ * the already-decrypted row `client-commit.ts` looked up. Bypasses the
+ * FormData-based `encryptedUpdateCollection` above: that wrapper always
+ * writes every field, which would silently null out anything the prompt
+ * didn't mention. */
 export async function encryptedEditCollectionFields(
   dek: CryptoKey,
   current: CollectionWithProgress,
@@ -142,14 +144,55 @@ export async function encryptedEditCollectionFields(
   return updateCollection(current.id, input);
 }
 
-export async function encryptedAddContributor(
+/* ----------------------------------------------------------------------- */
+/* Participants                                                             */
+/* ----------------------------------------------------------------------- */
+
+export async function encryptedCreateParticipant(
   dek: CryptoKey,
   collectionId: string,
   _prev: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = contributorInputSchema.safeParse({
-    contributorName: formData.get("contributorName"),
+  const parsed = participantInputSchema.safeParse({
+    displayName: formData.get("displayName"),
+  });
+  if (!parsed.success) return fieldErrors(parsed.error);
+
+  const displayName = await encryptPacked(parsed.data.displayName, dek);
+  const input: EncryptedParticipantInput = { displayName };
+  return createParticipant(collectionId, input);
+}
+
+export async function encryptedMigrateLegacyContributions(
+  dek: CryptoKey,
+  collectionId: string,
+  displayName: string,
+  contributionIds: string[],
+): Promise<ActionResult> {
+  const parsed = participantInputSchema.safeParse({ displayName });
+  if (!parsed.success) return fieldErrors(parsed.error);
+
+  const encryptedName = await encryptPacked(parsed.data.displayName, dek);
+  return migrateLegacyContributions(
+    collectionId,
+    { displayName: encryptedName },
+    contributionIds,
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Contributions                                                            */
+/* ----------------------------------------------------------------------- */
+
+export async function encryptedAddContribution(
+  dek: CryptoKey,
+  collectionId: string,
+  _prev: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const parsed = contributionInputSchema.safeParse({
+    participantId: formData.get("participantId"),
     amount: formData.get("amount"),
     contributedAt:
       formData.get("contributedAt") || new Date().toISOString().slice(0, 10),
@@ -159,49 +202,52 @@ export async function encryptedAddContributor(
   if (!parsed.success) return fieldErrors(parsed.error);
   const v = parsed.data;
 
-  const [contributorName, amount] = await Promise.all([
-    encryptPacked(v.contributorName, dek),
-    encryptPacked(String(v.amount), dek),
-  ]);
+  const amount = await encryptPacked(String(v.amount), dek);
   const note = v.note ? await encryptPacked(v.note, dek) : null;
 
-  const input: EncryptedContributorInput = {
-    contributorName,
+  const input: EncryptedContributionInput = {
+    participantId: v.participantId,
     amount,
     contributedAt: v.contributedAt,
     method: v.method ?? null,
     note,
   };
-  return addContributor(collectionId, input);
+  return addContribution(collectionId, input);
 }
 
-export async function encryptedRecordPayout(
+/* ----------------------------------------------------------------------- */
+/* Expenses                                                                 */
+/* ----------------------------------------------------------------------- */
+
+export async function encryptedAddExpense(
   dek: CryptoKey,
   collectionId: string,
   _prev: ActionResult | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = payoutInputSchema.safeParse({
+  const parsed = expenseInputSchema.safeParse({
     amount: formData.get("amount"),
-    payoutAt: formData.get("payoutAt") || new Date().toISOString().slice(0, 10),
-    note: emptyToNull(formData.get("note")),
+    description: emptyToNull(formData.get("description")),
     categoryId: emptyToNull(formData.get("categoryId")),
+    paidByParticipantId: emptyToNull(formData.get("paidByParticipantId")),
+    spentAt: formData.get("spentAt") || new Date().toISOString().slice(0, 10),
+    linkToTransaction: formData.get("linkToTransaction") === "true",
     accountId: emptyToNull(formData.get("accountId")),
-    createExpense: formData.get("createExpense") !== "false",
   });
   if (!parsed.success) return fieldErrors(parsed.error);
   const v = parsed.data;
 
   const amount = await encryptPacked(String(v.amount), dek);
-  const note = v.note ? await encryptPacked(v.note, dek) : null;
+  const description = v.description ? await encryptPacked(v.description, dek) : null;
 
-  const input: EncryptedPayoutInput = {
+  const input: EncryptedExpenseInput = {
     amount,
-    payoutAt: v.payoutAt,
-    note,
+    description,
     categoryId: v.categoryId ?? null,
+    paidByParticipantId: v.paidByParticipantId ?? null,
+    spentAt: v.spentAt,
+    linkToTransaction: v.linkToTransaction,
     accountId: v.accountId ?? null,
-    createExpense: v.createExpense,
   };
-  return recordPayout(collectionId, input);
+  return addExpense(collectionId, input);
 }

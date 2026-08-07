@@ -771,9 +771,41 @@ export async function deleteCollection(session: McpSession, args: z.infer<z.ZodO
   return { status: "done", ...plan };
 }
 
+/** Case-insensitive match against a collection's already-decrypted roster,
+ * or creates a new participant — an MCP call has `session.dek` available
+ * server-side (unlike the browser Smart Entry path, which has to defer
+ * this to client-commit.ts), so name matching can happen right here. */
+async function resolveOrCreateParticipant(
+  session: McpSession,
+  collectionId: string,
+  name: string,
+): Promise<{ id: string; displayName: string }> {
+  const rows = await db!
+    .select()
+    .from(schema.collectionParticipants)
+    .where(
+      and(
+        eq(schema.collectionParticipants.collectionId, collectionId),
+        eq(schema.collectionParticipants.userId, session.userId),
+        isNull(schema.collectionParticipants.deletedAt),
+      ),
+    );
+  const norm = name.trim().toLowerCase();
+  for (const r of rows) {
+    const decrypted = await decryptStrOrNull(r.displayName, session.dek);
+    if (decrypted && decrypted.trim().toLowerCase() === norm) return { id: r.id, displayName: decrypted };
+  }
+  const displayName = await encryptPacked(name, session.dek);
+  const [row] = await db!
+    .insert(schema.collectionParticipants)
+    .values({ collectionId, userId: session.userId, displayName })
+    .returning({ id: schema.collectionParticipants.id });
+  return { id: row.id, displayName: name };
+}
+
 export const addCollectionContributionSchema = {
   collectionId: z.string().uuid(),
-  contributorName: z.string().trim().min(1).max(80),
+  contributorName: z.string().trim().min(1).max(80).describe("Matched against the collection's roster, or added to it."),
   amount: z.number().positive().max(1_000_000_000),
   contributedAt: dateShape.optional().describe("ISO date. Defaults to today."),
   method: z.string().trim().max(40).optional(),
@@ -797,14 +829,12 @@ export async function addCollectionContribution(session: McpSession, args: z.inf
   const plan = { collection: collection.title, contributor: args.contributorName, amount: args.amount, contributedAt, method: args.method ?? null };
   if (!args.confirm) return preview("add_collection_contribution", plan);
 
-  const [contributorName, amount] = await Promise.all([
-    encryptPacked(args.contributorName, session.dek),
-    encryptPacked(String(args.amount), session.dek),
-  ]);
+  const participant = await resolveOrCreateParticipant(session, args.collectionId, args.contributorName);
+  const amount = await encryptPacked(String(args.amount), session.dek);
   await db.insert(schema.collectionContributions).values({
     collectionId: args.collectionId,
     userId: session.userId,
-    contributorName,
+    participantId: participant.id,
     amount,
     contributedAt,
     method: args.method ?? null,
@@ -812,19 +842,19 @@ export async function addCollectionContribution(session: McpSession, args: z.inf
   return { status: "done", ...plan };
 }
 
-export const recordCollectionPayoutSchema = {
+export const addCollectionExpenseSchema = {
   collectionId: z.string().uuid(),
   amount: z.number().positive().max(1_000_000_000),
-  payoutAt: dateShape.optional().describe("ISO date. Defaults to today."),
-  note: z.string().trim().max(200).optional().describe("What the money was spent on."),
-  createExpense: z.boolean().default(true).describe("Also log this as a real expense transaction."),
+  description: z.string().trim().max(200).optional().describe("What it was spent on."),
+  category: z.string().optional().describe("Category name — matched case-insensitively against the user's categories."),
+  spentAt: dateShape.optional().describe("ISO date. Defaults to today."),
+  linkToTransaction: z.boolean().default(false).describe("Also log this as a real expense transaction."),
   ...confirmShape,
 };
 
-/** Always closes the collection — mirrors client-actions.ts's
- * `encryptedRecordPayout`: once the pooled money is spent, there's nothing
- * left to collect toward. */
-export async function recordCollectionPayout(session: McpSession, args: z.infer<z.ZodObject<typeof recordCollectionPayoutSchema>>) {
+/** Money spent out of a collection's pool — plural, doesn't close the
+ * collection (that's a separate `update_collection` status change). */
+export async function addCollectionExpense(session: McpSession, args: z.infer<z.ZodObject<typeof addCollectionExpenseSchema>>) {
   const gate = requireWriteAccess(session);
   if (gate) return { error: gate };
   if (!db) return { error: "Database isn't configured in this environment." };
@@ -835,29 +865,39 @@ export async function recordCollectionPayout(session: McpSession, args: z.infer<
     .where(and(eq(schema.collections.id, args.collectionId), eq(schema.collections.userId, session.userId), isNull(schema.collections.deletedAt)))
     .limit(1);
   if (!collection) return { error: "No collection with that id." };
+  if (collection.status === "closed") return { error: "This collection is closed." };
 
-  const payoutAt = args.payoutAt ?? new Date().toISOString().slice(0, 10);
-  const plan = { collection: collection.title, amount: args.amount, payoutAt, note: args.note ?? null, createExpense: args.createExpense };
-  if (!args.confirm) return preview("record_collection_payout", plan);
+  const categoryMap = await loadCategoryMap(session.userId);
+  const category = matchByName(args.category, [...categoryMap.entries()].map(([id, v]) => ({ id, name: v.name })));
+  if (args.category && !category) return { error: `No category named "${args.category}" found.` };
 
-  let payoutExpenseId: string | null = null;
-  if (args.createExpense) {
+  const spentAt = args.spentAt ?? new Date().toISOString().slice(0, 10);
+  const plan = { collection: collection.title, amount: args.amount, description: args.description ?? null, category: category?.name ?? null, spentAt, linkToTransaction: args.linkToTransaction };
+  if (!args.confirm) return preview("add_collection_expense", plan);
+
+  let linkedTransactionId: string | null = null;
+  if (args.linkToTransaction) {
     const currency = await getBaseCurrency(session.userId);
     const amount = await encryptPacked(String(args.amount), session.dek);
-    const note = args.note ? await encryptPacked(args.note, session.dek) : null;
+    const description = args.description ? await encryptPacked(args.description, session.dek) : null;
     const [expenseRow] = await db
       .insert(schema.expenses)
-      .values({ userId: session.userId, amount, currency, note, spentAt: payoutAt })
+      .values({ userId: session.userId, amount, currency, description, categoryId: category?.id ?? null, spentAt })
       .returning({ id: schema.expenses.id });
-    payoutExpenseId = expenseRow.id;
+    linkedTransactionId = expenseRow.id;
   }
 
-  const payoutAmount = await encryptPacked(String(args.amount), session.dek);
-  const payoutNote = args.note ? await encryptPacked(args.note, session.dek) : null;
-  await db
-    .update(schema.collections)
-    .set({ payoutAmount, payoutAt, payoutNote, payoutExpenseId, status: "closed" })
-    .where(and(eq(schema.collections.id, args.collectionId), eq(schema.collections.userId, session.userId)));
+  const amount = await encryptPacked(String(args.amount), session.dek);
+  const description = args.description ? await encryptPacked(args.description, session.dek) : null;
+  await db.insert(schema.collectionExpenses).values({
+    collectionId: args.collectionId,
+    userId: session.userId,
+    amount,
+    description,
+    categoryId: category?.id ?? null,
+    spentAt,
+    linkedTransactionId,
+  });
   return { status: "done", ...plan };
 }
 

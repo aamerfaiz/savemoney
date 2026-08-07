@@ -141,6 +141,13 @@
       "when": 1786000575432,
       "tag": "0019_mixed_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786087257365,
+      "tag": "0020_silent_chimera",
+      "breakpoints": true
     }
   ]
 }
