@@ -82,6 +82,8 @@ export function ExpenseForm({
           categoryIcon: category?.icon ?? null,
           paidByContributorId,
           paidByName: paidBy?.displayName ?? null,
+          payers: [],
+          splits: [],
           spentAt,
           linkedTransactionId: null,
         },

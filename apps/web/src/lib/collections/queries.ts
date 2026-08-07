@@ -19,6 +19,7 @@ export interface RawCollectionRow {
   currency: string;
   eventDate: string | null;
   status: string;
+  type: string;
 }
 
 export interface RawCollectionContributorRow {
@@ -50,6 +51,30 @@ export interface RawCollectionExpenseRow {
   linkedTransactionId: string | null;
 }
 
+export interface RawCollectionExpensePayerRow {
+  id: string;
+  expenseId: string;
+  contributorId: string;
+  amount: string;
+}
+
+export interface RawCollectionExpenseSplitRow {
+  id: string;
+  expenseId: string;
+  contributorId: string;
+  shareAmount: string;
+}
+
+export interface RawCollectionSettlementRow {
+  id: string;
+  collectionId: string;
+  fromContributorId: string;
+  toContributorId: string;
+  amount: string;
+  settledAt: string;
+  note: string | null;
+}
+
 interface CollectionSel {
   id: string;
   title: string;
@@ -59,6 +84,7 @@ interface CollectionSel {
   currency: string;
   event_date: string | null;
   status: string;
+  type: string;
 }
 
 interface ContributorSel {
@@ -90,11 +116,35 @@ interface ExpenseSel {
   linked_transaction_id: string | null;
 }
 
+interface ExpensePayerSel {
+  id: string;
+  expense_id: string;
+  contributor_id: string;
+  amount: string;
+}
+
+interface ExpenseSplitSel {
+  id: string;
+  expense_id: string;
+  contributor_id: string;
+  share_amount: string;
+}
+
+interface SettlementSel {
+  id: string;
+  collection_id: string;
+  from_contributor_id: string;
+  to_contributor_id: string;
+  amount: string;
+  settled_at: string;
+  note: string | null;
+}
+
 export async function fetchCollectionsRaw(): Promise<RawCollectionRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("collections")
-    .select("id, title, purpose, icon, target_amount, currency, event_date, status")
+    .select("id, title, purpose, icon, target_amount, currency, event_date, status, type")
     .is("deleted_at", null);
 
   return ((data ?? []) as CollectionSel[]).map((c) => ({
@@ -106,6 +156,7 @@ export async function fetchCollectionsRaw(): Promise<RawCollectionRow[]> {
     currency: c.currency,
     eventDate: c.event_date,
     status: c.status,
+    type: c.type,
   }));
 }
 
@@ -167,5 +218,56 @@ export async function fetchCollectionExpensesRaw(): Promise<RawCollectionExpense
     paidByContributorId: e.paid_by_contributor_id,
     spentAt: e.spent_at,
     linkedTransactionId: e.linked_transaction_id,
+  }));
+}
+
+/** `trip`-type only. Fetched unfiltered by which expense it belongs to —
+ * `compute.ts` joins these onto `collection_expenses` in memory, the same
+ * way it joins categories, so a payer/split row for an expense that's since
+ * been soft-deleted simply has no expense to attach to and is dropped. */
+export async function fetchCollectionExpensePayersRaw(): Promise<RawCollectionExpensePayerRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collection_expense_payers")
+    .select("id, expense_id, contributor_id, amount");
+
+  return ((data ?? []) as ExpensePayerSel[]).map((p) => ({
+    id: p.id,
+    expenseId: p.expense_id,
+    contributorId: p.contributor_id,
+    amount: p.amount,
+  }));
+}
+
+export async function fetchCollectionExpenseSplitsRaw(): Promise<RawCollectionExpenseSplitRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collection_expense_splits")
+    .select("id, expense_id, contributor_id, share_amount");
+
+  return ((data ?? []) as ExpenseSplitSel[]).map((s) => ({
+    id: s.id,
+    expenseId: s.expense_id,
+    contributorId: s.contributor_id,
+    shareAmount: s.share_amount,
+  }));
+}
+
+export async function fetchCollectionSettlementsRaw(): Promise<RawCollectionSettlementRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collection_settlements")
+    .select("id, collection_id, from_contributor_id, to_contributor_id, amount, settled_at, note")
+    .is("deleted_at", null)
+    .order("settled_at", { ascending: false });
+
+  return ((data ?? []) as SettlementSel[]).map((s) => ({
+    id: s.id,
+    collectionId: s.collection_id,
+    fromContributorId: s.from_contributor_id,
+    toContributorId: s.to_contributor_id,
+    amount: s.amount,
+    settledAt: s.settled_at,
+    note: s.note,
   }));
 }

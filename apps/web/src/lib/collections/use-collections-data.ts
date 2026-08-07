@@ -18,6 +18,9 @@ import {
   decryptCollectionContributorRows,
   decryptCollectionContributionRows,
   decryptCollectionExpenseRows,
+  decryptCollectionExpensePayerRows,
+  decryptCollectionExpenseSplitRows,
+  decryptCollectionSettlementRows,
 } from "@/lib/finance/decrypt";
 import { useDecryptProgressStore, withProgress } from "@/lib/finance/decrypt-progress";
 import { computeCollectionsData, type CategoryLookup } from "./compute";
@@ -41,41 +44,75 @@ export function useCollectionsData(currency: CurrencyCode, categories: CategoryL
         contributors: rawContributors,
         contributions: rawContributions,
         expenses: rawExpenses,
+        expensePayers: rawExpensePayers,
+        expenseSplits: rawExpenseSplits,
+        settlements: rawSettlements,
       } = await fetchCollectionsDataAction();
 
       const totalRows =
-        rawCollections.length + rawContributors.length + rawContributions.length + rawExpenses.length;
+        rawCollections.length +
+        rawContributors.length +
+        rawContributions.length +
+        rawExpenses.length +
+        rawExpensePayers.length +
+        rawExpenseSplits.length +
+        rawSettlements.length;
       useDecryptProgressStore.getState().startChunk(COLLECTIONS_PROGRESS_KEY, totalRows);
 
-      const [collectionRowsResult, contributorRowsResult, contributionRowsResult, expenseRowsResult] =
-        await Promise.all([
-          withProgress(
-            COLLECTIONS_PROGRESS_KEY,
-            rawCollections.length,
-            decryptCollectionRows(rawCollections, dek),
-          ),
-          withProgress(
-            COLLECTIONS_PROGRESS_KEY,
-            rawContributors.length,
-            decryptCollectionContributorRows(rawContributors, dek),
-          ),
-          withProgress(
-            COLLECTIONS_PROGRESS_KEY,
-            rawContributions.length,
-            decryptCollectionContributionRows(rawContributions, dek),
-          ),
-          withProgress(
-            COLLECTIONS_PROGRESS_KEY,
-            rawExpenses.length,
-            decryptCollectionExpenseRows(rawExpenses, dek),
-          ),
-        ]);
+      const [
+        collectionRowsResult,
+        contributorRowsResult,
+        contributionRowsResult,
+        expenseRowsResult,
+        expensePayerRowsResult,
+        expenseSplitRowsResult,
+        settlementRowsResult,
+      ] = await Promise.all([
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawCollections.length,
+          decryptCollectionRows(rawCollections, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawContributors.length,
+          decryptCollectionContributorRows(rawContributors, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawContributions.length,
+          decryptCollectionContributionRows(rawContributions, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawExpenses.length,
+          decryptCollectionExpenseRows(rawExpenses, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawExpensePayers.length,
+          decryptCollectionExpensePayerRows(rawExpensePayers, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawExpenseSplits.length,
+          decryptCollectionExpenseSplitRows(rawExpenseSplits, dek),
+        ),
+        withProgress(
+          COLLECTIONS_PROGRESS_KEY,
+          rawSettlements.length,
+          decryptCollectionSettlementRows(rawSettlements, dek),
+        ),
+      ]);
 
       const collectionsData = computeCollectionsData(
         collectionRowsResult.rows,
         contributorRowsResult.rows,
         contributionRowsResult.rows,
         expenseRowsResult.rows,
+        expensePayerRowsResult.rows,
+        expenseSplitRowsResult.rows,
+        settlementRowsResult.rows,
         categories,
         currency,
       );

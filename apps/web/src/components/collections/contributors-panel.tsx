@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ContributionForm } from "./contribution-form";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@savemoney/finance-engine/format";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteContributor, deleteContribution } from "@/lib/collections/actions";
@@ -131,7 +132,16 @@ export function ContributorsPanel({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Contributors" description="Who's in this collection, and what they've put in.">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Contributors"
+      description={
+        collection.type === "trip"
+          ? "Who's on this trip."
+          : "Who's in this collection, and what they've put in."
+      }
+    >
       <div className="space-y-4">
         <form onSubmit={handleAddContributor} className="flex gap-2">
           <Input name="displayName" placeholder="Add a person…" maxLength={80} required className="flex-1" />
@@ -145,6 +155,46 @@ export function ContributorsPanel({
           <p className="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
             No one added yet.
           </p>
+        ) : collection.type === "trip" ? (
+          <ul className="max-h-96 space-y-1.5 overflow-y-auto">
+            {collection.contributors.map((p) => {
+              const isPending = p.id.startsWith("optimistic-");
+              const balance = collection.balances.find((b) => b.contributorId === p.id);
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border p-2.5 text-sm"
+                >
+                  <span className="min-w-0 truncate font-medium">{p.displayName}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {balance && Math.abs(balance.net) >= 0.01 ? (
+                      <span
+                        className={cn(
+                          "tabular-nums text-xs font-medium",
+                          balance.net > 0 ? "text-positive" : "text-negative",
+                        )}
+                      >
+                        {balance.net > 0 ? "gets back " : "owes "}
+                        {formatCurrency(Math.abs(balance.net), collection.currency)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Settled up</span>
+                    )}
+                    {collection.status === "open" && !isPending && (
+                      <button
+                        onClick={() => onRemoveContributor(p.id, p.displayName)}
+                        aria-label={`Remove ${p.displayName}`}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-negative/15 hover:text-negative"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {rowError[p.id] && <p className="px-2.5 pb-2 text-xs text-negative">{rowError[p.id]}</p>}
+                </li>
+              );
+            })}
+          </ul>
         ) : (
           <ul className="max-h-96 space-y-1.5 overflow-y-auto">
             {collection.contributors.map((p) => {

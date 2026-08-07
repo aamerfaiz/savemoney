@@ -1,20 +1,44 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PiggyBank, Plane } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import type { ActionResult } from "@/lib/collections/actions";
 import { encryptedCreateCollection, encryptedUpdateCollection } from "@/lib/collections/client-actions";
 import {
   COLLECTION_ICONS,
   COLLECTION_STATUSES,
+  type CollectionType,
   type CollectionWithProgress,
 } from "@/lib/collections/types";
+
+const TYPE_OPTIONS: {
+  value: CollectionType;
+  label: string;
+  description: string;
+  icon: typeof PiggyBank;
+}[] = [
+  {
+    value: "pool",
+    label: "Pool",
+    description: "Everyone chips into a shared pot, you track what's spent from it.",
+    icon: PiggyBank,
+  },
+  {
+    value: "trip",
+    label: "Trip",
+    description: "No pot — track who paid for what and who owes whom, Splitwise-style.",
+    icon: Plane,
+  },
+];
 
 export function CollectionForm({
   existing,
@@ -34,6 +58,7 @@ export function CollectionForm({
     ActionResult | undefined,
     FormData
   >(action, undefined);
+  const [type, setType] = useState<CollectionType>(existing?.type ?? "pool");
 
   useEffect(() => {
     if (state?.ok) {
@@ -47,6 +72,45 @@ export function CollectionForm({
 
   return (
     <form action={formAction} className="space-y-4">
+      {existing ? (
+        <input type="hidden" name="type" value={existing.type} />
+      ) : (
+        <div className="space-y-1.5">
+          <Label>Type</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {TYPE_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              const selected = type === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setType(opt.value)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                    selected ? "border-brand bg-brand/10" : "border-border hover:bg-muted",
+                  )}
+                >
+                  <Icon className={cn("size-4", selected ? "text-brand" : "text-muted-foreground")} />
+                  <span className="text-sm font-medium">{opt.label}</span>
+                  <span className="text-xs text-muted-foreground">{opt.description}</span>
+                </button>
+              );
+            })}
+          </div>
+          <input type="hidden" name="type" value={type} />
+        </div>
+      )}
+      {existing && (
+        <Badge variant="default" className="gap-1">
+          {(() => {
+            const Icon = TYPE_OPTIONS.find((o) => o.value === existing.type)?.icon ?? PiggyBank;
+            return <Icon className="size-3" />;
+          })()}
+          {TYPE_OPTIONS.find((o) => o.value === existing.type)?.label ?? "Pool"} collection
+        </Badge>
+      )}
+
       <div className="grid grid-cols-[1fr_auto] gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="title">Collection name</Label>

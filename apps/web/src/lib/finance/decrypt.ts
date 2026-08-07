@@ -37,6 +37,9 @@ import type {
   RawCollectionContributorRow,
   RawCollectionContributionRow,
   RawCollectionExpenseRow,
+  RawCollectionExpensePayerRow,
+  RawCollectionExpenseSplitRow,
+  RawCollectionSettlementRow,
 } from "@/lib/collections/queries";
 import type { RawLoanRow } from "@/lib/loans/queries";
 import type { LoanType } from "@/lib/loans/types";
@@ -137,6 +140,7 @@ export interface DecryptedCollectionRow {
   currency: string;
   eventDate: string | null;
   status: string;
+  type: string;
 }
 
 export interface DecryptedCollectionContributorRow {
@@ -169,6 +173,30 @@ export interface DecryptedCollectionExpenseRow {
   paidByContributorId: string | null;
   spentAt: string;
   linkedTransactionId: string | null;
+}
+
+export interface DecryptedCollectionExpensePayerRow {
+  id: string;
+  expenseId: string;
+  contributorId: string;
+  amount: number;
+}
+
+export interface DecryptedCollectionExpenseSplitRow {
+  id: string;
+  expenseId: string;
+  contributorId: string;
+  shareAmount: number;
+}
+
+export interface DecryptedCollectionSettlementRow {
+  id: string;
+  collectionId: string;
+  fromContributorId: string;
+  toContributorId: string;
+  amount: number;
+  settledAt: string;
+  note: string | null;
 }
 
 export interface DecryptedLoanRow {
@@ -407,6 +435,7 @@ export async function decryptCollectionRows(
       currency: r.currency,
       eventDate: r.eventDate,
       status: r.status,
+      type: r.type,
     })),
   );
   return splitSettled(settled);
@@ -460,6 +489,54 @@ export async function decryptCollectionExpenseRows(
       paidByContributorId: r.paidByContributorId,
       spentAt: r.spentAt,
       linkedTransactionId: r.linkedTransactionId,
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptCollectionExpensePayerRows(
+  rows: RawCollectionExpensePayerRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedCollectionExpensePayerRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedCollectionExpensePayerRow> => ({
+      id: r.id,
+      expenseId: r.expenseId,
+      contributorId: r.contributorId,
+      amount: Number(await decryptPacked(r.amount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptCollectionExpenseSplitRows(
+  rows: RawCollectionExpenseSplitRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedCollectionExpenseSplitRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedCollectionExpenseSplitRow> => ({
+      id: r.id,
+      expenseId: r.expenseId,
+      contributorId: r.contributorId,
+      shareAmount: Number(await decryptPacked(r.shareAmount, dek)),
+    })),
+  );
+  return splitSettled(settled);
+}
+
+export async function decryptCollectionSettlementRows(
+  rows: RawCollectionSettlementRow[],
+  dek: CryptoKey,
+): Promise<DecryptResult<DecryptedCollectionSettlementRow>> {
+  const settled = await Promise.allSettled(
+    rows.map(async (r): Promise<DecryptedCollectionSettlementRow> => ({
+      id: r.id,
+      collectionId: r.collectionId,
+      fromContributorId: r.fromContributorId,
+      toContributorId: r.toContributorId,
+      amount: Number(await decryptPacked(r.amount, dek)),
+      settledAt: r.settledAt,
+      note: r.note ? await decryptPacked(r.note, dek) : null,
     })),
   );
   return splitSettled(settled);

@@ -235,6 +235,11 @@ export async function commitClientCapability(
     case "collection.contribution": {
       const collection = ctx.collections.find((c) => c.id === targetId);
       if (!collection) return { ok: false, error: "That collection could not be found." };
+      // No pool to contribute into on a trip — money only moves through
+      // expenses (with payers/splits) and settlements there.
+      if (collection.type === "trip") {
+        return { ok: false, error: "This is a trip collection — there's no pool to contribute into." };
+      }
       return addOneContribution(ctx.dek, collection.id, collection.contributors, fields as ContributorDraft);
     }
 
@@ -255,6 +260,12 @@ export async function commitClientCapability(
       });
       if (!editResult.ok) return editResult;
 
+      if (Array.isArray(contributors) && collection.type === "trip") {
+        return {
+          ok: false,
+          error: "Collection updated, but skipped the contributors — this is a trip, add them from its page.",
+        };
+      }
       if (Array.isArray(contributors)) {
         for (const c of contributors) {
           const r = await addOneContribution(ctx.dek, collection.id, collection.contributors, c);
@@ -267,6 +278,17 @@ export async function commitClientCapability(
     case "collection.expense": {
       const collection = ctx.collections.find((c) => c.id === targetId);
       if (!collection) return { ok: false, error: "That collection could not be found." };
+      // `trip`-type expenses need payers/splits (see trip-expense-form.tsx)
+      // that a single free-text prompt can't reliably resolve to specific
+      // contributors and amounts — add those from the collection page for
+      // now rather than risk an expense with no split/payer arrangement at
+      // all, which would silently break that trip's balance math.
+      if (collection.type === "trip") {
+        return {
+          ok: false,
+          error: "This is a trip collection — add expenses (with payers and splits) from its page for now.",
+        };
+      }
       return encryptedAddExpense(ctx.dek, collection.id, undefined, fd);
     }
 

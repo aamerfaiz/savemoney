@@ -12,9 +12,15 @@ import { Dialog } from "@/components/ui/dialog";
 import { CollectionForm } from "./collection-form";
 import { ContributorsPanel } from "./contributors-panel";
 import { ExpenseForm } from "./expense-form";
+import { TripExpenseForm } from "./trip-expense-form";
+import { BalancesPanel } from "./balances-panel";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@savemoney/finance-engine/format";
-import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
+import {
+  computeCollectionSummary,
+  computeTripBalances,
+  simplifySettlements,
+} from "@savemoney/finance-engine/collections";
 import { useInvalidateFinanceData } from "@/lib/finance/use-invalidate-finance-data";
 import { deleteCollection, deleteExpense } from "@/lib/collections/actions";
 import { legacyContributorId } from "@/lib/collections/compute";
@@ -22,6 +28,7 @@ import type {
   CollectionContributionRow,
   CollectionContributor,
   CollectionExpenseRow,
+  CollectionSettlementRow,
   CollectionWithProgress,
 } from "@/lib/collections/types";
 import type { CategoryOption, AccountOption } from "@/lib/transactions/reference";
@@ -34,7 +41,9 @@ export type CollectionAction =
   | { type: "removeContribution"; contributionId: string }
   | { type: "linkLegacy"; contributor: CollectionContributor; contributionIds: string[] }
   | { type: "addExpense"; expense: CollectionExpenseRow }
-  | { type: "removeExpense"; expenseId: string };
+  | { type: "removeExpense"; expenseId: string }
+  | { type: "addSettlement"; settlement: CollectionSettlementRow }
+  | { type: "removeSettlement"; settlementId: string };
 
 function recompute(state: CollectionWithProgress): CollectionWithProgress {
   const totals = new Map<string, number>();
@@ -50,7 +59,25 @@ function recompute(state: CollectionWithProgress): CollectionWithProgress {
     state.expenses.map((e) => ({ amount: e.amount })),
     state.targetAmount,
   );
-  return { ...state, contributors, summary };
+
+  const nameById = new Map(contributors.map((c) => [c.id, c.displayName]));
+  const balances =
+    state.type === "trip"
+      ? computeTripBalances(
+          state.expenses.map((e) => ({ payers: e.payers, splits: e.splits })),
+          state.settlements,
+        )
+      : [];
+  const suggestedSettlements =
+    state.type === "trip"
+      ? simplifySettlements(balances).map((s) => ({
+          ...s,
+          fromName: nameById.get(s.fromContributorId) ?? "Unknown",
+          toName: nameById.get(s.toContributorId) ?? "Unknown",
+        }))
+      : [];
+
+  return { ...state, contributors, summary, balances, suggestedSettlements };
 }
 
 function collectionReducer(
@@ -92,6 +119,13 @@ function collectionReducer(
       return recompute({ ...state, expenses: [action.expense, ...state.expenses] });
     case "removeExpense":
       return recompute({ ...state, expenses: state.expenses.filter((e) => e.id !== action.expenseId) });
+    case "addSettlement":
+      return recompute({ ...state, settlements: [action.settlement, ...state.settlements] });
+    case "removeSettlement":
+      return recompute({
+        ...state,
+        settlements: state.settlements.filter((s) => s.id !== action.settlementId),
+      });
   }
 }
 
@@ -188,55 +222,66 @@ export function CollectionDetailView({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Collected</p>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl font-semibold tabular-nums">
-              {formatCurrency(summary.totalCollected, collection.currency)}
-            </span>
-            {collection.targetAmount != null && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                of {formatCurrency(collection.targetAmount, collection.currency)}
+      {collection.type === "pool" && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Collected</p>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className="text-xl font-semibold tabular-nums">
+                {formatCurrency(summary.totalCollected, collection.currency)}
               </span>
+              {collection.targetAmount != null && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  of {formatCurrency(collection.targetAmount, collection.currency)}
+                </span>
+              )}
+            </div>
+            {collectedPct != null && (
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-[width] duration-500",
+                    summary.isFullyFunded ? "bg-positive" : "bg-brand",
+                  )}
+                  style={{ width: `${Math.min(100, collectedPct)}%` }}
+                />
+              </div>
             )}
           </div>
-          {collectedPct != null && (
+
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">
+              {summary.isOverspent ? "Overspent" : "Remaining"}
+            </p>
+            <div className="mt-1 flex items-baseline justify-between">
+              <span className={cn("text-xl font-semibold tabular-nums", summary.isOverspent && "text-negative")}>
+                {formatCurrency(summary.balance, collection.currency)}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatCurrency(summary.totalSpent, collection.currency)} spent
+              </span>
+            </div>
             <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className={cn(
                   "h-full rounded-full transition-[width] duration-500",
-                  summary.isFullyFunded ? "bg-positive" : "bg-brand",
+                  summary.isOverspent ? "bg-negative" : "bg-brand",
                 )}
-                style={{ width: `${Math.min(100, collectedPct)}%` }}
+                style={{ width: `${spentPct}%` }}
               />
             </div>
-          )}
+          </div>
         </div>
+      )}
 
+      {collection.type === "trip" && (
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">
-            {summary.isOverspent ? "Overspent" : "Remaining"}
+          <p className="text-xs text-muted-foreground">Total spent</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {formatCurrency(summary.totalSpent, collection.currency)}
           </p>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className={cn("text-xl font-semibold tabular-nums", summary.isOverspent && "text-negative")}>
-              {formatCurrency(summary.balance, collection.currency)}
-            </span>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {formatCurrency(summary.totalSpent, collection.currency)} spent
-            </span>
-          </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width] duration-500",
-                summary.isOverspent ? "bg-negative" : "bg-brand",
-              )}
-              style={{ width: `${spentPct}%` }}
-            />
-          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -251,7 +296,9 @@ export function CollectionDetailView({
         {collection.expenses.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-center">
             <Receipt className="size-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Nothing spent from this pool yet.</p>
+            <p className="text-sm text-muted-foreground">
+              {collection.type === "trip" ? "No expenses logged yet." : "Nothing spent from this pool yet."}
+            </p>
           </div>
         ) : (
           <ul className="space-y-1.5">
@@ -265,10 +312,16 @@ export function CollectionDetailView({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{e.description || e.categoryName || "Expense"}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="truncate text-xs text-muted-foreground">
                     {e.spentAt}
                     {e.categoryName ? ` · ${e.categoryName}` : ""}
-                    {e.paidByName ? ` · paid by ${e.paidByName}` : ""}
+                    {collection.type === "pool" && e.paidByName ? ` · paid by ${e.paidByName}` : ""}
+                    {collection.type === "trip" && e.payers.length > 0
+                      ? ` · paid by ${e.payers.map((p) => p.contributorName).join(", ")}`
+                      : ""}
+                    {collection.type === "trip" && e.splits.length > 0
+                      ? ` · split between ${e.splits.map((s) => s.contributorName).join(", ")}`
+                      : ""}
                   </p>
                 </div>
                 <span className="shrink-0 font-medium tabular-nums">
@@ -289,6 +342,13 @@ export function CollectionDetailView({
         )}
       </div>
 
+      {collection.type === "trip" && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium">Balances</h2>
+          <BalancesPanel collection={collection} dek={dek} dispatch={dispatch} startTransition={startTransition} />
+        </div>
+      )}
+
       <Dialog open={editing} onClose={() => setEditing(false)} title="Edit collection">
         <CollectionForm existing={collection} onSuccess={() => setEditing(false)} dek={dek} />
       </Dialog>
@@ -297,17 +357,29 @@ export function CollectionDetailView({
         open={addingExpense}
         onClose={() => setAddingExpense(false)}
         title="Add expense"
-        description="Money spent out of this pool."
+        description={collection.type === "trip" ? "Who paid, and who it's split between." : "Money spent out of this pool."}
       >
-        <ExpenseForm
-          collection={collection}
-          expenseCategories={expenseCategories}
-          accounts={accounts}
-          dek={dek}
-          dispatch={dispatch}
-          startTransition={startTransition}
-          onSuccess={() => setAddingExpense(false)}
-        />
+        {collection.type === "trip" ? (
+          <TripExpenseForm
+            collection={collection}
+            expenseCategories={expenseCategories}
+            accounts={accounts}
+            dek={dek}
+            dispatch={dispatch}
+            startTransition={startTransition}
+            onSuccess={() => setAddingExpense(false)}
+          />
+        ) : (
+          <ExpenseForm
+            collection={collection}
+            expenseCategories={expenseCategories}
+            accounts={accounts}
+            dek={dek}
+            dispatch={dispatch}
+            startTransition={startTransition}
+            onSuccess={() => setAddingExpense(false)}
+          />
+        )}
       </Dialog>
 
       <ContributorsPanel

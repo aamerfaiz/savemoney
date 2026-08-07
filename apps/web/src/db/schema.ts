@@ -640,6 +640,18 @@ export const netWorthSnapshots = pgTable(
 
 export const collectionStatus = pgEnum("collection_status", ["open", "closed"]);
 
+/** Chosen once, at creation, and never changed after (see collection-form.tsx
+ * — the type selector is hidden on edit). `pool`: office-gift-style — a
+ * shared pot people put money INTO, spent down over time, "collected vs.
+ * remaining" is the whole story. `trip`: Splitwise-style — no pot at all,
+ * just who-paid-what per expense and who owes whom; `collection_expenses`
+ * gains per-expense payers/splits (`collection_expense_payers`/
+ * `collection_expense_splits`) instead of the pool's single optional
+ * `paidByContributorId`, and `collection_contributions` stays unused. Two
+ * genuinely different mental models sharing one table rather than one
+ * silently overloaded to guess at, per the user's explicit call. */
+export const collectionType = pgEnum("collection_type", ["pool", "trip"]);
+
 export const collections = pgTable(
   "collections",
   {
@@ -656,6 +668,7 @@ export const collections = pgTable(
     currency: text("currency").notNull().default("USD"),
     eventDate: date("event_date"),
     status: collectionStatus("status").notNull().default("open"),
+    type: collectionType("type").notNull().default("pool"),
     ...audit,
   },
   (t) => [index("collections_user_idx").on(t.userId)],
@@ -757,6 +770,104 @@ export const collectionExpenses = pgTable(
     index("collection_expenses_user_idx").on(t.userId),
     index("collection_expenses_category_idx").on(t.categoryId),
     index("collection_expenses_linked_txn_idx").on(t.linkedTransactionId),
+  ],
+);
+
+/** `trip`-type expenses only: who actually fronted the money for one
+ * expense, and how much each of them paid — a single expense can have
+ * several payers (e.g. two friends split paying the hotel up front).
+ * `pool`-type expenses keep using `collectionExpenses.paidByContributorId`
+ * instead (single, optional, unused by any math) rather than being migrated
+ * onto this table, so none of the existing pool code has to change. Hard
+ * FK cascade on both sides is safe here (unlike contributions' "set null" +
+ * legacy-name fallback) because every payer row always points at a real
+ * contributor — `deleteContributor` (actions.ts) refuses to remove anyone
+ * with payer/split rows rather than relying on this cascade to clean up
+ * silently. */
+export const collectionExpensePayers = pgTable(
+  "collection_expense_payers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => collectionExpenses.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    contributorId: uuid("contributor_id")
+      .notNull()
+      .references(() => collectionContributors.id, { onDelete: "cascade" }),
+    // Packed ciphertext — this payer's share of what was actually paid.
+    amount: text("amount").notNull(),
+    ...audit,
+  },
+  (t) => [
+    index("collection_expense_payers_expense_idx").on(t.expenseId),
+    index("collection_expense_payers_user_idx").on(t.userId),
+    index("collection_expense_payers_contributor_idx").on(t.contributorId),
+  ],
+);
+
+/** `trip`-type expenses only: who the expense is split between, and each
+ * person's share — drives the balance/settle-up math in
+ * `@savemoney/finance-engine/collections` (`computeTripBalances`). Same
+ * cascade reasoning as `collectionExpensePayers` above. */
+export const collectionExpenseSplits = pgTable(
+  "collection_expense_splits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => collectionExpenses.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    contributorId: uuid("contributor_id")
+      .notNull()
+      .references(() => collectionContributors.id, { onDelete: "cascade" }),
+    // Packed ciphertext — this person's share of the expense total.
+    shareAmount: text("share_amount").notNull(),
+    ...audit,
+  },
+  (t) => [
+    index("collection_expense_splits_expense_idx").on(t.expenseId),
+    index("collection_expense_splits_user_idx").on(t.userId),
+    index("collection_expense_splits_contributor_idx").on(t.contributorId),
+  ],
+);
+
+/** `trip`-type collections only: a record of one contributor paying another
+ * back outside of any expense — reduces both people's net balance the same
+ * way a real payment would, see `computeTripBalances`. Organizer enters
+ * these by hand today (no real money movement happens through the app);
+ * `note` is a free-text packed-ciphertext field like every other one here. */
+export const collectionSettlements = pgTable(
+  "collection_settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    fromContributorId: uuid("from_contributor_id")
+      .notNull()
+      .references(() => collectionContributors.id, { onDelete: "cascade" }),
+    toContributorId: uuid("to_contributor_id")
+      .notNull()
+      .references(() => collectionContributors.id, { onDelete: "cascade" }),
+    // Packed ciphertext.
+    amount: text("amount").notNull(),
+    settledAt: date("settled_at").notNull(),
+    note: text("note"),
+    ...audit,
+  },
+  (t) => [
+    index("collection_settlements_collection_idx").on(t.collectionId),
+    index("collection_settlements_user_idx").on(t.userId),
+    index("collection_settlements_from_idx").on(t.fromContributorId),
+    index("collection_settlements_to_idx").on(t.toContributorId),
   ],
 );
 
@@ -959,6 +1070,9 @@ export type Collection = typeof collections.$inferSelect;
 export type CollectionContributor = typeof collectionContributors.$inferSelect;
 export type CollectionContribution = typeof collectionContributions.$inferSelect;
 export type CollectionExpense = typeof collectionExpenses.$inferSelect;
+export type CollectionExpensePayer = typeof collectionExpensePayers.$inferSelect;
+export type CollectionExpenseSplit = typeof collectionExpenseSplits.$inferSelect;
+export type CollectionSettlement = typeof collectionSettlements.$inferSelect;
 export type ImportBatch = typeof importBatches.$inferSelect;
 export type RecurringRule = typeof recurringRules.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;

@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { requireUser } from "@/lib/supabase/require-user";
 import { baseCurrencyFor } from "@/lib/profile/queries";
-import { COLLECTION_STATUSES } from "./types";
+import { COLLECTION_STATUSES, COLLECTION_TYPES } from "./types";
 
 export interface ActionResult {
   ok: boolean;
@@ -37,6 +37,10 @@ const encryptedCollectionInputSchema = z.object({
     .optional()
     .nullable(),
   status: z.enum(COLLECTION_STATUSES),
+  // Only read by createCollection — updateCollection never writes it, so a
+  // collection's type can't change after creation (see the field's comment
+  // on collectionInputSchema, types.ts).
+  type: z.enum(COLLECTION_TYPES).default("pool"),
 });
 
 export type EncryptedCollectionInput = z.infer<typeof encryptedCollectionInputSchema>;
@@ -106,6 +110,7 @@ export async function createCollection(input: EncryptedCollectionInput): Promise
       currency,
       event_date: v.eventDate ?? null,
       status: v.status,
+      type: v.type,
     })
     .select("id")
     .single();
@@ -190,9 +195,13 @@ export async function createContributor(
   return { ok: true, id: (data as { id: string }).id };
 }
 
-/** Refuses to delete a contributor who has any contributions recorded —
- * removing them would silently orphan that money. The UI should surface
- * this rather than let the FK constraint reject it with a raw DB error. */
+/** Refuses to delete a contributor who has any contributions, expense
+ * payer/split rows, or settlements recorded against them — removing them
+ * would silently orphan that money or corrupt a trip's balance math. The UI
+ * should surface this rather than let the FK constraint reject it with a
+ * raw DB error (contributions use "set null" so it wouldn't even reject —
+ * this is a soft delete, not a real one, so DB-level cascades never fire
+ * here at all; see the schema comment on collectionExpensePayers). */
 export async function deleteContributor(
   collectionId: string,
   contributorId: string,
@@ -201,15 +210,41 @@ export async function deleteContributor(
   if ("error" in auth) return { ok: false, error: auth.error };
   const { supabase } = auth;
 
-  const { count } = await supabase
-    .from("collection_contributions")
-    .select("id", { count: "exact", head: true })
-    .eq("contributor_id", contributorId)
-    .is("deleted_at", null);
-  if (count && count > 0) {
+  const [contributions, payers, splits, settlementsFrom, settlementsTo] = await Promise.all([
+    supabase
+      .from("collection_contributions")
+      .select("id", { count: "exact", head: true })
+      .eq("contributor_id", contributorId)
+      .is("deleted_at", null),
+    supabase
+      .from("collection_expense_payers")
+      .select("id", { count: "exact", head: true })
+      .eq("contributor_id", contributorId),
+    supabase
+      .from("collection_expense_splits")
+      .select("id", { count: "exact", head: true })
+      .eq("contributor_id", contributorId),
+    supabase
+      .from("collection_settlements")
+      .select("id", { count: "exact", head: true })
+      .eq("from_contributor_id", contributorId)
+      .is("deleted_at", null),
+    supabase
+      .from("collection_settlements")
+      .select("id", { count: "exact", head: true })
+      .eq("to_contributor_id", contributorId)
+      .is("deleted_at", null),
+  ]);
+  const total =
+    (contributions.count ?? 0) +
+    (payers.count ?? 0) +
+    (splits.count ?? 0) +
+    (settlementsFrom.count ?? 0) +
+    (settlementsTo.count ?? 0);
+  if (total > 0) {
     return {
       ok: false,
-      error: `${count} contribution${count === 1 ? "" : "s"} would be orphaned — remove those first.`,
+      error: `${total} record${total === 1 ? "" : "s"} reference this contributor — remove those first.`,
     };
   }
 
@@ -408,6 +443,167 @@ export async function deleteExpense(collectionId: string, id: string): Promise<A
 
   const { error } = await supabase
     .from("collection_expenses")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Trip expenses (multi-payer, split) — `trip`-type collections only       */
+/* ----------------------------------------------------------------------- */
+
+const encryptedTripPartySchema = z.object({
+  contributorId: z.string().uuid(),
+  amount: z.string().min(1),
+});
+
+const encryptedTripExpenseInputSchema = z.object({
+  amount: z.string().min(1),
+  description: z.string().trim().max(200).optional().nullable(),
+  categoryId: z.string().uuid().optional().nullable(),
+  spentAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  payers: z.array(encryptedTripPartySchema).min(1),
+  splits: z.array(encryptedTripPartySchema).min(1),
+  linkToTransaction: z.boolean(),
+  accountId: z.string().uuid().optional().nullable(),
+});
+
+export type EncryptedTripExpenseInput = z.infer<typeof encryptedTripExpenseInputSchema>;
+
+/** Same shape as `addExpense` (base row + optional linked personal
+ * transaction), plus the payer/split rows a trip expense needs instead of
+ * a single `paidByContributorId`. Amount consistency (payers/splits each
+ * summing to the total) is enforced client-side by the form — this only
+ * validates shape, same trust boundary as every other collections action. */
+export async function addTripExpense(
+  collectionId: string,
+  input: EncryptedTripExpenseInput,
+): Promise<ActionResult> {
+  const parsed = encryptedTripExpenseInputSchema.safeParse(input);
+  if (!parsed.success) return fieldErrors(parsed.error);
+
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
+  const v = parsed.data;
+
+  let linkedTransactionId: string | null = null;
+  if (v.linkToTransaction) {
+    const currency = await baseCurrencyFor(supabase, userId);
+    const { data, error: insErr } = await supabase
+      .from("expenses")
+      .insert({
+        user_id: userId,
+        amount: v.amount,
+        currency,
+        category_id: v.categoryId ?? null,
+        account_id: v.accountId ?? null,
+        description: v.description ?? null,
+        note: null,
+        spent_at: v.spentAt,
+      })
+      .select("id")
+      .single();
+    if (insErr) return { ok: false, error: insErr.message };
+    linkedTransactionId = (data as { id: string }).id;
+  }
+
+  const { data: expenseData, error } = await supabase
+    .from("collection_expenses")
+    .insert({
+      collection_id: collectionId,
+      user_id: userId,
+      amount: v.amount,
+      description: v.description ?? null,
+      category_id: v.categoryId ?? null,
+      paid_by_contributor_id: null,
+      spent_at: v.spentAt,
+      linked_transaction_id: linkedTransactionId,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  const expenseId = (expenseData as { id: string }).id;
+
+  const { error: payersErr } = await supabase.from("collection_expense_payers").insert(
+    v.payers.map((p) => ({
+      expense_id: expenseId,
+      user_id: userId,
+      contributor_id: p.contributorId,
+      amount: p.amount,
+    })),
+  );
+  if (payersErr) return { ok: false, error: payersErr.message };
+
+  const { error: splitsErr } = await supabase.from("collection_expense_splits").insert(
+    v.splits.map((s) => ({
+      expense_id: expenseId,
+      user_id: userId,
+      contributor_id: s.contributorId,
+      share_amount: s.amount,
+    })),
+  );
+  if (splitsErr) return { ok: false, error: splitsErr.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  revalidatePath("/transactions");
+  return { ok: true, id: expenseId };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Settlements — `trip`-type collections only                              */
+/* ----------------------------------------------------------------------- */
+
+const encryptedSettlementInputSchema = z.object({
+  fromContributorId: z.string().uuid(),
+  toContributorId: z.string().uuid(),
+  amount: z.string().min(1),
+  settledAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().trim().max(200).optional().nullable(),
+});
+
+export type EncryptedSettlementInput = z.infer<typeof encryptedSettlementInputSchema>;
+
+export async function addSettlement(
+  collectionId: string,
+  input: EncryptedSettlementInput,
+): Promise<ActionResult> {
+  const parsed = encryptedSettlementInputSchema.safeParse(input);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  if (parsed.data.fromContributorId === parsed.data.toContributorId) {
+    return { ok: false, error: "Pick two different people." };
+  }
+
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase, userId } = auth;
+  const v = parsed.data;
+
+  const { error } = await supabase.from("collection_settlements").insert({
+    collection_id: collectionId,
+    user_id: userId,
+    from_contributor_id: v.fromContributorId,
+    to_contributor_id: v.toContributorId,
+    amount: v.amount,
+    settled_at: v.settledAt,
+    note: v.note ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/collections/${collectionId}`);
+  return { ok: true };
+}
+
+export async function deleteSettlement(collectionId: string, id: string): Promise<ActionResult> {
+  const auth = await requireUser();
+  if ("error" in auth) return { ok: false, error: auth.error };
+  const { supabase } = auth;
+
+  const { error } = await supabase
+    .from("collection_settlements")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };

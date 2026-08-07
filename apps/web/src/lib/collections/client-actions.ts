@@ -16,12 +16,16 @@ import {
   addContribution,
   updateContribution,
   addExpense,
+  addTripExpense,
+  addSettlement,
   type ActionResult,
   type EncryptedCollectionInput,
   type EncryptedContributorInput,
   type EncryptedContributionInput,
   type EncryptedContributionEditInput,
   type EncryptedExpenseInput,
+  type EncryptedTripExpenseInput,
+  type EncryptedSettlementInput,
 } from "./actions";
 import {
   collectionInputSchema,
@@ -29,8 +33,12 @@ import {
   contributionInputSchema,
   contributionEditInputSchema,
   expenseInputSchema,
+  tripExpenseInputSchema,
+  settlementInputSchema,
   type CollectionStatus,
   type CollectionWithProgress,
+  type TripExpenseInput,
+  type SettlementInput,
 } from "./types";
 
 function emptyToNull(v: FormDataEntryValue | null): string | null {
@@ -62,6 +70,7 @@ function parseCollectionForm(formData: FormData) {
     currency: formData.get("currency") || "USD",
     eventDate: emptyToNull(formData.get("eventDate")),
     status: formData.get("status") || "open",
+    type: formData.get("type") || "pool",
   };
   return collectionInputSchema.safeParse(raw);
 }
@@ -86,6 +95,7 @@ async function encryptCollection(
       currency: v.currency,
       eventDate: v.eventDate ?? null,
       status: v.status,
+      type: v.type,
     },
   };
 }
@@ -143,6 +153,9 @@ export async function encryptedEditCollectionFields(
     currency: current.currency,
     eventDate: fields.eventDate !== undefined ? fields.eventDate : current.eventDate,
     status: fields.status ?? current.status,
+    // updateCollection ignores this either way (type is immutable after
+    // create) — included only to satisfy EncryptedCollectionInput's shape.
+    type: current.type,
   };
   return updateCollection(current.id, input);
 }
@@ -269,4 +282,77 @@ export async function encryptedAddExpense(
     accountId: v.accountId ?? null,
   };
   return addExpense(collectionId, input);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Trip expenses (multi-payer, split) — `trip`-type collections only       */
+/* ----------------------------------------------------------------------- */
+
+/** Unlike the FormData-based forms above, `TripExpenseForm` manages payers
+ * and splits as React state (a list of {contributorId, amount} rows being
+ * built up interactively) rather than something that fits naturally into
+ * plain form fields — so this takes the parsed shape directly, same
+ * reasoning as `encryptedUpdateContribution` taking a typed `fields` object
+ * instead of a FormData. */
+export async function encryptedAddTripExpense(
+  dek: CryptoKey,
+  collectionId: string,
+  fields: TripExpenseInput,
+): Promise<ActionResult> {
+  const parsed = tripExpenseInputSchema.safeParse(fields);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  const v = parsed.data;
+
+  const amount = await encryptPacked(String(v.amount), dek);
+  const description = v.description ? await encryptPacked(v.description, dek) : null;
+  const payers = await Promise.all(
+    v.payers.map(async (p) => ({
+      contributorId: p.contributorId,
+      amount: await encryptPacked(String(p.amount), dek),
+    })),
+  );
+  const splits = await Promise.all(
+    v.splits.map(async (s) => ({
+      contributorId: s.contributorId,
+      amount: await encryptPacked(String(s.amount), dek),
+    })),
+  );
+
+  const input: EncryptedTripExpenseInput = {
+    amount,
+    description,
+    categoryId: v.categoryId ?? null,
+    spentAt: v.spentAt,
+    payers,
+    splits,
+    linkToTransaction: v.linkToTransaction,
+    accountId: v.accountId ?? null,
+  };
+  return addTripExpense(collectionId, input);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Settlements — `trip`-type collections only                              */
+/* ----------------------------------------------------------------------- */
+
+export async function encryptedAddSettlement(
+  dek: CryptoKey,
+  collectionId: string,
+  fields: SettlementInput,
+): Promise<ActionResult> {
+  const parsed = settlementInputSchema.safeParse(fields);
+  if (!parsed.success) return fieldErrors(parsed.error);
+  const v = parsed.data;
+
+  const amount = await encryptPacked(String(v.amount), dek);
+  const note = v.note ? await encryptPacked(v.note, dek) : null;
+
+  const input: EncryptedSettlementInput = {
+    fromContributorId: v.fromContributorId,
+    toContributorId: v.toContributorId,
+    amount,
+    settledAt: v.settledAt,
+    note,
+  };
+  return addSettlement(collectionId, input);
 }

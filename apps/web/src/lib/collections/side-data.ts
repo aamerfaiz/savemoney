@@ -11,14 +11,21 @@ import {
   fetchCollectionContributorsRaw,
   fetchCollectionContributionsRaw,
   fetchCollectionExpensesRaw,
+  fetchCollectionExpensePayersRaw,
+  fetchCollectionExpenseSplitsRaw,
+  fetchCollectionSettlementsRaw,
 } from "./queries";
 
 export async function fetchCollectionsDataAction() {
-  const [collections, contributors, contributions, expenses] = await Promise.all([
-    fetchCollectionsRaw(),
-    fetchCollectionContributorsRaw(),
-    fetchCollectionContributionsRaw(),
-    fetchCollectionExpensesRaw(),
-  ]);
-  return { collections, contributors, contributions, expenses };
+  const [collections, contributors, contributions, expenses, expensePayers, expenseSplits, settlements] =
+    await Promise.all([
+      fetchCollectionsRaw(),
+      fetchCollectionContributorsRaw(),
+      fetchCollectionContributionsRaw(),
+      fetchCollectionExpensesRaw(),
+      fetchCollectionExpensePayersRaw(),
+      fetchCollectionExpenseSplitsRaw(),
+      fetchCollectionSettlementsRaw(),
+    ]);
+  return { collections, contributors, contributions, expenses, expensePayers, expenseSplits, settlements };
 }

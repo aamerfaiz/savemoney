@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, Users, ShieldAlert, HandCoins } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, ShieldAlert, HandCoins, Plane } from "lucide-react";
 
 import { Icon } from "@/components/icon";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +142,8 @@ function CollectionCard({
 }) {
   const { summary } = c;
   const pct = summary.progress != null ? Math.round(summary.progress * 100) : null;
+  const peopleCount = c.type === "trip" ? c.contributors.length : summary.contributorCount;
+  const allSettled = c.balances.every((b) => Math.abs(b.net) < 0.01);
 
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4">
@@ -159,8 +161,8 @@ function CollectionCard({
             {c.title}
           </Link>
           <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Users className="size-3" />
-            {summary.contributorCount} {summary.contributorCount === 1 ? "person" : "people"}
+            {c.type === "trip" ? <Plane className="size-3" /> : <Users className="size-3" />}
+            {peopleCount} {peopleCount === 1 ? "person" : "people"}
             {c.status === "closed" && (
               <Badge variant="default" className="ml-1.5">
                 Closed
@@ -187,34 +189,50 @@ function CollectionCard({
       </div>
 
       <Link href={`/collections/${c.id}`} className="mt-3 block">
-        <div className="flex items-baseline justify-between text-sm">
-          <span className="font-semibold tabular-nums">
-            {formatCurrency(summary.totalCollected, c.currency)}
-          </span>
-          {c.targetAmount != null && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              of {formatCurrency(c.targetAmount, c.currency)}
+        {c.type === "trip" ? (
+          <>
+            <span className="font-semibold tabular-nums">
+              {formatCurrency(summary.totalSpent, c.currency)}
             </span>
-          )}
-        </div>
-        {pct != null && (
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width] duration-500",
-                summary.isFullyFunded ? "bg-positive" : "bg-brand",
+            <span className="ml-1 text-xs text-muted-foreground">spent</span>
+            {c.expenses.length > 0 && (
+              <p className={cn("mt-1.5 text-xs", allSettled ? "text-positive" : "text-muted-foreground")}>
+                {allSettled ? "Everyone's settled up" : "Balances outstanding"}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(summary.totalCollected, c.currency)}
+              </span>
+              {c.targetAmount != null && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  of {formatCurrency(c.targetAmount, c.currency)}
+                </span>
               )}
-              style={{ width: `${Math.min(100, pct)}%` }}
-            />
-          </div>
-        )}
-        {summary.totalSpent > 0 && (
-          <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
-            {formatCurrency(summary.totalSpent, c.currency)} spent ·{" "}
-            <span className={summary.isOverspent ? "text-negative" : ""}>
-              {formatCurrency(summary.balance, c.currency)} left
-            </span>
-          </p>
+            </div>
+            {pct != null && (
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-[width] duration-500",
+                    summary.isFullyFunded ? "bg-positive" : "bg-brand",
+                  )}
+                  style={{ width: `${Math.min(100, pct)}%` }}
+                />
+              </div>
+            )}
+            {summary.totalSpent > 0 && (
+              <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
+                {formatCurrency(summary.totalSpent, c.currency)} spent ·{" "}
+                <span className={summary.isOverspent ? "text-negative" : ""}>
+                  {formatCurrency(summary.balance, c.currency)} left
+                </span>
+              </p>
+            )}
+          </>
         )}
       </Link>
     </div>

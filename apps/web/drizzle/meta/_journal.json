@@ -155,6 +155,13 @@
       "when": 1786090000000,
       "tag": "0021_rename_participant_to_contributor",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786102722461,
+      "tag": "0022_collections_trip_type",
+      "breakpoints": true
     }
   ]
 }

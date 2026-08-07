@@ -14,20 +14,30 @@
  * action available on the entries that aren't a real row yet.
  */
 
-import { computeCollectionSummary } from "@savemoney/finance-engine/collections";
+import {
+  computeCollectionSummary,
+  computeTripBalances,
+  simplifySettlements,
+} from "@savemoney/finance-engine/collections";
 import type { CurrencyCode } from "@savemoney/finance-engine/format";
 import type {
   DecryptedCollectionRow,
   DecryptedCollectionContributorRow,
   DecryptedCollectionContributionRow,
   DecryptedCollectionExpenseRow,
+  DecryptedCollectionExpensePayerRow,
+  DecryptedCollectionExpenseSplitRow,
+  DecryptedCollectionSettlementRow,
 } from "@/lib/finance/decrypt";
 import type {
   CollectionStatus,
+  CollectionType,
   CollectionWithProgress,
   CollectionContributor,
   CollectionContributionRow,
   CollectionExpenseRow,
+  CollectionSettlementRow,
+  ExpenseParty,
 } from "./types";
 
 export interface CollectionsData {
@@ -59,12 +69,18 @@ export function computeCollectionsData(
   contributorRows: DecryptedCollectionContributorRow[],
   contributionRows: DecryptedCollectionContributionRow[],
   expenseRows: DecryptedCollectionExpenseRow[],
+  expensePayerRows: DecryptedCollectionExpensePayerRow[],
+  expenseSplitRows: DecryptedCollectionExpenseSplitRow[],
+  settlementRows: DecryptedCollectionSettlementRow[],
   categories: CategoryLookup[],
   currency: CurrencyCode,
 ): CollectionsData {
   const contributorsByCollection = groupBy(contributorRows, (p) => p.collectionId);
   const contributionsByCollection = groupBy(contributionRows, (c) => c.collectionId);
   const expensesByCollection = groupBy(expenseRows, (e) => e.collectionId);
+  const payersByExpense = groupBy(expensePayerRows, (p) => p.expenseId);
+  const splitsByExpense = groupBy(expenseSplitRows, (s) => s.expenseId);
+  const settlementsByCollection = groupBy(settlementRows, (s) => s.collectionId);
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   const collections: CollectionWithProgress[] = collectionRows.map((c) => {
@@ -128,9 +144,17 @@ export function computeCollectionsData(
       (a, b) => b.totalContributed - a.totalContributed,
     );
 
+    const toParty = (row: { contributorId: string }, amount: number): ExpenseParty => ({
+      contributorId: row.contributorId,
+      contributorName: nameById.get(row.contributorId) ?? "Unknown",
+      amount,
+    });
+
     const expenses: CollectionExpenseRow[] = rawExpenses
       .map((e) => {
         const category = e.categoryId ? categoryMap.get(e.categoryId) : undefined;
+        const payers = (payersByExpense.get(e.id) ?? []).map((p) => toParty(p, p.amount));
+        const splits = (splitsByExpense.get(e.id) ?? []).map((s) => toParty(s, s.shareAmount));
         return {
           id: e.id,
           amount: e.amount,
@@ -140,11 +164,43 @@ export function computeCollectionsData(
           categoryIcon: category?.icon ?? null,
           paidByContributorId: e.paidByContributorId,
           paidByName: e.paidByContributorId ? (nameById.get(e.paidByContributorId) ?? null) : null,
+          payers,
+          splits,
           spentAt: e.spentAt,
           linkedTransactionId: e.linkedTransactionId,
         };
       })
       .sort((a, b) => (a.spentAt < b.spentAt ? 1 : -1));
+
+    const settlements: CollectionSettlementRow[] = (settlementsByCollection.get(c.id) ?? [])
+      .map((s) => ({
+        id: s.id,
+        fromContributorId: s.fromContributorId,
+        fromName: nameById.get(s.fromContributorId) ?? "Unknown",
+        toContributorId: s.toContributorId,
+        toName: nameById.get(s.toContributorId) ?? "Unknown",
+        amount: s.amount,
+        settledAt: s.settledAt,
+        note: s.note,
+      }))
+      .sort((a, b) => (a.settledAt < b.settledAt ? 1 : -1));
+
+    const type = c.type as CollectionType;
+    const balances =
+      type === "trip"
+        ? computeTripBalances(
+            expenses.map((e) => ({ payers: e.payers, splits: e.splits })),
+            settlements,
+          )
+        : [];
+    const suggestedSettlements =
+      type === "trip"
+        ? simplifySettlements(balances).map((s) => ({
+            ...s,
+            fromName: nameById.get(s.fromContributorId) ?? "Unknown",
+            toName: nameById.get(s.toContributorId) ?? "Unknown",
+          }))
+        : [];
 
     const summary = computeCollectionSummary(
       contributions.map((ct) => ({ amount: ct.amount })),
@@ -163,9 +219,13 @@ export function computeCollectionsData(
       currency,
       eventDate: c.eventDate,
       status: c.status as CollectionStatus,
+      type,
       contributors,
       contributions,
       expenses,
+      settlements,
+      balances,
+      suggestedSettlements,
       summary,
     };
   });
